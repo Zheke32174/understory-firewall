@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Intentionally empty. The Shizuku ShizukuProvider + moe.shizuku.manager
-  permission and the app-side Dhizuku wiring are declared by the CONSUMING app
-  (see README.md "Consumer manifest wiring") so each app opts in explicitly and
-  the rootless-by-default suite ships no elevation-manager hooks it did not ask
-  for. The Dhizuku-API AAR already merges its own
-  `uses-permission com.rosan.dhizuku.permission.API` + <queries> block, so that
-  half needs no per-app copy.
+  permission are declared by the CONSUMING app (see README.md "Consumer manifest
+  wiring") so each app opts in explicitly and the rootless-by-default suite ships
+  no elevation-manager hooks it did not ask for.
+
+  Dhizuku is DEFERRED in this build: the Dhizuku-API dependency is not compiled
+  in, so nothing merges its `uses-permission com.rosan.dhizuku.permission.API` +
+  <queries> block here. When the tier is restored, that AAR merges those itself,
+  so that half still needs no per-app copy.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" />

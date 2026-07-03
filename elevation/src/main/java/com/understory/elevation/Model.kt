@@ -67,7 +67,7 @@ sealed interface Outcome {
 
     /**
      * No granted tier can perform this action right now. [reason] explains why
-     * (e.g. "needs Shizuku or Dhizuku") so the UI can show the rootless fallback
+     * (e.g. "needs Shizuku") so the UI can show the rootless fallback
      * instead of a dead button. This is the "degrade honestly" signal.
      */
     data class Unsupported(val reason: String) : Outcome

@@ -14,12 +14,14 @@
 # Shizuku's own provider is referenced by name from the consuming app manifest.
 -keep class rikka.shizuku.ShizukuProvider { *; }
 
-# --- Dhizuku -----------------------------------------------------------------
-# DhizukuDpm reflects DevicePolicyManager.mService and rebuilds an
-# IDevicePolicyManager from a wrapped binder; keep the API surface it touches.
--keep class com.rosan.dhizuku.api.** { *; }
--keep class android.app.admin.IDevicePolicyManager { *; }
--keep class android.app.admin.IDevicePolicyManager$Stub { *; }
+# --- Dhizuku (DEFERRED) ------------------------------------------------------
+# The DHIZUKU tier is not compiled into this build (the JitPack-only
+# Dhizuku-API artifact does not resolve on CI), so there is nothing to keep.
+# When the tier is restored (DhizukuDpm reflects DevicePolicyManager.mService and
+# rebuilds an IDevicePolicyManager from a wrapped binder), re-add:
+#   -keep class com.rosan.dhizuku.api.** { *; }
+#   -keep class android.app.admin.IDevicePolicyManager { *; }
+#   -keep class android.app.admin.IDevicePolicyManager$Stub { *; }
 
 # --- Public broker API -------------------------------------------------------
 # Kept so an app can call the broker after shrinking. Sealed Outcome subclasses

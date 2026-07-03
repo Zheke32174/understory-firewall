@@ -1,15 +1,9 @@
 package com.understory.elevation
 
 import android.app.Activity
-import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Process
-import android.os.RemoteException
-import com.rosan.dhizuku.api.Dhizuku
-import com.rosan.dhizuku.api.DhizukuRequestPermissionListener
-import com.rosan.dhizuku.shared.DhizukuVariables
-import com.understory.elevation.dhizuku.DhizukuDpm
 import com.understory.elevation.shizuku.ShizukuShell
 import kotlinx.coroutines.suspendCancellableCoroutine
 import rikka.shizuku.Shizuku
@@ -19,13 +13,19 @@ import kotlin.coroutines.resume
  * The suite's OPTIONAL-elevation broker.
  *
  * Core principle: the suite is rootless by default. Nothing in here runs unless
- * the user installed Shizuku or Dhizuku and explicitly granted THIS app access.
+ * the user installed Shizuku and explicitly granted THIS app access.
  * Feature code should prefer the capability predicates ([canControlAppNetwork]
  * etc.) over tier checks — "can I block an app's network?" not "is Shizuku
  * present?" — so a feature transparently works on whichever tier is granted.
  *
  * Every high-level helper returns an [Outcome] and never throws to the UI; only
  * the low-level [runShell] throws ([NotElevated]) when no shell tier is granted.
+ *
+ * NOTE: [ElevTier.DHIZUKU] is defined but NOT compiled into this build — the
+ * Dhizuku-API artifact is JitPack-only and does not resolve on CI, so the
+ * DHIZUKU code path is stubbed (see [requestDhizuku]). The enum value is kept so
+ * the tier can be restored later (re-add the dependency + un-stub) without a
+ * source-compatibility break for consumers that switch on [ElevTier].
  */
 object Elevation {
 
@@ -39,23 +39,21 @@ object Elevation {
     /**
      * Tiers that are *installed and reachable* right now (whether or not this
      * app has been granted them). SHIZUKU when the Shizuku service is running
-     * (pingBinder); DHIZUKU when the Dhizuku app is installed AND currently the
-     * active Device/Profile Owner (so a delegate could be requested).
+     * (pingBinder). DHIZUKU is never reported: it is not compiled into this
+     * build (Dhizuku-API is JitPack-only / does not resolve on CI).
      */
     fun availableTiers(ctx: Context): Set<ElevTier> {
         val tiers = LinkedHashSet<ElevTier>()
         if (isShizukuAlive()) tiers.add(ElevTier.SHIZUKU)
-        if (isDhizukuAvailable(ctx)) tiers.add(ElevTier.DHIZUKU)
         return tiers
     }
 
     /**
      * The highest tier currently GRANTED to this app, or [ElevTier.NONE].
-     * "Granted" means: Shizuku permission granted, or Dhizuku bound with
-     * permission granted. DHIZUKU outranks SHIZUKU only as a stable tie-break.
+     * "Granted" means: Shizuku permission granted. DHIZUKU is never returned in
+     * this build (the tier is stubbed out; see [requestDhizuku]).
      */
     fun grantedTier(ctx: Context): ElevTier = when {
-        isDhizukuGranted(ctx) -> ElevTier.DHIZUKU
         isShizukuGranted() -> ElevTier.SHIZUKU
         else -> ElevTier.NONE
     }
@@ -94,45 +92,29 @@ object Elevation {
     }
 
     /**
-     * Trigger the Dhizuku bind + owner-permission grant. Returns whether the
-     * permission is granted when the flow settles. Returns false immediately if
-     * Dhizuku is not installed or not the active owner.
+     * Trigger the Dhizuku bind + owner-permission grant.
+     *
+     * STUBBED in this build: Dhizuku support is not compiled in (the JitPack-only
+     * Dhizuku-API artifact does not resolve on CI), so this always returns false.
+     * The signature is preserved so callers and the grant UI stay source-stable;
+     * restore the real flow by re-adding the dependency and the Dhizuku code path.
      */
-    suspend fun requestDhizuku(activity: Activity): Boolean {
-        if (!isDhizukuAvailable(activity)) return false
-        if (!runCatching { Dhizuku.init(activity) }.getOrDefault(false)) return false
-        if (runCatching { Dhizuku.isPermissionGranted() }.getOrDefault(false)) return true
-        return suspendCancellableCoroutine { cont ->
-            val listener = object : DhizukuRequestPermissionListener() {
-                @Throws(RemoteException::class)
-                override fun onRequestPermission(grantResult: Int) {
-                    if (cont.isActive) cont.resume(grantResult == PackageManager.PERMISSION_GRANTED)
-                }
-            }
-            try {
-                Dhizuku.requestPermission(listener)
-            } catch (t: Throwable) {
-                if (cont.isActive) cont.resume(false)
-            }
-        }
-    }
+    @Suppress("UNUSED_PARAMETER")
+    suspend fun requestDhizuku(activity: Activity): Boolean = false
 
     // ---- Capability predicates (prefer these over tier checks) --------------
 
     /** A privileged shell is available (Shizuku granted). */
     fun canRunShell(ctx: Context): Boolean = isShizukuGranted()
 
-    /** `settings put global/secure` reachable — via Shizuku shell or Dhizuku setGlobalSetting. */
-    fun canWriteSecureSettings(ctx: Context): Boolean =
-        isShizukuGranted() || isDhizukuGranted(ctx)
+    /** `settings put global/secure` reachable — via the Shizuku shell. */
+    fun canWriteSecureSettings(ctx: Context): Boolean = isShizukuGranted()
 
-    /** An app's background network can be blocked — Shizuku netpolicy or Dhizuku restriction. */
-    fun canControlAppNetwork(ctx: Context): Boolean =
-        isShizukuGranted() || isDhizukuGranted(ctx)
+    /** An app's background network can be blocked — via Shizuku netpolicy. */
+    fun canControlAppNetwork(ctx: Context): Boolean = isShizukuGranted()
 
-    /** Apps can be suspended/hidden/force-stopped/uninstalled — Shizuku pm/am or Dhizuku DPM. */
-    fun canManageApps(ctx: Context): Boolean =
-        isShizukuGranted() || isDhizukuGranted(ctx)
+    /** Apps can be suspended/hidden/force-stopped/uninstalled — via the Shizuku pm/am shell. */
+    fun canManageApps(ctx: Context): Boolean = isShizukuGranted()
 
     // ---- The shell workhorse ------------------------------------------------
 
@@ -154,12 +136,15 @@ object Elevation {
             ?: throw NotElevated("Shizuku shell service could not be bound")
     }
 
-    // ---- High-level helpers (Shizuku shell OR Dhizuku DPM) ------------------
+    // ---- High-level helpers (Shizuku shell) ---------------------------------
+    // Each `when` also has an `else -> dhizukuNotCompiled()` guard: unreachable in
+    // this build (grantedTier never returns DHIZUKU) but keeps the enum `when`
+    // exhaustive so restoring the tier is a localized change.
 
     /**
-     * Set Private DNS. Shizuku: `settings put global private_dns_mode …` (+
-     * `private_dns_specifier` for a hostname). Dhizuku: DPM.setGlobalSetting on
-     * the same keys.
+     * Set Private DNS via the Shizuku shell:
+     * `settings put global private_dns_mode …` (+ `private_dns_specifier` for a
+     * hostname).
      */
     suspend fun setPrivateDns(
         ctx: Context,
@@ -177,24 +162,15 @@ object Elevation {
                 }
                 runShell(ctx, listOf("settings", "put", "global", "private_dns_mode", mode.settingValue))
             }
-            ElevTier.DHIZUKU -> dpmOutcome("set Private DNS") {
-                val specOk = if (mode == PrivateDnsMode.HOSTNAME) {
-                    DhizukuDpm.setGlobalSetting(ctx, "private_dns_specifier", hostname!!)
-                } else true
-                specOk && DhizukuDpm.setGlobalSetting(ctx, "private_dns_mode", mode.settingValue)
-            }
             ElevTier.NONE -> unsupported("Private DNS control")
+            else -> dhizukuNotCompiled()
         }
     }
 
     /**
-     * Block/unblock an app's *background* (metered/data-restricted) network.
-     * Shizuku: `cmd netpolicy add/remove restrict-background-blacklist <uid>`.
-     * Dhizuku: a user restriction is the closest owner-level equivalent — we
-     * scope it via app suspension of network is not available per-app, so we use
-     * setApplicationHidden as the honest owner fallback only when asked to block
-     * fully; per-app metered policy is Shizuku-only, so on Dhizuku we report the
-     * precise capability we CAN offer.
+     * Block/unblock an app's *background* (metered/data-restricted) network via
+     * the Shizuku shell:
+     * `cmd netpolicy add/remove restrict-background-blacklist <uid>`.
      */
     suspend fun setAppBackgroundNetworkBlocked(
         ctx: Context,
@@ -211,86 +187,59 @@ object Elevation {
                     listOf("cmd", "netpolicy", verb, "restrict-background-blacklist", uid.toString()),
                 )
             }
-            ElevTier.DHIZUKU ->
-                // Per-app metered denylist is not a Device-Owner API; be honest
-                // rather than silently doing something different.
-                Outcome.Unsupported(
-                    "Per-app background-network block needs Shizuku; Dhizuku (Device Owner) has no per-app metered API.",
-                )
             ElevTier.NONE -> unsupported("app network control")
+            else -> dhizukuNotCompiled()
         }
     }
 
     /**
-     * Revoke a runtime permission from an app. Shizuku: `pm revoke <pkg> <perm>`.
-     * Dhizuku: DPM.setPermissionGrantState(…, PERMISSION_GRANT_STATE_DENIED).
+     * Revoke a runtime permission from an app via the Shizuku shell:
+     * `pm revoke <pkg> <perm>`.
      */
     suspend fun revokePermission(ctx: Context, pkg: String, perm: String): Outcome =
         when (grantedTier(ctx)) {
             ElevTier.SHIZUKU -> shellOutcome(ctx, "revoke permission") {
                 runShell(ctx, listOf("pm", "revoke", pkg, perm))
             }
-            ElevTier.DHIZUKU -> dpmOutcome("revoke permission") {
-                DhizukuDpm.setPermissionGrantState(
-                    ctx, pkg, perm, DevicePolicyManager.PERMISSION_GRANT_STATE_DENIED,
-                )
-            }
             ElevTier.NONE -> unsupported("permission control")
+            else -> dhizukuNotCompiled()
         }
 
     /**
-     * Force-stop an app. Shizuku: `am force-stop <pkg>`. Dhizuku: no exact
-     * owner equivalent — hiding then unhiding kills the process as the closest
-     * effect, but that is surprising, so we instead suspend+unsuspend which the
-     * platform uses to stop an app's processes without hiding it from the
-     * launcher. We report honestly which mechanism ran.
+     * Force-stop an app via the Shizuku shell: `am force-stop <pkg>`.
      */
     suspend fun forceStop(ctx: Context, pkg: String): Outcome =
         when (grantedTier(ctx)) {
             ElevTier.SHIZUKU -> shellOutcome(ctx, "force-stop") {
                 runShell(ctx, listOf("am", "force-stop", pkg))
             }
-            ElevTier.DHIZUKU -> dpmOutcome("force-stop (via suspend cycle)") {
-                // Suspending a package stops its running processes; immediately
-                // un-suspending leaves visible state unchanged but achieves the
-                // "kill now" intent as closely as a Device Owner can.
-                val s = DhizukuDpm.setPackagesSuspended(ctx, pkg, true)
-                val u = DhizukuDpm.setPackagesSuspended(ctx, pkg, false)
-                s && u
-            }
             ElevTier.NONE -> unsupported("force-stop")
+            else -> dhizukuNotCompiled()
         }
 
     /**
-     * Uninstall an app. Shizuku: `pm uninstall <pkg>`. Dhizuku (Device Owner):
-     * there is no silent removePackage in the public DPM; the honest owner
-     * action is to HIDE the package (setApplicationHidden true), which removes
-     * it from the launcher and stops it. We report which action ran.
+     * Uninstall an app via the Shizuku shell: `pm uninstall <pkg>`.
      */
     suspend fun uninstall(ctx: Context, pkg: String): Outcome =
         when (grantedTier(ctx)) {
             ElevTier.SHIZUKU -> shellOutcome(ctx, "uninstall") {
                 runShell(ctx, listOf("pm", "uninstall", pkg))
             }
-            ElevTier.DHIZUKU -> dpmOutcome("hide app (Device-Owner uninstall equivalent)") {
-                DhizukuDpm.setApplicationHidden(ctx, pkg, true)
-            }
             ElevTier.NONE -> unsupported("uninstall")
+            else -> dhizukuNotCompiled()
         }
 
     /**
-     * Suspend/unsuspend an app (greyed out, cannot launch). Shizuku:
-     * `pm suspend/unsuspend <pkg>`. Dhizuku: DPM.setPackagesSuspended.
+     * Suspend/unsuspend an app (greyed out, cannot launch) via the Shizuku shell:
+     * `pm suspend/unsuspend <pkg>`.
      */
     suspend fun setAppSuspended(ctx: Context, pkg: String, suspended: Boolean): Outcome =
         when (grantedTier(ctx)) {
             ElevTier.SHIZUKU -> shellOutcome(ctx, "suspend app") {
                 runShell(ctx, listOf("pm", if (suspended) "suspend" else "unsuspend", pkg))
             }
-            ElevTier.DHIZUKU -> dpmOutcome("suspend app") {
-                DhizukuDpm.setPackagesSuspended(ctx, pkg, suspended)
-            }
             ElevTier.NONE -> unsupported("app suspend")
+            else -> dhizukuNotCompiled()
         }
 
     // ---- internals ----------------------------------------------------------
@@ -307,29 +256,20 @@ object Elevation {
             Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
     }.getOrDefault(false)
 
-    private fun isDhizukuAvailable(ctx: Context): Boolean = runCatching {
-        // Installed?
-        val pm = ctx.packageManager
-        val installed = runCatching {
-            pm.getPackageInfo(DhizukuVariables.OFFICIAL_PACKAGE_NAME, 0); true
-        }.getOrDefault(false)
-        if (!installed) return false
-        // Active as Device/Profile Owner (so a delegate can be requested)?
-        Dhizuku.getOwnerComponent(ctx) != null
-    }.getOrDefault(false)
-
-    private fun isDhizukuGranted(ctx: Context): Boolean = runCatching {
-        isDhizukuAvailable(ctx) &&
-            Dhizuku.init(ctx) &&
-            Dhizuku.isPermissionGranted()
-    }.getOrDefault(false)
-
     private fun appUid(ctx: Context, pkg: String): Int? = runCatching {
         ctx.packageManager.getApplicationInfo(pkg, 0).uid
     }.getOrNull()
 
     private fun unsupported(what: String): Outcome =
-        Outcome.Unsupported("$what needs Shizuku or Dhizuku; grant one to enable it.")
+        Outcome.Unsupported("$what needs Shizuku; grant it to enable this.")
+
+    /**
+     * Reached only if [grantedTier] somehow returned [ElevTier.DHIZUKU], which
+     * cannot happen in this build (the tier is stubbed out). Kept so the enum
+     * `when`s stay exhaustive without a compiled-in Dhizuku code path.
+     */
+    private fun dhizukuNotCompiled(): Outcome =
+        Outcome.Unsupported("Dhizuku support is not available in this build")
 
     /** Run a shell-backed block, translating exit codes / throwables to [Outcome]. */
     private suspend inline fun shellOutcome(
@@ -342,13 +282,6 @@ object Elevation {
         else Outcome.Failed("$label failed (exit ${r.exit}): ${r.err.trim().take(200)}")
     } catch (e: NotElevated) {
         Outcome.Unsupported(e.message ?: "not elevated")
-    } catch (t: Throwable) {
-        Outcome.Failed("$label failed: ${t.message ?: t.javaClass.simpleName}", t)
-    }
-
-    /** Run a DPM-backed block, translating a boolean / throwable to [Outcome]. */
-    private inline fun dpmOutcome(label: String, block: () -> Boolean): Outcome = try {
-        if (block()) Outcome.Success(label) else Outcome.Failed("$label failed (Device Owner call returned false)")
     } catch (t: Throwable) {
         Outcome.Failed("$label failed: ${t.message ?: t.javaClass.simpleName}", t)
     }

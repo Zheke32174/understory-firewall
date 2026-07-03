@@ -80,15 +80,14 @@ dependencies {
     api("dev.rikka.shizuku:api:13.1.5")
     api("dev.rikka.shizuku:provider:13.1.5")
 
-    // --- Dhizuku (optional elevation tier 2) ---------------------------------
-    // Rootless Device-Owner delegate. The library AAR's own manifest already
-    // declares `uses-permission com.rosan.dhizuku.permission.API` and the
-    // <queries> block needed to see the Dhizuku package, so a consuming app
-    // inherits both via manifest merge (documented in README, no per-app copy
-    // required). Namespace com.rosan.dhizuku.api; entry class
-    // com.rosan.dhizuku.api.Dhizuku. api() so a consuming app that wants to call
-    // Dhizuku directly inherits it.
-    api("com.github.iamr0s:Dhizuku-API:v2.6.0")
+    // --- Dhizuku (optional elevation tier 2) — DEFERRED ----------------------
+    // The Dhizuku-API artifact is only published on JitPack
+    // (com.github.iamr0s:Dhizuku-API), which does not resolve reliably on CI, so
+    // the DHIZUKU tier is currently stubbed out (see Elevation.kt: requestDhizuku
+    // returns false, no DHIZUKU branch is taken). The enum value ElevTier.DHIZUKU
+    // is intentionally kept so the tier can be restored by re-adding this
+    // dependency and un-stubbing the code path — likely by vendoring the API.
+    //   api("com.github.iamr0s:Dhizuku-API:v2.6.0")
 
     // JUnit + Robolectric — tier-resolution / capability-predicate unit tests
     // run on the JVM with Android framework shadows (PackageManager present /

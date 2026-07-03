@@ -2,13 +2,22 @@
 
 Optional-elevation broker for the Understory suite. **The suite is rootless by
 default.** Nothing in this module runs unless the user has installed
-[Shizuku](https://github.com/RikkaApps/Shizuku) or
-[Dhizuku](https://github.com/iamr0s/Dhizuku) **and explicitly granted this app
-access**. Elevated actions only *light up* when a tier is granted; they never
-gate core functionality and never auto-grant.
+[Shizuku](https://github.com/RikkaApps/Shizuku) **and explicitly granted this
+app access**. Elevated actions only *light up* when a tier is granted; they
+never gate core functionality and never auto-grant.
 
-Three tiers (`ElevTier`): `NONE` (rootless), `SHIZUKU` (privileged shell at the
-granted uid), `DHIZUKU` (delegated Device-Owner `DevicePolicyManager`).
+> **Ships the SHIZUKU tier only.** `ElevTier.DHIZUKU` (the delegated
+> Device-Owner tier) is **stubbed/deferred** in this build: the `Dhizuku-API`
+> artifact is published only on JitPack (`com.github.iamr0s:Dhizuku-API`), which
+> does not resolve reliably on CI, so its dependency and code path are removed.
+> The `DHIZUKU` enum value is kept and `requestDhizuku()` is a no-op returning
+> `false`, so `availableTiers`/`grantedTier` never surface it. Restoring the
+> tier (likely by **vendoring** the API) is a follow-up — see `DEFERRED` note in
+> `build.gradle.kts`.
+
+The `ElevTier` enum still defines all three values — `NONE` (rootless),
+`SHIZUKU` (privileged shell at the granted uid), and `DHIZUKU` (deferred; see
+above) — so switching the tier back on is a localized change.
 
 ## Using the broker
 
@@ -69,14 +78,20 @@ stripped by R8.
 
 ### Dhizuku
 
-The `Dhizuku-API` AAR already merges its own
-`<uses-permission android:name="com.rosan.dhizuku.permission.API" />` and the
-`<queries>` block needed to see the Dhizuku package, so **no per-app manifest
-copy is required** for Dhizuku. Just depend on `:elevation`.
+*Deferred — no wiring needed in this build.* The `Dhizuku-API` dependency is not
+compiled in (see the note at the top), so there is nothing to merge and no
+per-app manifest step. When the tier is restored, the `Dhizuku-API` AAR merges
+its own `<uses-permission android:name="com.rosan.dhizuku.permission.API" />`
+and the `<queries>` block, so still **no per-app manifest copy is required** for
+Dhizuku — just depend on `:elevation`.
 
 ## What each helper maps to
 
-| Helper | Shizuku (shell) | Dhizuku (DPM, as Device Owner) |
+Every helper currently runs the **Shizuku (shell)** path; the Dhizuku column
+documents the intended mapping for when the deferred tier is restored (it is not
+executed in this build).
+
+| Helper | Shizuku (shell) | Dhizuku (DPM, as Device Owner) — *deferred* |
 |---|---|---|
 | `setPrivateDns` | `settings put global private_dns_mode/_specifier` | `setGlobalSetting` |
 | `setAppBackgroundNetworkBlocked` | `cmd netpolicy add/remove restrict-background-blacklist <uid>` | *Unsupported* — no per-app metered DPM API (reported honestly) |
@@ -91,9 +106,10 @@ with a precise reason rather than silently doing something different.
 ## Dependencies
 
 - `dev.rikka.shizuku:api:13.1.5`, `dev.rikka.shizuku:provider:13.1.5` (mavenCentral)
-- `io.github.iamr0s:Dhizuku-API:2.6` (mavenCentral)
 - `:common-security` (UnderstoryTheme tokens for the shared card)
 - `org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1`
+- ~~`com.github.iamr0s:Dhizuku-API` (JitPack)~~ — **removed / deferred** (JitPack
+  does not resolve on CI; the DHIZUKU tier is stubbed until the API is vendored).
 
 ## Security invariants (unchanged)
 

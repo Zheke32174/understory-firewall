@@ -128,8 +128,12 @@ fun ElevationCard(
                 }
             } else {
                 Text(
+                    // Dhizuku support is not compiled into this build yet, so the
+                    // only grantable tier is Shizuku; don't advertise Dhizuku as
+                    // available.
                     text = "This app works fully without elevation. Optionally grant " +
-                        "Shizuku or Dhizuku to unlock: " + unlocks.joinToString("; ") + ".",
+                        "Shizuku to unlock: " + unlocks.joinToString("; ") +
+                        ". (Dhizuku support coming.)",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
