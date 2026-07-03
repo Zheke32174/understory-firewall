@@ -13,9 +13,9 @@ import androidx.compose.ui.unit.dp
  *   large      — dialogs / large surfaces
  */
 val UnderstoryShapes = Shapes(
-    extraSmall = RoundedCornerShape(3.dp),
-    small = RoundedCornerShape(6.dp),
-    medium = RoundedCornerShape(10.dp),
-    large = RoundedCornerShape(16.dp),
-    extraLarge = RoundedCornerShape(24.dp),
+    extraSmall = RoundedCornerShape(4.dp),
+    small = RoundedCornerShape(8.dp),
+    medium = RoundedCornerShape(12.dp),   // cards — softer, more modern
+    large = RoundedCornerShape(20.dp),    // dialogs / large surfaces
+    extraLarge = RoundedCornerShape(28.dp),
 )

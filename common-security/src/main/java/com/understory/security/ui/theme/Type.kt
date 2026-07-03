@@ -23,18 +23,21 @@ val UnderstoryType = Typography(
         fontWeight = FontWeight.Medium,
         fontSize = 28.sp,
         lineHeight = 34.sp,
+        letterSpacing = (-0.5).sp,   // tighter tracking on large headings
     ),
     headlineSmall = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Medium,
         fontSize = 22.sp,   // was Diag "diagnostics" 22.sp
         lineHeight = 28.sp,
+        letterSpacing = (-0.3).sp,
     ),
     titleLarge = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Medium,
         fontSize = 20.sp,   // TopAppBar title
         lineHeight = 26.sp,
+        letterSpacing = (-0.2).sp,
     ),
     titleMedium = TextStyle(
         fontFamily = FontFamily.Default,
@@ -46,11 +49,13 @@ val UnderstoryType = Typography(
         fontFamily = FontFamily.Default,
         fontSize = 16.sp,
         lineHeight = 22.sp,
+        letterSpacing = 0.1.sp,   // a hair of tracking improves body readability
     ),
     bodyMedium = TextStyle(
         fontFamily = FontFamily.Default,
         fontSize = 14.sp,   // BODY FLOOR
         lineHeight = 20.sp,
+        letterSpacing = 0.1.sp,
     ),
     bodySmall = TextStyle(
         fontFamily = FontFamily.Default,
