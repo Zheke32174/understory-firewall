@@ -13,7 +13,7 @@ android {
         minSdk = 33
         targetSdk = 35
         versionCode = 2
-        versionName = "2.0"
+        versionName = "1.0-alpha"
         resourceConfigurations += listOf("en")
         base.archivesName = "firewall"
     }
