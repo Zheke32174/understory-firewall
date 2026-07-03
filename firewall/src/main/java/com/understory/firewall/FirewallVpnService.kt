@@ -67,6 +67,20 @@ class FirewallVpnService : VpnService() {
             return START_NOT_STICKY
         }
 
+        // A null intent means Android re-delivered this after a process kill.
+        // Arming is always user-initiated from the Standalone hub, so a sticky
+        // restart must re-verify mode+armed+slot before touching the tun —
+        // fail-closed: never re-establish while another VPN now holds the slot.
+        if (intent == null &&
+            (FirewallSettings.getMode(this) != FirewallMode.STANDALONE ||
+                !FirewallSettings.isEngineArmed(this) ||
+                !VpnSlotProbe.evaluate(this).isPass)
+        ) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         // Mark running BEFORE establish, so the new reader thread's
         // running.get() loop is true on first iteration.
         running.set(true)

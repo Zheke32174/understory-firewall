@@ -107,8 +107,18 @@ fun AuditScreen(onBack: () -> Unit) {
                             FirewallSettings.setRestricted(ctx, finding.packageName, it)
                             restricted = FirewallSettings.getRestrictedPackages(ctx)
                             // If armed in Standalone, re-establish so the
-                            // hard-block set takes effect immediately.
-                            if (standalone && FirewallSettings.isEngineArmed(ctx)) startEngine(ctx)
+                            // hard-block set takes effect immediately — but only
+                            // if the VPN slot is still ours (fail-closed: never
+                            // start the engine while another VPN holds the slot;
+                            // self-heal stale armed state if it isn't).
+                            if (standalone && FirewallSettings.isEngineArmed(ctx)) {
+                                if (VpnSlotProbe.evaluate(ctx).isPass) {
+                                    startEngine(ctx)
+                                } else {
+                                    FirewallSettings.setEngineArmed(ctx, false)
+                                    FirewallSettings.setAutoStopped(ctx, true)
+                                }
+                            }
                         },
                         onToggleAck = {
                             FirewallSettings.setAuditAcknowledged(ctx, finding.packageName, it)
