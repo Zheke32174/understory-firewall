@@ -17,8 +17,6 @@ jobs:
           gradle-version: '8.10.2'
       - name: Install Android SDK components
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-35" "build-tools;35.0.0" > /dev/null
-      - name: Bundle dnscrypt-proxy
-        run: bash tools/fetch-dnscrypt-proxy.sh
       - name: Build debug APK + unit tests
         run: gradle --no-daemon assembleDebug testDebugUnitTest
       - name: Upload APK artifact
@@ -48,7 +46,5 @@ jobs:
           gradle-version: '8.10.2'
       - name: Install Android SDK components
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-35" "build-tools;35.0.0" > /dev/null
-      - name: Bundle dnscrypt-proxy
-        run: bash tools/fetch-dnscrypt-proxy.sh
       - name: Assemble release + assert signing pin
         run: gradle --no-daemon assembleRelease verifyCertPin -PrequireSignedRelease=true
