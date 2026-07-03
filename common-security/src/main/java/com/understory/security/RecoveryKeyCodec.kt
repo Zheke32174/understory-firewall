@@ -57,18 +57,9 @@ object RecoveryKeyCodec {
         }
     }
 
-    /**
-     * Render [chars] (canonical base64) into the grouped transcription form for
-     * display. Presentational only. Does not wipe [chars].
-     */
-    fun grouped(chars: CharArray): String {
-        val sb = StringBuilder(chars.size + chars.size / GROUP_LEN)
-        for (i in chars.indices) {
-            if (i > 0 && i % GROUP_LEN == 0) sb.append(' ')
-            sb.append(chars[i])
-        }
-        return sb.toString()
-    }
+    // NOTE: there is intentionally NO grouped()/display formatter. A recovery
+    // key is never rendered on screen (threat model: the screen is the enemy) —
+    // it is generated, stored, and moved only as an opaque file (RecoveryFile).
 
     /**
      * Strip grouping (all whitespace) from a user-entered key, returning the

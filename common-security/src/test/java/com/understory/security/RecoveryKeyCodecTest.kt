@@ -26,17 +26,13 @@ class RecoveryKeyCodecTest {
     }
 
     @Test
-    fun grouped_isCosmetic_normalizeStripsIt() {
+    fun normalize_stripsSpacesBackToCanonical() {
         val raw = ByteArray(VaultRecovery.RECOVERY_KEY_BYTES) { (it * 7).toByte() }
         val canonical = RecoveryKeyCodec.encode(raw)
-        val grouped = RecoveryKeyCodec.grouped(canonical)
-        // Grouped form is space-separated (a '-' would collide with the
-        // URL-safe base64 alphabet); normalize strips spaces back to canonical.
-        assertTrue(grouped.contains(' '))
-        val normalized = RecoveryKeyCodec.normalize(grouped.toCharArray())
-        assertArrayEquals(canonical, normalized)
-        // And decoding the grouped form yields the original bytes.
-        assertArrayEquals(raw, RecoveryKeyCodec.decode(grouped.toCharArray()))
+        // Whitespace anywhere in user-entered input is stripped to canonical.
+        val spaced = canonical.joinToString(" ").toCharArray()
+        assertArrayEquals(canonical, RecoveryKeyCodec.normalize(spaced))
+        assertArrayEquals(raw, RecoveryKeyCodec.decode(spaced))
     }
 
     @Test

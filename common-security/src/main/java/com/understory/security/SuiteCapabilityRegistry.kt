@@ -63,8 +63,10 @@ object SuiteCapabilityRegistry {
      *   - backups maps BACKUP_ENVELOPE (single-file envelope + deposit
      *     target). It does NOT map cross-app BACKUP_ORCHESTRATOR: the
      *     cross-app BackupProvider IPC does not exist yet.
-     *   - browser maps NOTHING at v1: its share-target / VIEW intake
-     *     Intent (HARDENED_BROWSER) is not implemented. It is still a
+     *   - browser maps NOTHING at v1: its SEND share-target ships (and a
+     *     disabled-by-default VIEW intake alias), but those are user-facing
+     *     system-share doorways, NOT the peer-invocable IPC that
+     *     HARDENED_BROWSER denotes, so the mapped set is empty. It is still a
      *     valid suite member — it consumes peers and counts toward tier;
      *     it simply offers an empty capability set (handled below).
      * When a deferred surface ships, add its capability at the new
