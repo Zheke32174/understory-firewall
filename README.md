@@ -1,6 +1,6 @@
 # understory-firewall
 
-Outbound-network gate via the VPN slot: per-app blocklist, DNS provider control (dnscrypt-proxy bundling), drop stats, overlay routing. Combined firewall+VPN because Android has one VPN slot.
+**Understory Net Audit** — an offline egress dashboard for a Tailscale user. In the default Companion mode it observes, explains, and one-tap-routes you to the network controls you already have (tunnel posture, Android's per-app data restrictions, system Private DNS, and which apps hold remote-admin power) — **it never takes the VPN slot and blocks nothing**. Real per-app packet blocking exists only in an opt-in, default-off **Standalone mode** that refuses to start whenever any other VPN is present. DNS hardening is DoT via the OS's own Private DNS; egress canaries prove on the wire what your DNS/exit actually is. (No dnscrypt bundling and no overlay routing — both were removed as unshippable; see `docs/design-v2/firewall.md`.)
 
 Status: **alpha** (functional; working the release-blockers list in understory-common).
 

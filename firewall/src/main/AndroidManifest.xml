@@ -45,19 +45,26 @@
         tools:ignore="ProtectedPermissions" />
 
     <!--
-      The firewall is the ONE app in the suite that legitimately needs
-      network visibility — it owns the VpnService slot and gates outbound
-      traffic from blocked apps via a local tun. Permissions are explicit
-      and narrowly justified:
-        INTERNET — VpnService needs this for protectedSocket() fallbacks.
-        ACCESS_NETWORK_STATE — monitor wifi/cellular changes, restart VPN.
-        FOREGROUND_SERVICE / FOREGROUND_SERVICE_SPECIAL_USE — VpnService
-                            must run as a foreground service.
-        POST_NOTIFICATIONS — persistent notification while VPN is active.
-        QUERY_ALL_PACKAGES — enumerate every installed app for the
-                            per-app rules UI. Genuinely needed for this
-                            app's purpose; only suite app that requests it.
-                            (Antivirus and mdm-local will also use it.)
+      Understory Net Audit is an observe/advise/route egress dashboard
+      (design-v2/firewall.md §0). In the default Companion mode it does NOT
+      own the VpnService slot and gates no traffic — it reads posture and
+      routes to the OS's own controls. Packet-level blocking exists ONLY in
+      the opt-in, default-off Standalone mode, which refuses to start while
+      any other VPN holds the slot (VpnSlotProbe guardrail, §4). Permissions
+      are explicit and narrowly justified:
+        INTERNET — the explicit-tap egress/DNS canaries (§5.6); also the
+                            Standalone engine's protectedSocket() fallbacks.
+        ACCESS_NETWORK_STATE — read the VPN-slot / tunnel posture (the
+                            guardrail veto + Tunnel Posture read-model).
+        FOREGROUND_SERVICE / FOREGROUND_SERVICE_SPECIAL_USE — only the
+                            Standalone engine's VpnService needs an FGS; it
+                            runs solely while Standalone is armed.
+        POST_NOTIFICATIONS — the persistent notification the Standalone
+                            engine shows while it is actively blocking.
+        QUERY_ALL_PACKAGES — enumerate installed apps for the Restrict /
+                            Traffic / Audit surfaces. Genuinely needed for
+                            this app's purpose; only suite app that requests
+                            it. (Antivirus and mdm-local will also use it.)
     -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />

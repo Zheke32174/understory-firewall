@@ -1,45 +1,64 @@
-# Firewall — phase 2 boundary
+# Firewall — capability boundary (v2)
 
-Written to close the phase-1.5 honest-labelling release blocker: the UI
-must not imply in-tunnel DNS enforcement, because there is none yet.
+This document supersedes the old phase-1.5 note. It states, honestly, what
+Understory Net Audit does and does not do as shipped, so no copy anywhere
+implies a capability the code lacks (CD-4b). The authoritative design is
+`docs/design-v2/firewall.md`.
 
-## What is enforced today (phase 1.5)
+## What the app does today
 
-- **App blocking / port-derived blocking** — the VpnService tun captures
-  blocked apps' traffic and drops it. Fully live.
-- **DNS: system Private DNS only.** The DNS-preferences screen stores a
-  provider selection; the selection is informational. The only apply
-  path is Android's Private DNS (DoT):
-  - programmatic via `PrivateDnsApplier.apply()` when
-    `WRITE_SECURE_SETTINGS` is ADB-granted,
-  - otherwise the Settings deep-link + paste flow.
-  The UI reads the live `Settings.Global` value back
-  (`PrivateDnsApplier.current()`, shown in the "Active now" card) so the
-  user sees what is actually in effect, not what we last wrote.
-- **dnscrypt-proxy** — selecting a DNSCrypt provider starts the bundled
-  proxy as a local foreground service on `127.0.0.1:5354`. No app DNS
-  reaches it; the UI and its notification say "running — app DNS not
-  routed here yet".
+The default mode is **Companion** (observe / advise / route). It is the
+only mode a device with any VPN — e.g. a Tailscale phone — ever reaches.
 
-Experimental code that exists but is deliberately NOT claimed by the UI:
-`DnsRedirector` plus `FirewallVpnService`'s DNS-redirect mode (tun routes
-a fake resolver IP and forwards UDP DNS to the local proxy). It is not
-release-qualified, and it pauses app- and port-blocking while active —
-treat it as a preview of phase 2, not a feature.
+- **Tunnel posture** — reads what a rootless app can (Tailscale installed
+  + version; whether a VPN is up; best-effort always-on / lockdown) and
+  renders a verdict that degrades to "unknown" on any inference gap. Never
+  green on a gap.
+- **Remote-admin audit** — enumerates apps holding device-admin /
+  accessibility / notification-listener / usage-stats / overlay / all-files
+  power, with a MODE_DEFAULT tri-state so an unreadable op shows "unknown",
+  not "clean". The real fix is "Revoke in Settings"; watchlist is a
+  reminder.
+- **DNS hardening** — configures the platform's own **Private DNS (DoT)**,
+  applied programmatically when `WRITE_SECURE_SETTINGS` is ADB-granted,
+  otherwise via the Settings deep-link + paste flow. The "Active now" card
+  reads the live `Settings.Global` value back, so the user sees what is in
+  effect, not what we last wrote.
+- **Traffic by app** — `NetworkStatsManager` accounting (opt-in Usage
+  access). Accounting, not interception: totals after the fact, no hosts,
+  no contents, no blocking.
+- **Egress canaries** — explicit-tap-only probes (egress IP, resolver
+  identity, DoT reachability) to named hosts, to prove on the wire what
+  your DNS / exit actually is.
+- **Restrict worklist** — flags apps and opens Android's own per-app
+  controls (`resolveActivity`-guarded deep-links). The app itself enforces
+  nothing here; Android does.
 
-## What phase 2 adds
+In Companion the app **never takes the VPN slot and blocks no traffic.**
 
-1. **Tun-level DNS forwarding** — apps' UDP port-53 queries captured in
-   the tun and forwarded to the selected resolver (upstream or the local
-   dnscrypt-proxy), making the provider selection *enforced in-tunnel*
-   and composing with app/port blocking in a single tun session
-   (userspace forwarder work).
-2. **Per-domain rules** — parse DNS inside the tun to allow/deny by
-   domain name.
+## Standalone mode (opt-in, default-off)
 
-Until both land, user-facing copy must keep saying: "selection is
-informational; applied via system Private DNS only".
+Packet-level per-app blocking exists only in Standalone mode, which:
 
-Numbering note: older code comments use "Phase B/C" and "phase 3/4" for
-internal sub-steps of the same work; the roadmap term for this whole
-tranche is **phase 2**.
+- is off by default and gated behind a full-screen explainer;
+- runs the `VpnSlotProbe` guardrail (fail-closed CM `TRANSPORT_VPN` veto
+  ANDed with `VpnService.prepare()`) before enabling, before arming, and
+  live while armed — so it **refuses to start whenever any other VPN holds
+  the slot**, and disarms neutrally if a VPN appears;
+- when armed, drops the enabled apps' traffic via a local tun (app-drop
+  only — there is no in-tunnel DNS forwarding or per-domain rule engine).
+
+## Explicitly NOT present (removed as unshippable)
+
+- **dnscrypt-proxy bundling** — removed (A8). The bundled proxy could never
+  be queried without a tun and the binary was never in the repo. The
+  enforced path is DoT via system Private DNS; the empirical check is the
+  DNS canary.
+- **Custom port blocking** — removed (A11). Structurally a no-op on every
+  supported device (`/proc/net` restricted on Android 10+; minSdk 33).
+- **Overlay routing (I2P / Lokinet / Yggdrasil)** — removed (A12);
+  Lokinet/Yggdrasil are themselves VpnService transports (vetoed).
+- **In-tunnel DNS forwarding / per-domain rules** — not shipped. The packet
+  parser (`VpnPacketParser`) survives as a dormant, unit-tested library
+  (`net-engine`) for a possible future userspace forwarder; the shipping
+  app does not call it.
