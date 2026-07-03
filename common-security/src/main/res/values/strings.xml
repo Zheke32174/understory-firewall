@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Shared strings for the common-security design system. Every user-facing
+  string that ships INSIDE a common-security composable lives here so all seven
+  apps inherit it; app-specific copy lives in each app's own strings.xml.
+
+  Naming (S-2): snake_case, grouped by prefix —
+    cd_*      contentDescription labels
+    state_*   empty / loading / error surfaces
+    action_*  button labels
+    msg_*     inline informational copy
+  Format args are numbered (%1$s) for future translation. Do NOT re-add
+  resourceConfigurations=["en"] in the apps (S-3): it hard-locks translation.
+-->
+<resources>
+    <!-- contentDescription (a11y) -->
+    <string name="cd_back">Back</string>
+    <string name="cd_copy">Copy</string>
+    <string name="cd_delete">Delete</string>
+    <string name="cd_reveal">Reveal</string>
+    <string name="cd_hide">Hide</string>
+    <string name="cd_password_hidden">Password hidden</string>
+
+    <!-- Screen states -->
+    <string name="state_loading">Loading…</string>
+    <string name="state_empty_generic">Nothing here yet</string>
+    <string name="state_error_generic">Something went wrong</string>
+
+    <!-- Actions -->
+    <string name="action_retry">Retry</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_show_details">Show details</string>
+    <string name="action_hide_details">Hide details</string>
+
+    <!-- Inline messages -->
+    <string name="msg_hold_to_confirm">Press and hold to confirm this irreversible action.</string>
+</resources>

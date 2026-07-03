@@ -59,6 +59,24 @@
     <issue id="GradleDependency" severity="informational" />
     <issue id="MonochromeLauncherIcon" severity="informational" />
 
+    <!-- SHARED-GUI design system (§4 / §5.3).
+         HardcodedText is the strings gate. It is the eventual ERROR gate, but
+         every app still ships hardcoded copy pre-migration; flipping it to
+         error now would fail all seven app builds (abortOnError=true). It is
+         staged at "warning" so it is visible and CI-tracked without breaking
+         the pre-migration apps; flip to "error" in the app wave, per adoption
+         step §7.8, once each app has extracted its strings.
+         common-security's own shared strings already live in
+         common-security/src/main/res/values/strings.xml. -->
+    <issue id="HardcodedText" severity="warning" />
+
+    <!-- UnderstoryHardcodedColor (§5.3 #2): a hardcoded Color(0x…) / font-size
+         literal outside com.understory.security.ui.theme is a design-token
+         violation. Android Lint has no built-in id for this; it is enforced by
+         the design-review gate (docs/design-v2/gui-review-checklist.md) until a
+         common-lint detector module is added. Documented here so the intent
+         travels with the shared config. -->
+
     <!-- Window.setHideOverlayWindows requires HIDE_OVERLAY_WINDOWS
          permission as of Android 14+ — that permission has signature|setup
          protection level so regular apps cannot get it. We wrap the call

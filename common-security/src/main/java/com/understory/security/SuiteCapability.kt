@@ -22,6 +22,20 @@ package com.understory.security
  * attests "I am package P at version V". A repackaged or impostor peer
  * cannot claim a capability it wasn't shipped with — even if it returns
  * a higher version, the consumer's local map is what's authoritative.
+ *
+ * BEACON RULE (content honesty, on top of the spoofing defense): a
+ * capability may be mapped in [SuiteCapabilityRegistry.KNOWN_PEERS] for a
+ * (package, version) pair ONLY if a live peer-invocable code path in that
+ * app, at that version, actually delivers the power this enum's KDoc
+ * describes to a peer — either (a) a peer-invocable IPC surface
+ * (signature-gated ContentProvider / Service / signed Intent target) or
+ * (b) a documented Intent hand-off the peer can fire. A power that exists
+ * only in-process, only as a dead adapter with no IPC, only behind a
+ * vetoed slot, or only on a roadmap does NOT qualify — leave the peer's
+ * capability set empty until the surface ships. Names describe the
+ * delivered power at its true cadence and mechanism, never an aspiration
+ * (no "realtime scanner" name for an on-demand scanner; no "filter" or
+ * "orchestrator" name for something that only reads or advises).
  */
 enum class SuiteCapability {
     /**
@@ -32,37 +46,55 @@ enum class SuiteCapability {
     IDENTITY_VAULT,
 
     /**
-     * Stores TOTP/HOTP entries; can issue current codes on request.
-     * Provided by aegis. Other apps gate sensitive actions on a
-     * just-issued code.
+     * Stores TOTP/HOTP seeds at rest — storage only, no peer-invocable
+     * issue-code surface. Provided by aegis at v1. A peer may know aegis
+     * holds OTP seeds, but cannot ask it for a live code. Distinct from
+     * [OTP_VAULT]: this is the honest v1 beacon (no code-issue IPC ships
+     * yet). See BEACON-1 — a storage-only role must not advertise the
+     * issue-code power it doesn't deliver.
+     */
+    OTP_STORE,
+
+    /**
+     * Holds TOTP/HOTP seeds AND exposes a peer-invocable surface that
+     * issues a current code to a requesting peer. Provided by aegis, but
+     * only once a code-issue IPC actually ships (deferred at v1 — aegis
+     * currently maps [OTP_STORE] instead). Other apps gate sensitive
+     * actions on a just-issued code.
      */
     OTP_VAULT,
 
     /**
-     * System-wide network interception via the VpnService slot. Other
-     * apps register filter rules (block/allow per-host, per-app) via
-     * a signed Intent. Provided by firewall.
+     * Audits network posture — remote-admin-class grants, Private-DNS
+     * (DoT) state, and VPN-slot health — and advises. It does NOT
+     * intercept packets; the VPN slot is permanently ceded to the
+     * incumbent tunnel. Rootless, read/advise only. Provided by firewall.
      */
-    NETWORK_FILTER,
+    NET_POSTURE_AUDIT,
 
     /**
-     * Encrypted file vault for arbitrary user files. Provided by the
-     * future vault-folder app.
+     * Encrypted file vault for arbitrary user files; accepts a file via
+     * the deposit (ACTION_VIEW) Intent target. Provided by vault-folder.
      */
     FILE_VAULT,
 
     /**
-     * Cross-app backup orchestration (calls each peer's BackupAdapter,
-     * writes the unified [BackupEnvelope]). Provided by the future
-     * backups app.
+     * Encrypts/decrypts a single file to/from the suite [BackupEnvelope]
+     * format, and is a hand-off target for "encrypt this and store it".
+     * Provided by backups. This is the honest v1 power. Cross-app
+     * orchestration (pulling every peer's vault over IPC) is a separate
+     * future capability — see BEACON-1 note: re-add a BACKUP_ORCHESTRATOR
+     * value only when the cross-app BackupProvider IPC actually ships.
      */
-    BACKUP_ORCHESTRATOR,
+    BACKUP_ENVELOPE,
 
     /**
-     * Real-time scanner for downloaded / opened files. Provided by the
-     * future antivirus app.
+     * On-demand static APK / installed-app auditor: accepts a share/VIEW
+     * of an APK and returns advisory findings. No real-time watcher,
+     * receiver, or worker — rootless real-time is impossible and never
+     * claimed. Provided by antivirus.
      */
-    REALTIME_SCANNER,
+    APK_AUDITOR,
 
     /**
      * Hardened browser; offers a "open in trusted browser" Intent target

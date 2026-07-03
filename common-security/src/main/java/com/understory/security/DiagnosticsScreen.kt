@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,8 +31,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.understory.security.ui.theme.LocalSuiteColors
+import com.understory.security.ui.theme.LocalUnderstoryThemeActive
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -47,10 +51,25 @@ import kotlinx.coroutines.delay
  * action that's failing in another tab/screen of the same app, comes
  * back to Diagnostics, sees what fired (or didn't). Tap Copy to put
  * the full dump on the clipboard for pasting back to chat.
+ *
+ * Tokens: reads the design tokens under `UnderstoryTheme`, falls back to the
+ * exact legacy hexes/sizes otherwise (§2.1), so the screen looks identical
+ * before and after an app adopts the theme.
  */
 @Composable
 fun DiagnosticsScreen(onBack: () -> Unit) {
     val ctx = LocalContext.current
+    val themed = LocalUnderstoryThemeActive.current
+
+    val primaryText = if (themed) MaterialTheme.colorScheme.onSurface else Color(0xFFE0E0E0)
+    val secondaryText = if (themed) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF9E9E9E)
+    val titleStyle: TextStyle =
+        if (themed) MaterialTheme.typography.headlineSmall else TextStyle(fontSize = 22.sp)
+    val bodyStyle: TextStyle =
+        if (themed) MaterialTheme.typography.bodyMedium else TextStyle(fontSize = 11.sp)
+    val captionStyle: TextStyle =
+        if (themed) MaterialTheme.typography.bodySmall else TextStyle(fontSize = 12.sp)
+
     var events by remember { mutableStateOf(Diagnostics.snapshot()) }
 
     // Refresh once per second so events from other screens / lifecycle
@@ -66,11 +85,11 @@ fun DiagnosticsScreen(onBack: () -> Unit) {
         modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("diagnostics", color = Color(0xFFE0E0E0), fontSize = 22.sp)
+        Text("diagnostics", color = primaryText, style = titleStyle)
         Text(
             "Live event ring (${events.size}). Reproduce the bug, come back, " +
                 "tap Copy, paste to chat.",
-            color = Color(0xFF9E9E9E), fontSize = 11.sp,
+            color = secondaryText, style = bodyStyle,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
@@ -93,14 +112,14 @@ fun DiagnosticsScreen(onBack: () -> Unit) {
         }
         if (events.isEmpty()) {
             Spacer(Modifier.height(20.dp))
-            Text("No events yet.", color = Color(0xFF9E9E9E), fontSize = 12.sp)
+            Text("No events yet.", color = secondaryText, style = captionStyle)
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 items(events.reversed(), key = { "${it.elapsedMs}-${it.tag}-${it.message.hashCode()}" }) { ev ->
-                    EventRow(ev)
+                    EventRow(ev, themed, primaryText)
                 }
             }
         }
@@ -110,31 +129,44 @@ fun DiagnosticsScreen(onBack: () -> Unit) {
 private val tsFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
 
 @Composable
-private fun EventRow(event: Diagnostics.Event) {
+private fun EventRow(event: Diagnostics.Event, themed: Boolean, primaryText: Color) {
+    val semantic = LocalSuiteColors.current
+    // Level accent: INFO=secondary, WARN=warning token, ERROR=error token
+    // (legacy hexes when not themed).
     val accent = when (event.level) {
-        Diagnostics.Level.INFO -> Color(0xFF9E9E9E)
-        Diagnostics.Level.WARN -> Color(0xFFFFB74D)
-        Diagnostics.Level.ERROR -> Color(0xFFEF5350)
+        Diagnostics.Level.INFO ->
+            if (themed) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF9E9E9E)
+        Diagnostics.Level.WARN ->
+            if (themed) semantic.warning else Color(0xFFFFB74D)
+        Diagnostics.Level.ERROR ->
+            if (themed) MaterialTheme.colorScheme.error else Color(0xFFEF5350)
     }
+    val tsColor = if (themed) semantic.dim else Color(0xFF707070)
+    val rowShape = if (themed) MaterialTheme.shapes.extraSmall else RoundedCornerShape(4.dp)
+    val tsStyle: TextStyle =
+        if (themed) MaterialTheme.typography.labelMedium else TextStyle(fontSize = 10.sp)
+    val msgStyle: TextStyle =
+        if (themed) MaterialTheme.typography.bodyMedium else TextStyle(fontSize = 11.sp)
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(accent.copy(alpha = 0.06f), RoundedCornerShape(4.dp))
+            .background(accent.copy(alpha = 0.06f), rowShape)
             .padding(6.dp),
     ) {
         Column {
             Row {
                 Text(
                     tsFormat.format(Date(event.timestampMs)),
-                    color = Color(0xFF707070), fontSize = 10.sp,
+                    color = tsColor, style = tsStyle,
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
                     event.tag,
-                    color = accent, fontSize = 10.sp,
+                    color = accent, style = tsStyle,
                 )
             }
-            Text(event.message, color = Color(0xFFE0E0E0), fontSize = 11.sp)
+            Text(event.message, color = primaryText, style = msgStyle)
         }
     }
 }

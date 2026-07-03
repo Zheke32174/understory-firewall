@@ -47,12 +47,27 @@ dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)
 
-    implementation("androidx.compose.foundation:foundation")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.ui:ui")
+    // Promoted to api() so apps inherit the shared design-system surface
+    // (UnderstoryTheme, SuiteScaffold, state composables) without having to
+    // re-declare these Compose artifacts. Apps already depend on the same BOM
+    // coordinates, so promotion is additive — it only widens visibility.
+    api("androidx.compose.foundation:foundation")
+    api("androidx.compose.material3:material3")
+    api("androidx.compose.ui:ui")
+    // Scaffold/dialog icons for the design system — Icons.Filled.Warning and
+    // Icons.AutoMirrored.Filled.ArrowBack. Version is BOM-managed. api() so an
+    // app that renders these shared components inherits the artifact without
+    // re-declaring it (passgen already declares it directly, which is
+    // compatible — same coordinate).
+    api("androidx.compose.material:material-icons-extended")
     // androidx.activity.compose for BackHandler in shared composables
     // (e.g. KeepAliveBackHandler).
     implementation("androidx.activity:activity-compose:1.9.3")
+
+    // Bg.io / Bg.cpu / produceUiState — the suite's off-main-thread convention.
+    // Already present transitively via Compose; pinned explicitly so the crypto/
+    // IO threading contract does not depend on a transitive version.
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     // BouncyCastle: Base32 encoding for HotpSecret (RFC 4648 compatible
     // with authenticator apps). Pure-Java, no native deps. Both :passgen

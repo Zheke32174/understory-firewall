@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -20,8 +21,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.understory.security.ui.theme.LocalSuiteColors
+import com.understory.security.ui.theme.LocalUnderstoryThemeActive
 import kotlinx.coroutines.delay
 import java.util.Locale
 
@@ -36,15 +41,38 @@ import java.util.Locale
  * correctly wired together — none of which the compiler can verify on
  * its own.
  *
- * Visual posture: dim grey on near-black, ~10sp, single short line if
+ * Visual posture: dim grey on near-black, ~11sp, single short line if
  * standalone, two lines if peers present. Designed to not compete with
  * the primary UI — it's an *informational* surface, not interactive.
+ *
+ * Tokens: when wrapped in `UnderstoryTheme` this reads the design tokens
+ * (surface / semantic.dim / semantic.success / error / labelSmall). When an
+ * app has not yet adopted the theme it falls back to the exact legacy hexes so
+ * the footer looks identical before and after migration (§2.1).
+ *
+ * A11y (§3 A-6): in production the whole footer sets
+ * [clearAndSetSemantics] {} so TalkBack skips this dim, purely-informational
+ * smoke-test surface instead of reading four status lines on every screen open.
  */
 @Composable
 fun SuiteStatusFooter(
     modifier: Modifier = Modifier,
 ) {
     val ctx = LocalContext.current
+    val themed = LocalUnderstoryThemeActive.current
+    val semantic = LocalSuiteColors.current
+
+    // Token-or-legacy resolution. Behavior is identical when not themed.
+    val containerColor = if (themed) MaterialTheme.colorScheme.surface else Color(0xFF111111)
+    val dimColor = if (themed) semantic.dim else Color(0xFF6E6E6E)
+    val successColor = if (themed) semantic.success else Color(0xFF7E9E7E)
+    val markBg = if (themed) semantic.success.copy(alpha = 0.18f) else Color(0xFF1F3A1F)
+    val markFg = if (themed) semantic.success else Color(0xFF81C784)
+    val errorColor = if (themed) MaterialTheme.colorScheme.error else Color(0xFFEF5350)
+    val statusStyle: TextStyle =
+        if (themed) MaterialTheme.typography.labelSmall else TextStyle(fontSize = 9.sp)
+    val containerShape = if (themed) MaterialTheme.shapes.small else RoundedCornerShape(6.dp)
+    val markShape = if (themed) MaterialTheme.shapes.extraSmall else RoundedCornerShape(3.dp)
 
     // We snapshot on first composition and on every recomposition that's
     // forced by parent state changes. A future enhancement will subscribe
@@ -75,10 +103,16 @@ fun SuiteStatusFooter(
             markPulse = 0L
         }
     }
+
+    // A11y: production footer is skipped by TalkBack (§3 A-6). The eng-build
+    // triple-tap keeps its clickable but still exposes no a11y text — it's a
+    // debug affordance, not a control.
+    val a11yModifier = if (dumpActive) Modifier else Modifier.clearAndSetSemantics {}
+
     val containerModifier = if (dumpActive) {
         modifier
             .fillMaxWidth()
-            .background(Color(0xFF111111), RoundedCornerShape(6.dp))
+            .background(containerColor, containerShape)
             .clickable {
                 val now = System.currentTimeMillis()
                 val recent = (tapTimes + now).filter { now - it <= 800L }
@@ -94,7 +128,8 @@ fun SuiteStatusFooter(
     } else {
         modifier
             .fillMaxWidth()
-            .background(Color(0xFF111111), RoundedCornerShape(6.dp))
+            .then(a11yModifier)
+            .background(containerColor, containerShape)
             .padding(horizontal = 10.dp, vertical = 6.dp)
     }
 
@@ -106,14 +141,14 @@ fun SuiteStatusFooter(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF1F3A1F), RoundedCornerShape(3.dp))
+                    .background(markBg, markShape)
                     .padding(horizontal = 6.dp, vertical = 2.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = "MARK written to dump",
-                    color = Color(0xFF81C784),
-                    fontSize = 9.sp,
+                    color = markFg,
+                    style = statusStyle,
                 )
             }
         }
@@ -123,35 +158,35 @@ fun SuiteStatusFooter(
         ) {
             Text(
                 text = "suite",
-                color = Color(0xFF6E6E6E),
-                fontSize = 9.sp,
+                color = dimColor,
+                style = statusStyle,
             )
             Text(
                 text = tierLabel(s.tier),
-                color = tierColor(s.tier),
-                fontSize = 9.sp,
+                color = tierColor(s.tier, dimColor),
+                style = statusStyle,
             )
         }
         if (s.peers.isEmpty()) {
             Text(
                 text = "no peers detected",
-                color = Color(0xFF6E6E6E),
-                fontSize = 9.sp,
+                color = dimColor,
+                style = statusStyle,
             )
         } else {
             for (peer in s.peers) {
                 Text(
                     text = peerLine(peer),
-                    color = if (peer.certVerified) Color(0xFF7E9E7E) else Color(0xFFEF5350),
-                    fontSize = 9.sp,
+                    color = if (peer.certVerified) successColor else errorColor,
+                    style = statusStyle,
                 )
             }
         }
         if (s.capabilities.isNotEmpty()) {
             Text(
                 text = "peer caps: " + s.capabilities.joinToString(", ") { it.shortName() },
-                color = Color(0xFF6E6E6E),
-                fontSize = 9.sp,
+                color = dimColor,
+                style = statusStyle,
             )
         }
     }
@@ -164,8 +199,11 @@ private fun tierLabel(t: SuiteTier): String = when (t) {
     SuiteTier.MESH -> "tier-4 (mesh)"
 }
 
-private fun tierColor(t: SuiteTier): Color = when (t) {
-    SuiteTier.STANDALONE -> Color(0xFF6E6E6E)
+// Tier tint keeps its own laddered greens/olives (they encode the tier level,
+// not a Material role); STANDALONE uses the resolved dim token so it matches
+// the surrounding "suite"/"no peers" text.
+private fun tierColor(t: SuiteTier, dim: Color): Color = when (t) {
+    SuiteTier.STANDALONE -> dim
     SuiteTier.PAIR -> Color(0xFF8AA38A)
     SuiteTier.TRIPLE -> Color(0xFFA3B98A)
     SuiteTier.MESH -> Color(0xFFC9D88A)

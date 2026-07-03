@@ -12,8 +12,8 @@ import java.security.MessageDigest
  * Usage from any suite app:
  *
  *     val snap = SuiteCapabilityRegistry.snapshot(context)
- *     if (snap.has(SuiteCapability.OTP_VAULT)) {
- *         // show "require OTP step-up" toggle in our settings
+ *     if (snap.has(SuiteCapability.OTP_STORE)) {
+ *         // an aegis peer holds OTP seeds — offer "back up my seeds" etc.
  *     }
  *     when (snap.tier) {
  *         SuiteTier.MESH -> enableQuorumAttestation()
@@ -52,25 +52,45 @@ object SuiteCapabilityRegistry {
      * Unlisted versions (peer is too new, or too old) contribute zero
      * capabilities. The consumer keeps running, just without the peer's
      * uplift.
+     *
+     * BEACON RULE (see [SuiteCapability] KDoc): a (package, version) row
+     * maps a capability ONLY when a live peer-invocable path in that app
+     * at that version actually backs it. Each v1 row below maps exactly
+     * the power the app's shipped code delivers to a peer — nothing
+     * aspirational. Rows deliberately absent / empty:
+     *   - aegis maps OTP_STORE (storage only). It does NOT map OTP_VAULT:
+     *     no code-issue IPC ships at v1, so no peer can request a code.
+     *   - backups maps BACKUP_ENVELOPE (single-file envelope + deposit
+     *     target). It does NOT map cross-app BACKUP_ORCHESTRATOR: the
+     *     cross-app BackupProvider IPC does not exist yet.
+     *   - browser maps NOTHING at v1: its share-target / VIEW intake
+     *     Intent (HARDENED_BROWSER) is not implemented. It is still a
+     *     valid suite member — it consumes peers and counts toward tier;
+     *     it simply offers an empty capability set (handled below).
+     * When a deferred surface ships, add its capability at the new
+     * version row in the SAME coordinated change across all consumers.
      */
     private val KNOWN_PEERS: Map<String, Map<Int, Set<SuiteCapability>>> = mapOf(
         "com.understory.passgen" to mapOf(
             1 to setOf(SuiteCapability.IDENTITY_VAULT),
         ),
         "com.understory.aegis" to mapOf(
-            1 to setOf(SuiteCapability.OTP_VAULT),
+            1 to setOf(SuiteCapability.OTP_STORE),
         ),
         "com.understory.firewall" to mapOf(
-            1 to setOf(SuiteCapability.NETWORK_FILTER),
+            1 to setOf(SuiteCapability.NET_POSTURE_AUDIT),
         ),
         "com.understory.backups" to mapOf(
-            1 to setOf(SuiteCapability.BACKUP_ORCHESTRATOR),
+            1 to setOf(SuiteCapability.BACKUP_ENVELOPE),
         ),
         "com.understory.browser" to mapOf(
-            1 to setOf(SuiteCapability.HARDENED_BROWSER),
+            // v1 offers no peer-facing surface (share-target/VIEW intake
+            // not yet built). Empty set, not omitted, so the peer is still
+            // discovered, cert-checked, and tier-counted — just inert.
+            1 to emptySet(),
         ),
         "com.understory.antivirus" to mapOf(
-            1 to setOf(SuiteCapability.REALTIME_SCANNER),
+            1 to setOf(SuiteCapability.APK_AUDITOR),
         ),
         "com.understory.vaultfolder" to mapOf(
             1 to setOf(SuiteCapability.FILE_VAULT),
