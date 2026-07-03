@@ -88,7 +88,7 @@ dependencies {
     // required). Namespace com.rosan.dhizuku.api; entry class
     // com.rosan.dhizuku.api.Dhizuku. api() so a consuming app that wants to call
     // Dhizuku directly inherits it.
-    api("io.github.iamr0s:Dhizuku-API:2.6")
+    api("com.github.iamr0s:Dhizuku-API:v2.6.0")
 
     // JUnit + Robolectric — tier-resolution / capability-predicate unit tests
     // run on the JVM with Android framework shadows (PackageManager present /
