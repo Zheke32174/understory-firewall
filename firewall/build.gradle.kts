@@ -85,6 +85,12 @@ android {
 
 dependencies {
     implementation(project(":common-security"))
+    // Optional-elevation broker (Shizuku / Dhizuku). Rootless-by-default:
+    // nothing here runs unless the user installed Shizuku or Dhizuku AND
+    // granted this app. Lights up the real "Block background data" / "Suspend
+    // app" restrict controls and the "Apply Private DNS now" button; every
+    // control degrades honestly to the existing OS deep-link when NONE.
+    implementation(project(":elevation"))
     // Salvaged packet engine (design-v2/firewall.md §7). The Standalone
     // engine uses plain app-drop; VpnPacketParser/DnsRedirector are
     // compiled but not called (they survive for a future userspace

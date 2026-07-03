@@ -21,9 +21,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import com.understory.elevation.Elevation
+import com.understory.elevation.Outcome
+import com.understory.elevation.PrivateDnsMode
 import com.understory.security.Diagnostics
 import com.understory.security.SecureButton
 import com.understory.security.SecureOutlinedButton
@@ -32,6 +36,7 @@ import com.understory.security.ui.components.SuiteListRow
 import com.understory.security.ui.components.SuiteScaffold
 import com.understory.security.ui.theme.UnderstoryTheme
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * DNS Hardening (design-v2/firewall.md §5.3). Flagship, kept: the doctrine-
@@ -149,8 +154,14 @@ private fun DnsProviderRow(
 @Composable
 private fun DnsApplyCard(selected: DnsProvider, nextDnsId: String) {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
     var status by remember { mutableStateOf<String?>(null) }
     val hasGrant = remember(status) { PrivateDnsApplier.hasGrant(ctx) }
+    // OPTIONAL elevation: Shizuku shell or Dhizuku DPM can write secure settings
+    // even without a direct WRITE_SECURE_SETTINGS ADB grant. Capability-gated,
+    // not tier-gated. Rootless users (and users who used the ADB grant instead)
+    // are unaffected — this only adds a one-tap path when a tier is granted.
+    val canElevateDns = remember(status) { !hasGrant && Elevation.canWriteSecureSettings(ctx) }
 
     // Resolve the effective specifier: NextDNS templates from the config id.
     val configIdValid = !selected.requiresConfigId ||
@@ -202,6 +213,44 @@ private fun DnsApplyCard(selected: DnsProvider, nextDnsId: String) {
                 }) { Text("Disable") }
             }
         } else {
+            if (canElevateDns) {
+                Text(
+                    "Elevation is on. Apply now sets Android's Private DNS to " +
+                        "$specifier directly via the granted tier — no ADB grant, no " +
+                        "Settings round-trip.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = UnderstoryTheme.semantic.success,
+                )
+                Spacer(Modifier.height(UnderstoryTheme.spacing.sm))
+                Row(horizontalArrangement = Arrangement.spacedBy(UnderstoryTheme.spacing.sm)) {
+                    SecureButton(onClick = {
+                        Diagnostics.log("firewall.Dns", "Apply Private DNS (elevation): $specifier")
+                        scope.launch {
+                            status = when (val r = Elevation.setPrivateDns(
+                                ctx, PrivateDnsMode.HOSTNAME, specifier,
+                            )) {
+                                is Outcome.Success -> "Applied. Private DNS is now $specifier."
+                                is Outcome.Unsupported -> "Not available: ${r.reason}"
+                                is Outcome.Failed -> "Apply failed: ${r.message}"
+                            }
+                        }
+                    }) { Text("Apply Private DNS now") }
+                    SecureOutlinedButton(onClick = {
+                        scope.launch {
+                            status = when (val r = Elevation.setPrivateDns(
+                                ctx, PrivateDnsMode.OFF,
+                            )) {
+                                is Outcome.Success -> "Private DNS disabled."
+                                is Outcome.Unsupported -> "Not available: ${r.reason}"
+                                is Outcome.Failed -> "Disable failed: ${r.message}"
+                            }
+                        }
+                    }) { Text("Disable") }
+                }
+                Spacer(Modifier.height(UnderstoryTheme.spacing.md))
+                BoundaryText("Or use one of the manual paths below.")
+                Spacer(Modifier.height(UnderstoryTheme.spacing.sm))
+            }
             Text(
                 "Two options:\n\n" +
                     "1. One-time (automated): grant WRITE_SECURE_SETTINGS via ADB, then " +

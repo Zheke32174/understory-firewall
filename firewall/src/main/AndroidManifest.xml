@@ -79,6 +79,18 @@
       The receiver no-ops entirely unless the user has enabled the watch.
     -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!--
+      OPTIONAL ELEVATION (Shizuku). The suite is rootless by default; this
+      permission is the one the Shizuku manager checks when this app requests
+      access. It confers NOTHING on its own — the powers only light up if the
+      user has installed Shizuku and explicitly granted this app. When neither
+      Shizuku nor Dhizuku is present/granted, every elevated control degrades
+      to the existing OS deep-link (see :elevation README). Dhizuku needs no
+      per-app manifest copy: its API AAR merges its own
+      com.rosan.dhizuku.permission.API uses-permission + <queries> block.
+    -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
     <!-- Other network surfaces still stripped. -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" tools:node="remove" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" tools:node="remove" />
@@ -288,6 +300,24 @@
             android:readPermission="com.understory.suite.CAPS"
             android:writePermission="com.understory.suite.CAPS_WRITE"
             android:grantUriPermissions="false" />
+
+        <!--
+          OPTIONAL ELEVATION (Shizuku). The provider through which the Shizuku
+          manager hands this app a binder after the user grants access. Present
+          only to opt this app into Shizuku; it is inert unless Shizuku is
+          installed and the user grants this app. The shell UserService
+          (com.understory.elevation.shizuku.ShellUserService) is instantiated
+          across the process boundary by Shizuku from the UserServiceArgs the
+          broker builds, so it is intentionally NOT declared here (see the
+          :elevation README + consumer-rules.pro that keeps it from R8).
+        -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
         <!--
           Posture Watch receiver (design-v2/firewall.md §5.4 background). Handles:

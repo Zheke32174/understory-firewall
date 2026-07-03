@@ -23,4 +23,5 @@ dependencyResolutionManagement {
 rootProject.name = "firewall"
 include(":common-security")
 include(":net-engine")
+include(":elevation")
 include(":firewall")

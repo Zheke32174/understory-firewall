@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Insights
@@ -348,6 +349,13 @@ private fun ToolsSection(onOpen: (FirewallRoute) -> Unit) {
         supporting = "Opt-in real blocking for no-VPN devices. Off by default; " +
             "refuses to start while any VPN is up.",
         onClick = { onOpen(FirewallRoute.StandaloneHub) },
+    )
+    ToolRow(
+        icon = Icons.Filled.AdminPanelSettings,
+        title = "Elevation (optional)",
+        supporting = "Rootless by default. Optionally grant Shizuku or Dhizuku to " +
+            "turn advisory controls into real per-app enforcement — no VPN slot used.",
+        onClick = { onOpen(FirewallRoute.Elevation) },
     )
 }
 

@@ -166,7 +166,7 @@ class MainActivity : ComponentActivity() {
  */
 enum class FirewallRoute {
     Main, TunnelPosture, Audit, Dns, Traffic, Restrict, Canary, Posture, Limits,
-    StandaloneHub, Diagnostics, PostureWatch,
+    StandaloneHub, Diagnostics, PostureWatch, Elevation,
 }
 
 /** Helper to start/stop the Standalone engine service. */
@@ -257,6 +257,10 @@ private fun FirewallRoot(
         FirewallRoute.PostureWatch -> {
             androidx.activity.compose.BackHandler { backToMain() }
             PostureWatchScreen(onBack = backToMain)
+        }
+        FirewallRoute.Elevation -> {
+            androidx.activity.compose.BackHandler { backToMain() }
+            ElevationScreen(onBack = backToMain)
         }
     }
 }

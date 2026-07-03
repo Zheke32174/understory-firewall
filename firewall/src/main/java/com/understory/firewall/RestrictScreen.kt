@@ -23,15 +23,21 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import com.understory.elevation.Elevation
+import com.understory.elevation.Outcome
+import com.understory.security.Diagnostics
+import com.understory.security.SecureButton
 import com.understory.security.SecureOutlinedButton
 import com.understory.security.ui.components.EmptyState
 import com.understory.security.ui.components.SuiteListRow
 import com.understory.security.ui.components.SuiteScaffold
 import com.understory.security.ui.theme.UnderstoryTheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -176,6 +182,16 @@ private fun AppDetailSheet(entry: AppEntry, onDismiss: () -> Unit) {
             Text(entry.label, style = MaterialTheme.typography.titleLarge)
             Text(entry.packageName, style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+            // OPTIONAL-ELEVATION real enforcement (Shizuku netpolicy / pm, or
+            // Dhizuku DPM). Only lit up when the capability is actually granted;
+            // a stale package (uninstalled) has no live target so we skip it.
+            // Rootless users never see these — they get the OS deep-links below,
+            // never a dead button.
+            if (!entry.isStale) {
+                ElevatedRestrictControls(pkg = entry.packageName)
+            }
+
             BoundaryText("Understory opens the setting; Android enforces it.")
 
             val actions = restrictActions(ctx, entry.packageName)
@@ -195,6 +211,117 @@ private fun AppDetailSheet(entry: AppEntry, onDismiss: () -> Unit) {
             Spacer(Modifier.height(UnderstoryTheme.spacing.md))
         }
     }
+}
+
+/**
+ * The real, elevated per-app enforcement controls. Capability-gated, NOT
+ * tier-gated (design principle): we ask "can I block this app's network?" and
+ * "can I manage apps?" rather than "is Shizuku present?". When neither
+ * capability is granted this composable renders nothing and the caller's OS
+ * deep-links remain the honest path — no dead/disabled buttons ship.
+ *
+ * "Block background data" is labelled honestly: it restricts the app's metered
+ * background network (Shizuku `cmd netpolicy … restrict-background-blacklist`);
+ * foreground traffic stays reachable unless the app is also suspended. On
+ * Dhizuku the broker reports [Outcome.Unsupported] (Device Owner has no per-app
+ * metered API); we surface that reason instead of pretending it worked.
+ */
+@Composable
+private fun ElevatedRestrictControls(pkg: String) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // Capability snapshot — cheap, synchronous predicate reads on the granted
+    // tier. Re-read on recomposition so a grant made elsewhere lights these up.
+    val canNet = remember(pkg) { Elevation.canControlAppNetwork(ctx) }
+    val canManage = remember(pkg) { Elevation.canManageApps(ctx) }
+    if (!canNet && !canManage) return
+
+    var status by remember(pkg) { mutableStateOf<String?>(null) }
+    var busy by remember(pkg) { mutableStateOf(false) }
+
+    fun render(o: Outcome): String = when (o) {
+        is Outcome.Success -> o.detail?.let { "Done — $it" } ?: "Done."
+        is Outcome.Unsupported -> "Not available: ${o.reason}"
+        is Outcome.Failed -> "Failed: ${o.message}"
+    }
+
+    Text(
+        "Enforce (elevation on)",
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+    )
+
+    if (canNet) {
+        Row(horizontalArrangement = Arrangement.spacedBy(UnderstoryTheme.spacing.sm)) {
+            SecureButton(
+                onClick = {
+                    if (busy) return@SecureButton
+                    busy = true
+                    scope.launch {
+                        Diagnostics.log("firewall.Restrict", "block bg net: $pkg")
+                        val o = Elevation.setAppBackgroundNetworkBlocked(ctx, pkg, blocked = true)
+                        status = render(o)
+                        busy = false
+                    }
+                },
+                modifier = Modifier.weight(1f),
+            ) { Text("Block background data") }
+            SecureOutlinedButton(
+                onClick = {
+                    if (busy) return@SecureOutlinedButton
+                    busy = true
+                    scope.launch {
+                        val o = Elevation.setAppBackgroundNetworkBlocked(ctx, pkg, blocked = false)
+                        status = render(o)
+                        busy = false
+                    }
+                },
+                modifier = Modifier.weight(1f),
+            ) { Text("Allow") }
+        }
+        BoundaryText(
+            "Blocks metered background data for this app. Foreground use stays " +
+                "reachable unless you also suspend it."
+        )
+    }
+
+    if (canManage) {
+        Row(horizontalArrangement = Arrangement.spacedBy(UnderstoryTheme.spacing.sm)) {
+            SecureButton(
+                onClick = {
+                    if (busy) return@SecureButton
+                    busy = true
+                    scope.launch {
+                        Diagnostics.log("firewall.Restrict", "suspend: $pkg")
+                        val o = Elevation.setAppSuspended(ctx, pkg, suspended = true)
+                        status = render(o)
+                        busy = false
+                    }
+                },
+                modifier = Modifier.weight(1f),
+            ) { Text("Suspend app") }
+            SecureOutlinedButton(
+                onClick = {
+                    if (busy) return@SecureOutlinedButton
+                    busy = true
+                    scope.launch {
+                        val o = Elevation.setAppSuspended(ctx, pkg, suspended = false)
+                        status = render(o)
+                        busy = false
+                    }
+                },
+                modifier = Modifier.weight(1f),
+            ) { Text("Unsuspend") }
+        }
+        BoundaryText("Suspending greys the app out and stops it launching.")
+    }
+
+    status?.let {
+        Text(it, style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
 }
 
 private data class RestrictAction(val label: String, val intent: Intent)
