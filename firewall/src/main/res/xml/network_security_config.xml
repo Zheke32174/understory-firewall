@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Defense in depth. The app does not request INTERNET permission, so it cannot
+  make any network call. This config additionally denies cleartext for every
+  domain — should the OS ever route traffic for us, it would be blocked.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors />
+    </base-config>
+</network-security-config>

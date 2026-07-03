@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Aegis: shield silhouette. Plain vector, no external assets. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#E0E0E0"
+        android:pathData="M54,24 L78,32 L78,58 C78,72 68,82 54,86 C40,82 30,72 30,58 L30,32 Z" />
+    <path
+        android:strokeColor="#000000"
+        android:strokeWidth="3"
+        android:fillColor="#E0E0E0"
+        android:pathData="M54,24 L78,32 L78,58 C78,72 68,82 54,86 C40,82 30,72 30,58 L30,32 Z" />
+</vector>

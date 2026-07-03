@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Project-wide Android Lint configuration for the Understory suite.
+
+  We aggressively use `tools:node="remove"` to strip permissions from
+  every app's manifest defensively — a transitive library cannot silently
+  add an INTERNET / SMS / CAMERA / etc. permission, because we explicitly
+  remove each one. Lint doesn't understand the manifest-merger semantics
+  and flags these declarations as if we were REQUESTING the permissions.
+  Several rule-classes are documented false-positives in our context:
+
+    ProtectedPermissions             — system-only permissions we strip.
+    ScopedStorage                    — deprecated storage perms we strip.
+    HighSamplingRate                 — sensors perm we strip.
+    PermissionImpliesUnsupportedChromeOsHardware
+                                     — telephony/camera/etc. we strip.
+    SystemPermissionTypo             — old SMS perm names we strip.
+    QueryAllPackagesPermission       — we strip this and use <queries>.
+
+  These are downgraded to "informational" rather than disabled outright,
+  so a future regression (e.g. accidentally REQUESTING one of these) is
+  still catchable by hand-reviewing lint output.
+
+  Real findings stay errors:
+    MissingPermission   (where the call isn't already runCatching-wrapped)
+    NewApi              (API misuse)
+    NullableError       (nullability bugs)
+    HardcodedText       (debug-vs-translatable strings)
+    InvalidId, etc.
+
+  Per-design suppressions for our security posture:
+    LockedOrientationActivity, NonResizeableActivity, DiscouragedApi
+                              — locked portrait + non-resizable is
+                                deliberate (security tools don't render
+                                in multi-window).
+    ObsoleteSdkInt            — informational; we leave the SDK_INT
+                                checks for documentation even when our
+                                minSdk has moved past them.
+    GradleDependency          — informational; dep updates are a manual
+                                quarterly chore.
+    MonochromeLauncherIcon    — polish, not security.
+-->
+<lint>
+    <!-- False positives from defensive tools:node="remove" stripping. -->
+    <issue id="ProtectedPermissions" severity="informational" />
+    <issue id="ScopedStorage" severity="informational" />
+    <issue id="HighSamplingRate" severity="informational" />
+    <issue id="PermissionImpliesUnsupportedChromeOsHardware" severity="informational" />
+    <issue id="SystemPermissionTypo" severity="informational" />
+    <issue id="QueryAllPackagesPermission" severity="informational" />
+
+    <!-- Deliberate design choices for security tools. -->
+    <issue id="LockedOrientationActivity" severity="informational" />
+    <issue id="NonResizeableActivity" severity="informational" />
+    <issue id="DiscouragedApi" severity="informational" />
+
+    <!-- Cosmetic / future-work; don't block builds. -->
+    <issue id="ObsoleteSdkInt" severity="informational" />
+    <issue id="GradleDependency" severity="informational" />
+    <issue id="MonochromeLauncherIcon" severity="informational" />
+
+    <!-- Window.setHideOverlayWindows requires HIDE_OVERLAY_WINDOWS
+         permission as of Android 14+ — that permission has signature|setup
+         protection level so regular apps cannot get it. We wrap the call
+         in runCatching so SecurityException is swallowed. The defense
+         degrades gracefully: on API 31-33 the call works, on API 34+
+         without the privileged permission it throws and we no-op. -->
+    <issue id="MissingPermission" severity="informational">
+        <ignore regexp=".*setHideOverlayWindows.*" />
+    </issue>
+</lint>

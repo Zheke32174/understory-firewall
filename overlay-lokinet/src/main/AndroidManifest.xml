@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  :overlay-lokinet library manifest. Empty for now (Phase α — scaffold
+  only, no daemon shipped). When the lokinet binary lands the manifest
+  will declare a foreground service mirroring overlay-i2p's
+  I2pProxyService pattern: exported="false" (same-UID only),
+  foregroundServiceType="specialUse", and a notification channel.
+
+  Until then the module exposes only LokinetStatus + LokinetProvider
+  to consumers; nothing here that needs a manifest contribution yet.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />

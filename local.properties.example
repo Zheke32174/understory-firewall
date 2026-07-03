@@ -1,0 +1,2 @@
+# Copy to local.properties (gitignored) and set:
+sdk.dir=/opt/android-sdk

@@ -1,0 +1,264 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+      Suite capability registry permissions. Same pattern as passgen +
+      aegis: define our own signature-protected READ_CAPS, declare use of
+      every peer's. signature level = only same-cert callers admitted.
+    -->
+    <permission
+        android:name="com.understory.firewall.permission.READ_CAPS"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="com.understory.passgen.permission.READ_CAPS" />
+    <uses-permission android:name="com.understory.aegis.permission.READ_CAPS" />
+    <uses-permission android:name="com.understory.backups.permission.READ_CAPS" />
+    <uses-permission android:name="com.understory.browser.permission.READ_CAPS" />
+    <uses-permission android:name="com.understory.antivirus.permission.READ_CAPS" />
+    <uses-permission android:name="com.understory.vaultfolder.permission.READ_CAPS" />
+
+    <!--
+      WRITE_SECURE_SETTINGS — declared so the ADB-grant flow has a
+      target. This is signature-level: the runtime UI cannot grant it,
+      and the manifest declaration alone does NOT confer the right.
+      The user grants it once from a connected machine via
+      `adb shell pm grant com.understory.firewall
+       android.permission.WRITE_SECURE_SETTINGS`.
+      Once granted, PrivateDnsApplier.apply() can set Settings.Global's
+      private_dns_mode + private_dns_specifier directly so the user
+      doesn't have to paste the DoT hostname into Android Settings.
+      Without the grant, the DnsPrefsScreen falls back to the existing
+      deep-link flow (unchanged behavior for users who don't run ADB).
+    -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
+
+    <!--
+      The firewall is the ONE app in the suite that legitimately needs
+      network visibility — it owns the VpnService slot and gates outbound
+      traffic from blocked apps via a local tun. Permissions are explicit
+      and narrowly justified:
+        INTERNET — VpnService needs this for protectedSocket() fallbacks.
+        ACCESS_NETWORK_STATE — monitor wifi/cellular changes, restart VPN.
+        FOREGROUND_SERVICE / FOREGROUND_SERVICE_SPECIAL_USE — VpnService
+                            must run as a foreground service.
+        POST_NOTIFICATIONS — persistent notification while VPN is active.
+        QUERY_ALL_PACKAGES — enumerate every installed app for the
+                            per-app rules UI. Genuinely needed for this
+                            app's purpose; only suite app that requests it.
+                            (Antivirus and mdm-local will also use it.)
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!-- Other network surfaces still stripped. -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" tools:node="remove" />
+    <!-- SMS / MMS -->
+    <uses-permission android:name="android.permission.SEND_SMS" tools:node="remove" />
+    <uses-permission android:name="android.permission.RECEIVE_SMS" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_SMS" tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_SMS" tools:node="remove" />
+    <uses-permission android:name="android.permission.RECEIVE_MMS" tools:node="remove" />
+    <uses-permission android:name="android.permission.RECEIVE_WAP_PUSH" tools:node="remove" />
+    <!-- Cellular / telephony -->
+    <uses-permission android:name="android.permission.CALL_PHONE" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_PRECISE_PHONE_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_CALL_LOG" tools:node="remove" />
+    <uses-permission android:name="android.permission.PROCESS_OUTGOING_CALLS" tools:node="remove" />
+    <!-- Satellite -->
+    <uses-permission android:name="android.permission.SATELLITE_COMMUNICATION" tools:node="remove" />
+    <!-- Bluetooth -->
+    <uses-permission android:name="android.permission.BLUETOOTH" tools:node="remove" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" tools:node="remove" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" tools:node="remove" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" tools:node="remove" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" tools:node="remove" />
+    <!-- NFC -->
+    <uses-permission android:name="android.permission.NFC" tools:node="remove" />
+    <uses-permission android:name="android.permission.NFC_TRANSACTION_EVENT" tools:node="remove" />
+    <!-- Location -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" tools:node="remove" />
+    <!-- Audio -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" tools:node="remove" />
+    <uses-permission android:name="android.permission.CAPTURE_AUDIO_OUTPUT" tools:node="remove" />
+    <uses-permission android:name="android.permission.CAPTURE_AUDIO_HOTWORD" tools:node="remove" />
+    <uses-permission android:name="android.permission.CAPTURE_MEDIA_OUTPUT" tools:node="remove" />
+    <uses-permission android:name="android.permission.CAPTURE_VOICE_COMMUNICATION_OUTPUT" tools:node="remove" />
+    <uses-permission android:name="android.permission.BIND_VOICE_INTERACTION" tools:node="remove" />
+    <uses-permission android:name="android.permission.BIND_TEXT_SERVICE" tools:node="remove" />
+    <!-- Camera -->
+    <uses-permission android:name="android.permission.CAMERA" tools:node="remove" />
+    <uses-permission android:name="android.permission.BACKGROUND_CAMERA" tools:node="remove" />
+    <uses-permission android:name="android.permission.SYSTEM_CAMERA" tools:node="remove" />
+    <!-- Biometrics -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" tools:node="remove" />
+    <uses-permission android:name="android.permission.USE_FINGERPRINT" tools:node="remove" />
+    <!-- Storage / media -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" tools:node="remove" />
+    <!--
+      Notifications / overlays. POST_NOTIFICATIONS is *granted* above (line
+      35) — VpnService needs it for the persistent foreground notification.
+      Don't strip it here even though we strip the rest of this category.
+    -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" tools:node="remove" />
+    <!--
+      Package query / install. QUERY_ALL_PACKAGES is *granted* above (line
+      36) — the per-app rules UI legitimately needs to enumerate installed
+      packages. Don't strip it here.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" tools:node="remove" />
+    <!-- Service binds -->
+    <uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE" tools:node="remove" />
+    <uses-permission android:name="android.permission.BIND_DEVICE_ADMIN" tools:node="remove" />
+    <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" tools:node="remove" />
+    <uses-permission android:name="android.permission.BIND_QUICK_SETTINGS_TILE" tools:node="remove" />
+    <!-- Sensors -->
+    <uses-permission android:name="android.permission.BODY_SENSORS" tools:node="remove" />
+    <uses-permission android:name="android.permission.BODY_SENSORS_BACKGROUND" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" tools:node="remove" />
+    <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" tools:node="remove" />
+    <!-- VoIP -->
+    <uses-permission android:name="android.permission.USE_SIP" tools:node="remove" />
+    <!-- Other -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_CONTACTS" tools:node="remove" />
+    <uses-permission android:name="android.permission.GET_ACCOUNTS" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_CALENDAR" tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" tools:node="remove" />
+
+    <queries>
+        <!-- Suite siblings — needed for SuiteAttestation cross-verification. -->
+        <package android:name="com.understory.passgen" />
+        <package android:name="com.understory.aegis" />
+        <package android:name="com.understory.backups" />
+        <package android:name="com.understory.browser" />
+        <package android:name="com.understory.antivirus" />
+        <package android:name="com.understory.vaultfolder" />
+        <!-- Lucky Patcher / Xposed / Magisk — same Tamper.luckyPatcherInstalled lookups. -->
+        <package android:name="com.chelpus.lackypatch" />
+        <package android:name="com.dimonvideo.luckypatcher" />
+        <package android:name="com.forpda.lp" />
+        <package android:name="com.android.vending.billing.InAppBillingService.LUCK" />
+        <package android:name="com.android.vending.billing.InAppBillingService.LACK" />
+        <package android:name="ru.aaaaaaac.luckypatcher" />
+        <package android:name="uret.jasi2169.patcher" />
+        <package android:name="zone.jasi2169.uretpatcher" />
+        <package android:name="ru.luckypatchers.luckypatcherinstaller" />
+        <package android:name="de.robv.android.xposed.installer" />
+        <package android:name="org.meowcat.edxposed.manager" />
+        <package android:name="org.lsposed.manager" />
+        <package android:name="io.github.lsposed.manager" />
+        <package android:name="com.topjohnwu.magisk" />
+        <package android:name="io.github.huskydg.magisk" />
+        <package android:name="com.kingoapp.apk" />
+        <package android:name="com.koushikdutta.rommanager" />
+        <package android:name="eu.chainfire.supersu" />
+    </queries>
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:theme="@style/Theme.Firewall"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="false"
+        android:extractNativeLibs="true"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:usesCleartextTraffic="false"
+        android:supportsRtl="true">
+
+        <!--
+          Activity-isolation set (excludeFromRecents/noHistory/singleInstance)
+          relaxed for the testing phase — see passgen/aegis manifests for
+          the full rationale. RELEASE-BLOCKER: re-evaluate before publish.
+        -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true"
+            android:resizeableActivity="false"
+            android:screenOrientation="portrait"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
+            android:theme="@style/Theme.Firewall">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          VpnService — captures and drops traffic from packages on the
+          user's blocklist. Protected by BIND_VPN_SERVICE (signature-level,
+          granted by the system) so other apps cannot bind directly.
+          foregroundServiceType="specialUse" with PROPERTY_SPECIAL_USE_
+          FGS_SUBTYPE="vpn" is the correct type for non-system VPN apps
+          on Android 14+. The previous "systemExempted" was reserved for
+          apps in the system-exempted list (which we are not), causing
+          Android 14+ to silently reject startForeground() calls — the
+          consent dialog appeared but the post-consent service start
+          failed quietly, leaving the toggle apparently inert.
+        -->
+        <service
+            android:name=".FirewallVpnService"
+            android:exported="false"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:foregroundServiceType="specialUse">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="vpn" />
+        </service>
+
+        <!--
+          DNSCrypt proxy supervisor. Foreground service that runs the
+          bundled dnscrypt-proxy binary on 127.0.0.1:5354. Same-UID
+          only (exported=false). The binary is fetched into
+          jniLibs/<abi>/libdnscrypt-proxy.so by tools/fetch-dnscrypt-
+          proxy.sh; not committed to the repo (see firewall/.gitignore).
+        -->
+        <service
+            android:name=".DnsCryptProxyService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="dnscrypt" />
+        </service>
+
+        <!--
+          Suite capability beacon. Read-only single-row provider that
+          attests this app's package + version to peers. Signature-locked
+          so only same-cert suite apps can query.
+        -->
+        <provider
+            android:name=".SuiteCapsProvider"
+            android:authorities="com.understory.firewall.suitecaps"
+            android:exported="true"
+            android:permission="com.understory.firewall.permission.READ_CAPS"
+            android:grantUriPermissions="false" />
+
+    </application>
+
+</manifest>
