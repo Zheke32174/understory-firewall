@@ -51,6 +51,11 @@ android {
 
     buildFeatures {
         compose = true
+        // Generates com.understory.firewall.BuildConfig with the FLAVOR field
+        // (prod|eng). The dashboard reads BuildConfig.FLAVOR to gate the
+        // Diagnostics dev surface out of the shipping (prod) UI. AGP 8 disables
+        // BuildConfig generation by default, so it must be opted in here.
+        buildConfig = true
     }
 
     packaging {

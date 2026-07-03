@@ -47,10 +47,9 @@ fun PostureScreen(onBack: () -> Unit) {
             )
             PostureSection(
                 "No telemetry",
-                "No analytics SDK, no crash reporter, no feature-flag service. Diagnostics " +
-                    "are an in-app screen you read yourself; nothing is shipped off-device. " +
-                    "The egress canaries only fire on an explicit tap, to a host named on " +
-                    "the button.",
+                "No analytics SDK, no crash reporter, no feature-flag service. Any diagnostic " +
+                    "detail stays on this device; nothing is shipped off-device. The egress " +
+                    "canaries only fire on an explicit tap, to a host named on the button.",
             )
             PostureSection(
                 "No cloud",
