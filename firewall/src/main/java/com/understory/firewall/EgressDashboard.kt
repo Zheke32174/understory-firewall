@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.Radar
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.SupervisorAccount
@@ -97,6 +98,8 @@ fun EgressDashboardScreen(onOpen: (FirewallRoute) -> Unit) {
     var auditCount by remember { mutableStateOf<Int?>(null) }
     var dnsSummary by remember { mutableStateOf<String?>(null) }
     var trafficGranted by remember { mutableStateOf(false) }
+    var watchEnabled by remember { mutableStateOf(false) }
+    var watchLastRun by remember { mutableStateOf(0L) }
     var refreshTick by remember { mutableStateOf(0) }
     val a11y = remember { A11yProbe.check(ctx) }
 
@@ -110,6 +113,8 @@ fun EgressDashboardScreen(onOpen: (FirewallRoute) -> Unit) {
         auditCount = findings.count { it.packageName !in ack }
         dnsSummary = withContext(Dispatchers.IO) { dnsOneLine(ctx) }
         trafficGranted = withContext(Dispatchers.IO) { TrafficAccounting.hasUsageAccess(ctx) }
+        watchEnabled = withContext(Dispatchers.IO) { PostureWatch.isEnabled(ctx) }
+        watchLastRun = withContext(Dispatchers.IO) { PostureWatch.getLastRunMillis(ctx) }
     }
 
     LaunchedEffect(Unit) { refresh() }
@@ -189,6 +194,8 @@ fun EgressDashboardScreen(onOpen: (FirewallRoute) -> Unit) {
                     dnsSummary = dnsSummary,
                     auditCount = auditCount,
                     trafficGranted = trafficGranted,
+                    watchEnabled = watchEnabled,
+                    watchLastRun = watchLastRun,
                     a11yServiceCount = a11y.activeServiceCount,
                     onOpen = onOpen,
                 )
@@ -219,6 +226,8 @@ private fun OverviewSection(
     dnsSummary: String?,
     auditCount: Int?,
     trafficGranted: Boolean,
+    watchEnabled: Boolean,
+    watchLastRun: Long,
     a11yServiceCount: Int,
     onOpen: (FirewallRoute) -> Unit,
 ) {
@@ -300,6 +309,18 @@ private fun OverviewSection(
         verdict = auditVerdict,
         tone = if ((auditCount ?: 0) > 0) StatusTone.WARNING else StatusTone.NEUTRAL,
         onClick = { onOpen(FirewallRoute.Audit) },
+    )
+
+    // Scheduled posture re-check — opt-in background watcher.
+    StatusCard(
+        icon = Icons.Filled.Schedule,
+        title = "Posture watch",
+        verdict = if (watchEnabled) {
+            if (watchLastRun > 0L) "On — re-checking in the background. Alerts on new findings."
+            else "On — baseline recorded. Alerts on new findings."
+        } else "Off — turn on periodic re-checks that alert you when posture worsens.",
+        tone = if (watchEnabled) StatusTone.GOOD else StatusTone.INFO,
+        onClick = { onOpen(FirewallRoute.PostureWatch) },
     )
 }
 

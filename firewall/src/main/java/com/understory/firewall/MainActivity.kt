@@ -34,6 +34,22 @@ import com.understory.security.ui.theme.UnderstoryTheme
  */
 class MainActivity : ComponentActivity() {
 
+    companion object {
+        /**
+         * Optional intent extra naming a [FirewallRoute] to open on launch. Set
+         * by the Posture Watch notification's tap PendingIntent so tapping the
+         * alert lands on the review screen. Ignored if absent or unparseable.
+         */
+        const val EXTRA_OPEN_ROUTE = "com.understory.firewall.OPEN_ROUTE"
+    }
+
+    /**
+     * A one-shot deep-link route request published by onCreate/onNewIntent and
+     * consumed by [FirewallRoot]. Held as compose state so a tap that arrives
+     * while the activity is alive still navigates.
+     */
+    private val deepLinkRoute = androidx.compose.runtime.mutableStateOf<FirewallRoute?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         DiagnosticsDump.activateIfEng(this)
         Diagnostics.log("firewall.MainActivity", "onCreate")
@@ -107,11 +123,30 @@ class MainActivity : ComponentActivity() {
         }
         runCatching { WindowCompat.setDecorFitsSystemWindows(window, false) }
 
+        deepLinkRoute.value = parseRouteExtra(intent)
         setContent {
             UnderstoryTheme(accent = UnderstoryAccent.FIREWALL) {
-                FirewallRoot(activity = this)
+                FirewallRoot(activity = this, deepLink = deepLinkRoute)
             }
         }
+    }
+
+    /**
+     * The activity is singleTask, so a notification tap while it is already
+     * running arrives here, not via a fresh onCreate. Publish the requested
+     * route to the compose state so FirewallRoot navigates to it. A one-shot:
+     * FirewallRoot consumes and clears it so a config change doesn't re-navigate.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        parseRouteExtra(intent)?.let { deepLinkRoute.value = it }
+    }
+
+    /** Read + validate the optional [EXTRA_OPEN_ROUTE] into a route, or null. */
+    private fun parseRouteExtra(intent: Intent?): FirewallRoute? {
+        val name = intent?.getStringExtra(EXTRA_OPEN_ROUTE) ?: return null
+        return runCatching { FirewallRoute.valueOf(name) }.getOrNull()
     }
 
     override fun onResume() {
@@ -131,7 +166,7 @@ class MainActivity : ComponentActivity() {
  */
 enum class FirewallRoute {
     Main, TunnelPosture, Audit, Dns, Traffic, Restrict, Canary, Posture, Limits,
-    StandaloneHub, Diagnostics,
+    StandaloneHub, Diagnostics, PostureWatch,
 }
 
 /** Helper to start/stop the Standalone engine service. */
@@ -148,7 +183,11 @@ internal fun stopEngine(ctx: Context) {
 }
 
 @Composable
-private fun FirewallRoot(activity: ComponentActivity) {
+private fun FirewallRoot(
+    activity: ComponentActivity,
+    deepLink: androidx.compose.runtime.MutableState<FirewallRoute?> =
+        androidx.compose.runtime.mutableStateOf(null),
+) {
     var routeName by rememberSaveable { mutableStateOf(FirewallRoute.Main.name) }
     val route = remember(routeName) { FirewallRoute.valueOf(routeName) }
     val setRoute: (FirewallRoute) -> Unit = {
@@ -156,6 +195,17 @@ private fun FirewallRoot(activity: ComponentActivity) {
         routeName = it.name
     }
     val backToMain: () -> Unit = { setRoute(FirewallRoute.Main) }
+
+    // Consume a one-shot deep-link route (e.g. a Posture Watch notification
+    // tap). Navigate once, then clear so a recomposition/config-change can't
+    // yank the user back after they navigate away.
+    val pendingDeepLink = deepLink.value
+    androidx.compose.runtime.LaunchedEffect(pendingDeepLink) {
+        if (pendingDeepLink != null) {
+            setRoute(pendingDeepLink)
+            deepLink.value = null
+        }
+    }
 
     when (route) {
         FirewallRoute.Main -> {
@@ -203,6 +253,10 @@ private fun FirewallRoot(activity: ComponentActivity) {
         FirewallRoute.Diagnostics -> {
             androidx.activity.compose.BackHandler { backToMain() }
             DiagnosticsScreen(onBack = backToMain)
+        }
+        FirewallRoute.PostureWatch -> {
+            androidx.activity.compose.BackHandler { backToMain() }
+            PostureWatchScreen(onBack = backToMain)
         }
     }
 }

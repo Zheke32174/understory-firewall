@@ -72,6 +72,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!--
+      RECEIVE_BOOT_COMPLETED — the opt-in Posture Watch (PostureWatchReceiver)
+      re-arms its inexact AlarmManager re-check after a reboot or an app update,
+      since alarms don't survive either. Normal-protection, no runtime prompt.
+      The receiver no-ops entirely unless the user has enabled the watch.
+    -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Other network surfaces still stripped. -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" tools:node="remove" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" tools:node="remove" />
@@ -281,6 +288,26 @@
             android:readPermission="com.understory.suite.CAPS"
             android:writePermission="com.understory.suite.CAPS_WRITE"
             android:grantUriPermissions="false" />
+
+        <!--
+          Posture Watch receiver (design-v2/firewall.md §5.4 background). Handles:
+            - the app-private POSTURE_WATCH_CHECK alarm (a scheduled re-check), and
+            - BOOT_COMPLETED / MY_PACKAGE_REPLACED, to re-arm the alarm after a
+              reboot or app update.
+          exported="false": only our own AlarmManager PendingIntent and the
+          system's protected boot/replace broadcasts reach it. The receiver is
+          inert unless the user has opted into the watch; a stale alarm delivered
+          after the user turns it off is dropped without rescheduling.
+        -->
+        <receiver
+            android:name=".PostureWatchReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
     </application>
 
