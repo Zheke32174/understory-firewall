@@ -24,26 +24,40 @@ import java.security.MessageDigest
  *         android:name=".SuiteCapsProvider"
  *         android:authorities="com.understory.passgen.suitecaps"
  *         android:exported="true"
- *         android:permission="com.understory.passgen.permission.READ_CAPS"
+ *         android:readPermission="com.understory.suite.CAPS"
+ *         android:writePermission="com.understory.suite.CAPS_WRITE"
  *         android:grantUriPermissions="false" />
  *
  *     <permission
- *         android:name="com.understory.passgen.permission.READ_CAPS"
+ *         android:name="com.understory.suite.CAPS"
+ *         android:protectionLevel="signature" />
+ *     <permission
+ *         android:name="com.understory.suite.CAPS_WRITE"
  *         android:protectionLevel="signature" />
  *
- *     <uses-permission android:name="com.understory.aegis.permission.READ_CAPS" />
- *     <uses-permission android:name="com.understory.firewall.permission.READ_CAPS" />
+ *     <uses-permission android:name="com.understory.suite.CAPS" />
  *
- * Each app defines its OWN signature-protected permission for its OWN
- * provider, and declares uses-permission for every peer's permission.
- * `signature` protection means only same-cert callers can read — consumers
- * outside the suite cannot snoop the registry.
+ * ONE shared signature-protected permission ([SUITE_CAPS_PERMISSION]),
+ * declared identically in every suite app (first installed definition
+ * wins per Android semantics; identical same-cert declarations make
+ * that safe). `signature` protection means only same-cert callers can
+ * read — consumers outside the suite cannot snoop the registry.
+ * [SUITE_CAPS_WRITE_PERMISSION] is defined but never requested by any
+ * app, so the write side of the provider is permanently locked.
  *
  * The provider is read-only: insert/update/delete throw. The single
  * recognized URI is `content://{authority}/version`. Any other path
  * returns null.
  */
 abstract class BaseCapabilityProvider : ContentProvider() {
+
+    companion object {
+        /** Shared signature-level read permission — see class KDoc. */
+        const val SUITE_CAPS_PERMISSION = "com.understory.suite.CAPS"
+
+        /** Declared in every manifest, requested by none: a locked write gate. */
+        const val SUITE_CAPS_WRITE_PERMISSION = "com.understory.suite.CAPS_WRITE"
+    }
 
     /**
      * The version number this peer attests. Consumers' KNOWN_PEERS
@@ -63,6 +77,13 @@ abstract class BaseCapabilityProvider : ContentProvider() {
     ): Cursor? {
         if (uri.lastPathSegment != "version") return null
         val ctx = context ?: return null
+        // Belt-and-braces re-check of the manifest readPermission: if a
+        // vendored manifest ever drops the attribute, remote callers
+        // without the suite permission still get nothing. Same-process
+        // callers pass because the app holds its own uses-permission.
+        if (ctx.checkCallingOrSelfPermission(SUITE_CAPS_PERMISSION)
+            != PackageManager.PERMISSION_GRANTED
+        ) return null
         val cursor = MatrixCursor(arrayOf(
             SuiteCapabilityRegistry.Cols.VERSION,
             SuiteCapabilityRegistry.Cols.CERT_SHA256,
@@ -71,15 +92,17 @@ abstract class BaseCapabilityProvider : ContentProvider() {
         return cursor
     }
 
-    /** Provider is read-only by contract. */
-    override fun insert(uri: Uri, values: ContentValues?): Uri? = null
+    /** Provider is read-only by structure — writes always throw. */
+    override fun insert(uri: Uri, values: ContentValues?): Uri? =
+        throw UnsupportedOperationException("read-only provider")
     override fun update(
         uri: Uri,
         values: ContentValues?,
         selection: String?,
         selectionArgs: Array<out String>?,
-    ): Int = 0
-    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = 0
+    ): Int = throw UnsupportedOperationException("read-only provider")
+    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int =
+        throw UnsupportedOperationException("read-only provider")
     override fun getType(uri: Uri): String? =
         if (uri.lastPathSegment == "version")
             "vnd.android.cursor.item/vnd.com.understory.suitecaps.version"

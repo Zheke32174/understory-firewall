@@ -133,11 +133,14 @@ object FirewallSettings {
 
     /**
      * The user's DNS provider preference, identified by [DnsProvider.id].
-     * Default = system-default (no override). Stored only — not yet
-     * driving the VpnService's tun (that's phase-2 work involving full
-     * userspace tun forwarding). For now the user applies the choice
-     * via Android's system Private DNS settings, which the firewall
-     * deep-links to.
+     * Default = system-default (no override). Phase 1.5: the selection
+     * is informational — the only enforced apply path is Android's
+     * system Private DNS (PrivateDnsApplier when ADB-granted, else the
+     * Settings deep-link). A DNSCrypt selection additionally starts the
+     * local dnscrypt-proxy service and flips FirewallVpnService into
+     * its experimental DNS-redirect mode on the next establish; that
+     * path is a phase-2 preview and the UI deliberately does not
+     * present it as enforcement (see PHASE2.md).
      */
     fun getDnsProviderId(ctx: Context): String =
         ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)

@@ -135,8 +135,8 @@ data class DnsProvider(
                 "-eWNSWaEPI2jEIWcVyt53wFVlIiIyLmRuc2NyeXB0LWNlcnQucXVhZDkubmV0",
             privacyNote = "Same Quad9 backbone as the DoT entry above, but " +
                 "via the DNSCrypt v2 protocol through the bundled proxy. " +
-                "Same threat-feed blocking, no-log policy. Routed locally " +
-                "via 127.0.0.1 once the proxy is active.",
+                "Same threat-feed blocking, no-log policy. App DNS reaches " +
+                "the local proxy only when phase-2 tun forwarding lands.",
         )
 
         val DNSCRYPT_ADGUARD = DnsProvider(

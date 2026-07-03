@@ -29,12 +29,10 @@ import java.security.MessageDigest
 object SuiteAttestation {
 
     /**
-     * The suite's signing cert digest. Same value as [Tamper.EXPECTED_CERT_SHA256]
-     * (intentional duplication — keeping these in sync is what `verifyCertPin`
-     * checks at build time across every app).
+     * The suite's signing cert digest. Same value as [Tamper]'s pin — both
+     * read [SuitePins.EXPECTED_CERT_SHA256], so they cannot drift apart.
      */
-    private const val EXPECTED_SUITE_CERT_SHA256 =
-        "aba68a81a0d63b5549794e586875a4f04e6dba3a6fe25d363e04eb75f46df69e"
+    private val EXPECTED_SUITE_CERT_SHA256 = SuitePins.EXPECTED_CERT_SHA256
 
     /**
      * Known suite member package names. Add new apps here as they ship.

@@ -35,13 +35,16 @@ import java.util.concurrent.atomic.AtomicBoolean
  *   - The proxy listens on 127.0.0.1:[LOCAL_PORT].
  *   - DNS queries from apps don't yet reach this listener — Android's
  *     system DNS resolver doesn't know to route to a private port,
- *     and Private DNS specifiers can't point at loopback.
- *     Phase 3 (userspace packet forwarder in FirewallVpnService) is
- *     what actually wires apps' UDP-port-53 traffic to this listener.
- *     Until then, this service runs the proxy successfully and
- *     surfaces its status in Diagnostics; the listener is reachable
- *     manually for debugging via `dig @127.0.0.1 -p 5354 example.com`
- *     when running with shell access on the device.
+ *     and Private DNS specifiers can't point at loopback. Wiring
+ *     apps' UDP-port-53 traffic to this listener is phase-2 tun-level
+ *     DNS forwarding (see PHASE2.md); FirewallVpnService carries an
+ *     experimental DNS-redirect preview of that path which the UI
+ *     deliberately does not claim as enforcement. Until phase 2
+ *     lands, this service runs the proxy successfully and surfaces
+ *     its status in Diagnostics and the DNS-prefs "Active now" card;
+ *     the listener is reachable manually for debugging via
+ *     `dig @127.0.0.1 -p 5354 example.com` when running with shell
+ *     access on the device.
  *
  * Process supervision:
  *   - One instance at a time. Repeated start commands are idempotent
@@ -119,6 +122,7 @@ class DnsCryptProxyService : Service() {
             "starting binary=${binary.absolutePath} config=${configFile.absolutePath} " +
                 "stamp_id=${provider.id}")
 
+        proxyRunning.set(true)
         supervisorThread = Thread({
             var attempt = 0
             while (running.get() && !Thread.currentThread().isInterrupted) {
@@ -160,6 +164,7 @@ class DnsCryptProxyService : Service() {
     }
 
     private fun stopProxy() {
+        proxyRunning.set(false)
         running.set(false)
         runCatching { supervisorThread?.interrupt() }
         supervisorThread = null
@@ -237,7 +242,12 @@ class DnsCryptProxyService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setContentTitle("dnscrypt-proxy active")
-            .setContentText("DNS routed through 127.0.0.1:$LOCAL_PORT")
+            // Honest phrasing: the proxy is up, but app DNS is not
+            // routed through it until phase-2 tun forwarding lands.
+            .setContentText(
+                "Local resolver on 127.0.0.1:$LOCAL_PORT — app DNS not " +
+                    "routed here yet (phase 2)"
+            )
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(pendingMain)
@@ -266,6 +276,13 @@ class DnsCryptProxyService : Service() {
          *  default 53 (privileged) and above 5353 (mDNS) to avoid
          *  collisions with anything else userland-bindable. */
         const val LOCAL_PORT = 5354
+
+        /** Same-process liveness signal for the DNS-prefs "Active now"
+         *  readout. The suite is single-process (same pattern as
+         *  DropStats), so a static flag suffices — no binder plumbing. */
+        private val proxyRunning = AtomicBoolean(false)
+
+        fun isRunning(): Boolean = proxyRunning.get()
 
         fun start(ctx: Context) {
             ctx.startForegroundService(Intent(ctx, DnsCryptProxyService::class.java))

@@ -3,19 +3,19 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!--
-      Suite capability registry permissions. Same pattern as passgen +
-      aegis: define our own signature-protected READ_CAPS, declare use of
-      every peer's. signature level = only same-cert callers admitted.
+      Suite capability registry permission. ONE shared signature-level
+      name declared identically in every suite app (first-installed
+      definition wins by Android semantics; identical same-cert
+      declarations keep that safe). CAPS_WRITE is defined but requested
+      by no app — a permanently locked write gate for the provider.
     -->
     <permission
-        android:name="com.understory.firewall.permission.READ_CAPS"
+        android:name="com.understory.suite.CAPS"
         android:protectionLevel="signature" />
-    <uses-permission android:name="com.understory.passgen.permission.READ_CAPS" />
-    <uses-permission android:name="com.understory.aegis.permission.READ_CAPS" />
-    <uses-permission android:name="com.understory.backups.permission.READ_CAPS" />
-    <uses-permission android:name="com.understory.browser.permission.READ_CAPS" />
-    <uses-permission android:name="com.understory.antivirus.permission.READ_CAPS" />
-    <uses-permission android:name="com.understory.vaultfolder.permission.READ_CAPS" />
+    <permission
+        android:name="com.understory.suite.CAPS_WRITE"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="com.understory.suite.CAPS" />
 
     <!--
       WRITE_SECURE_SETTINGS — declared so the ADB-grant flow has a
@@ -208,8 +208,10 @@
 
         <!--
           VpnService — captures and drops traffic from packages on the
-          user's blocklist. Protected by BIND_VPN_SERVICE (signature-level,
-          granted by the system) so other apps cannot bind directly.
+          user's blocklist. exported="true" is the platform contract for
+          the android.net.VpnService intent-filter (system binds after
+          user consent); BIND_VPN_SERVICE is signature-level so only the
+          OS can actually bind — other apps cannot.
           foregroundServiceType="specialUse" with PROPERTY_SPECIAL_USE_
           FGS_SUBTYPE="vpn" is the correct type for non-system VPN apps
           on Android 14+. The previous "systemExempted" was reserved for
@@ -220,7 +222,7 @@
         -->
         <service
             android:name=".FirewallVpnService"
-            android:exported="false"
+            android:exported="true"
             android:permission="android.permission.BIND_VPN_SERVICE"
             android:foregroundServiceType="specialUse">
             <intent-filter>
@@ -256,7 +258,8 @@
             android:name=".SuiteCapsProvider"
             android:authorities="com.understory.firewall.suitecaps"
             android:exported="true"
-            android:permission="com.understory.firewall.permission.READ_CAPS"
+            android:readPermission="com.understory.suite.CAPS"
+            android:writePermission="com.understory.suite.CAPS_WRITE"
             android:grantUriPermissions="false" />
 
     </application>

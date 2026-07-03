@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Defense in depth. The app does not request INTERNET permission, so it cannot
-  make any network call. This config additionally denies cleartext for every
-  domain — should the OS ever route traffic for us, it would be blocked.
+  Firewall is the one non-browser suite app that holds INTERNET (VpnService
+  plumbing + protectedSocket fallbacks). TLS-only posture: cleartext is
+  denied for every domain; certificate trust stays on the default system
+  anchors (no custom trust-anchors element — an empty one is not a valid
+  deny-all and would break platform-stack TLS).
 -->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false">
-        <trust-anchors />
-    </base-config>
+    <base-config cleartextTrafficPermitted="false" />
 </network-security-config>

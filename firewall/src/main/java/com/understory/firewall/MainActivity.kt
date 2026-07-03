@@ -895,7 +895,10 @@ private fun DnsPrefsButton(onClick: () -> Unit) {
         Column(modifier = Modifier.weight(1f)) {
             Text("DNS preferences", color = Color(0xFFE0E0E0), fontSize = 13.sp)
             Text(
-                "Current: ${current.name}",
+                // "Selected", not "Current" — the stored choice is
+                // informational until applied via system Private DNS
+                // (in-tunnel DNS enforcement is phase 2; see PHASE2.md).
+                "Selected: ${current.name} · applied via system Private DNS only",
                 color = Color(0xFF9E9E9E),
                 fontSize = 11.sp,
             )
@@ -1429,7 +1432,8 @@ private fun DnsPrefsScreen(onBack: () -> Unit) {
             Column(modifier = Modifier.weight(1f)) {
                 Text("DNS preferences", color = Color(0xFFE0E0E0), fontSize = 22.sp)
                 Text(
-                    "Phase 1: pick a provider; apply via Android Private DNS.",
+                    "Phase 2 pending — selection is informational; " +
+                        "applied via system Private DNS only.",
                     color = Color(0xFF9E9E9E),
                     fontSize = 11.sp,
                 )
@@ -1440,16 +1444,20 @@ private fun DnsPrefsScreen(onBack: () -> Unit) {
         Spacer(Modifier.height(12.dp))
 
         Text(
-            "DoT providers (Cloudflare, Quad9, Google, OpenDNS, NextDNS) " +
-                "apply via Android's Private DNS — programmatic when " +
-                "WRITE_SECURE_SETTINGS is granted, else a deep-link.\n\n" +
-                "DNSCrypt providers (Quad9 / AdGuard / Cisco) route through " +
-                "the local dnscrypt-proxy service. Selecting one switches " +
-                "the firewall VPN into DNS-redirect mode: apps' DNS queries " +
-                "are intercepted and forwarded to the proxy. " +
-                "While DNS-redirect mode is active, app-blocking and " +
-                "port-blocking are paused — they can't share one tun " +
-                "without the userspace TCP forwarder (phase 4).",
+            "Picking a provider stores your choice — it does not change " +
+                "how DNS resolves by itself.\n\n" +
+                "DoT providers (Cloudflare, Quad9, Google, OpenDNS, NextDNS) " +
+                "take effect only through Android's system Private DNS — " +
+                "programmatic when WRITE_SECURE_SETTINGS is granted, else " +
+                "the deep-link below.\n\n" +
+                "DNSCrypt providers (Quad9 / AdGuard / Cisco) start the " +
+                "bundled dnscrypt-proxy as a local service, but apps' DNS " +
+                "queries are NOT forwarded to it yet — that needs tun-level " +
+                "DNS forwarding, which is phase 2 (see PHASE2.md). If the " +
+                "firewall VPN (re)starts while a DNSCrypt provider is " +
+                "selected it enters an experimental DNS-redirect mode that " +
+                "pauses app- and port-blocking; treat that as a preview, " +
+                "not enforcement.",
             color = Color(0xFF9E9E9E),
             fontSize = 11.sp,
         )
@@ -1460,6 +1468,10 @@ private fun DnsPrefsScreen(onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(4.dp),
             modifier = Modifier.fillMaxWidth().weight(1f),
         ) {
+            item(key = "dns-active-mechanism") {
+                DnsActiveMechanismCard()
+                Spacer(Modifier.height(8.dp))
+            }
             items(DnsProvider.ALL, key = { "dns-${it.id}" }) { provider ->
                 DnsProviderRow(
                     provider = provider,
@@ -1486,6 +1498,67 @@ private fun DnsPrefsScreen(onBack: () -> Unit) {
                 DnsActionsCard(selected)
             }
         }
+    }
+}
+
+/**
+ * "Active now" readout — which DNS mechanism is actually in effect,
+ * as opposed to which provider is selected. Two live facts:
+ *
+ *   - the device's system Private DNS state, read back from
+ *     Settings.Global via PrivateDnsApplier (reads need no permission,
+ *     so this reflects reality even when our write path lacks the
+ *     ADB grant — including changes the user made in Settings);
+ *   - whether the local dnscrypt-proxy service is running (with the
+ *     explicit caveat that app DNS is not routed to it until phase 2).
+ */
+@Composable
+private fun DnsActiveMechanismCard() {
+    val ctx = LocalContext.current
+    var privateDns by remember { mutableStateOf(PrivateDnsApplier.current(ctx)) }
+    var proxyRunning by remember { mutableStateOf(DnsCryptProxyService.isRunning()) }
+    // 1s poll, same cadence rationale as the drop counter on the main
+    // screen: the reads are cheap, and the card must track changes made
+    // outside this screen (Settings edits, service start/stop) without
+    // lifecycle plumbing.
+    LaunchedEffect(Unit) {
+        while (true) {
+            privateDns = PrivateDnsApplier.current(ctx)
+            proxyRunning = DnsCryptProxyService.isRunning()
+            delay(1000)
+        }
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF1A2A3A), RoundedCornerShape(6.dp))
+            .padding(12.dp),
+    ) {
+        Text("Active now", color = Color(0xFF90CAF9), fontSize = 13.sp)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            when (privateDns.mode) {
+                "hostname" -> "System Private DNS: " +
+                    (privateDns.specifier ?: "(hostname mode, no hostname set)")
+                "off" -> "System Private DNS: off — cleartext resolver " +
+                    "from the network"
+                else -> "System Private DNS: automatic (opportunistic DoT)"
+            },
+            color = Color(0xFFE0E0E0),
+            fontSize = 11.sp,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            if (proxyRunning) {
+                "dnscrypt-proxy: running on " +
+                    "127.0.0.1:${DnsCryptProxyService.LOCAL_PORT} — app DNS " +
+                    "is not routed here yet (phase 2)"
+            } else {
+                "dnscrypt-proxy: not running"
+            },
+            color = if (proxyRunning) Color(0xFFFFB74D) else Color(0xFF9E9E9E),
+            fontSize = 11.sp,
+        )
     }
 }
 
@@ -1549,17 +1622,17 @@ private fun DnsActionsCard(selected: DnsProvider) {
         )
         Spacer(Modifier.height(6.dp))
 
-        // DNSCrypt providers don't go through Android Private DNS — they
-        // route via the bundled dnscrypt-proxy listening on 127.0.0.1.
-        // That path is enabled by the same packet-forwarder commit that
-        // activates port-blocking; until then surface what's pending.
+        // DNSCrypt providers don't go through Android Private DNS, and
+        // apps' DNS doesn't reach the local proxy until phase-2 tun
+        // forwarding — so there is nothing to "apply" here yet. Say so.
         if (selected.protocol == DnsProtocol.DNSCRYPT) {
             Text(
-                "DNSCrypt providers route through a local proxy (dnscrypt-" +
-                    "proxy) that the firewall VPN forwards DNS queries to. " +
-                    "The proxy binary is bundled in the APK; activation " +
-                    "needs the userspace packet forwarder which lands in a " +
-                    "follow-up commit. Your selection is stored.",
+                "Phase 2 — selection is informational. The bundled " +
+                    "dnscrypt-proxy runs as a local service (status above), " +
+                    "but apps' DNS queries are not forwarded to it until " +
+                    "tun-level DNS forwarding lands. For an enforced DNS " +
+                    "override today, pick a DoT provider and apply it via " +
+                    "system Private DNS.",
                 color = Color(0xFFFFB74D), fontSize = 11.sp,
             )
             return@Column

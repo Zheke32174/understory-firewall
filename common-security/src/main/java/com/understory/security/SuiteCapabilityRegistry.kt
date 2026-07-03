@@ -36,12 +36,10 @@ import java.security.MessageDigest
 object SuiteCapabilityRegistry {
 
     /**
-     * Same digest as [Tamper.EXPECTED_CERT_SHA256] /
-     * [SuiteAttestation.EXPECTED_SUITE_CERT_SHA256]. Build-time
-     * `verifyCertPin` keeps these in sync across all three sites.
+     * Same digest as [Tamper] / [SuiteAttestation] — all three sites read
+     * [SuitePins.EXPECTED_CERT_SHA256], the single pin source.
      */
-    private const val EXPECTED_SUITE_CERT_SHA256 =
-        "aba68a81a0d63b5549794e586875a4f04e6dba3a6fe25d363e04eb75f46df69e"
+    private val EXPECTED_SUITE_CERT_SHA256 = SuitePins.EXPECTED_CERT_SHA256
 
     /**
      * The consumer's authoritative belief about each peer:

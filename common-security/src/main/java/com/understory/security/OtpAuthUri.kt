@@ -1,7 +1,6 @@
 package com.understory.security
 
 import android.net.Uri
-import java.net.URLDecoder
 
 /**
  * Parser + builder for `otpauth://` URIs — the de-facto standard format
@@ -89,7 +88,9 @@ data class OtpAuthEntry(
             }
 
             // Path is "/Issuer:Account" or "/Account" — strip leading slash.
-            val labelRaw = uri.path?.removePrefix("/")?.let { decode(it) } ?: ""
+            // Uri.getPath() already percent-decodes; decoding again with
+            // URLDecoder would turn a literal '+' into a space.
+            val labelRaw = uri.path?.removePrefix("/") ?: ""
             val (labelIssuer, account) = splitLabel(labelRaw)
 
             val secretB32 = uri.getQueryParameter("secret")
@@ -130,8 +131,5 @@ data class OtpAuthEntry(
 
         private fun urlEncode(s: String): String =
             java.net.URLEncoder.encode(s, "UTF-8").replace("+", "%20")
-
-        private fun decode(s: String): String =
-            try { URLDecoder.decode(s, "UTF-8") } catch (_: Throwable) { s }
     }
 }

@@ -27,12 +27,12 @@ import java.security.MessageDigest
 object Tamper {
 
     /**
-     * SHA-256 of our APK signing certificate. Hardcoded against this build's
-     * key. If the APK is repackaged with a different signature, this check
-     * fails and the app refuses to run.
+     * SHA-256 of our APK signing certificate — debug or release pin,
+     * selected per build variant in [SuitePins]. If the APK is repackaged
+     * with a different signature, this check fails and the app refuses to
+     * run.
      */
-    private const val EXPECTED_CERT_SHA256 =
-        "aba68a81a0d63b5549794e586875a4f04e6dba3a6fe25d363e04eb75f46df69e"
+    private val EXPECTED_CERT_SHA256 = SuitePins.EXPECTED_CERT_SHA256
 
     data class Report(
         val signatureMatches: Boolean,

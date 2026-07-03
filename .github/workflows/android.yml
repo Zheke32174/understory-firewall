@@ -26,3 +26,29 @@ jobs:
         with:
           name: firewall-debug-apk
           path: firewall/build/outputs/apk/debug/*.apk
+  # Manual-only release lane (workflow_dispatch). On a box holding the offline
+  # release keystore, run the same gradle line locally with
+  # -PreleaseKeystore/-PreleaseKeystorePassFile to sign and pin-assert the
+  # release APK. On plain CI (no keystore) this job exercises the
+  # unsigned-refusal path instead: verifyCertPin fails the unsigned release
+  # APK under -PrequireSignedRelease=true, so a red run here is the gate
+  # working, not a build regression. The default push job is unaffected.
+  release-check:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Install Android SDK components
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-35" "build-tools;35.0.0" > /dev/null
+      - name: Bundle dnscrypt-proxy
+        run: bash tools/fetch-dnscrypt-proxy.sh
+      - name: Assemble release + assert signing pin
+        run: gradle --no-daemon assembleRelease verifyCertPin -PrequireSignedRelease=true

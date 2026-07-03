@@ -58,6 +58,31 @@ object PrivateDnsApplier {
             android.content.pm.PackageManager.PERMISSION_GRANTED
     }
 
+    /** Live snapshot of the device's Private DNS configuration.
+     *  [mode] is one of "hostname" | "opportunistic" | "off";
+     *  [specifier] is the DoT hostname (only meaningful in hostname
+     *  mode). */
+    data class Current(val mode: String, val specifier: String?)
+
+    /** Read the current system Private DNS state. Settings.Global READS
+     *  need no permission (only writes need WRITE_SECURE_SETTINGS), so
+     *  this works without the ADB grant. The UI uses it to report which
+     *  mechanism is actually in effect — including values the user set
+     *  by hand in Settings — rather than assuming our own writes stuck.
+     *  A null/blank mode is reported as "opportunistic": that's how
+     *  Android itself treats an unset value. */
+    fun current(ctx: Context): Current {
+        val resolver = ctx.contentResolver
+        val mode = runCatching { Settings.Global.getString(resolver, MODE_KEY) }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+            ?: "opportunistic"
+        val specifier = runCatching {
+            Settings.Global.getString(resolver, SPECIFIER_KEY)
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+        return Current(mode, specifier)
+    }
+
     /** Apply [hostname] as the device's Private DNS specifier in
      *  hostname mode. If the grant is missing, returns [Result.NeedsAdbGrant]
      *  with the exact command the user can run from a connected machine. */

@@ -3,9 +3,8 @@
 `debug.keystore` here is the suite's pinned debug-signing keystore. Wired into
 every app module's `signingConfigs.debug` via `android/build.gradle.kts`, so
 running `gradle assembleDebug` on any developer's machine produces APKs whose
-signing cert digest matches `Tamper.EXPECTED_CERT_SHA256` /
-`SuiteAttestation.EXPECTED_SUITE_CERT_SHA256` / equivalent in
-`SuiteCapabilityRegistry`.
+signing cert digest matches `SuitePins.DEBUG_CERT_SHA256` (consumed by
+`Tamper`, `SuiteAttestation`, and `SuiteCapabilityRegistry`).
 
 Cert digest (SHA-256):
 
@@ -44,12 +43,10 @@ If we ever need to rotate (e.g. credential leak, switch signing identity):
    keytool -list -v -keystore debug.keystore -storepass android \
      | grep "SHA256:" | awk '{print $2}' | tr -d ':' | tr '[:upper:]' '[:lower:]'
    ```
-3. Update **every** pin reference (one source of truth would be nice; we have
-   four right now — listed in `RELEASE_BLOCKERS.md`):
-   - `common-security/.../Tamper.kt` → `EXPECTED_CERT_SHA256`
-   - `common-security/.../SuiteAttestation.kt` → `EXPECTED_SUITE_CERT_SHA256`
-   - `common-security/.../SuiteCapabilityRegistry.kt` → `EXPECTED_SUITE_CERT_SHA256`
-   - `passgen/.../MainActivity.kt` (diagnostic UI displays the pin)
+3. Update the single pin source:
+   - `common-security/.../SuitePins.kt` → `DEBUG_CERT_SHA256`
+   (Tamper / SuiteAttestation / SuiteCapabilityRegistry and the passgen
+   diagnostic UI all read `SuitePins`; nothing else to touch.)
 4. `gradle :passgen:assembleDebug … :vault-folder:assembleDebug`. The
    `verifyCertPin` task in `android/build.gradle.kts` runs after assemble
    and refuses any APK that doesn't match.

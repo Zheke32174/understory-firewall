@@ -15,6 +15,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Phase 3 DNS-redirect tun reader.
  *
+ * RELEASE BOUNDARY (phase 1.5 honest-labelling decision): this path is
+ * a preview of phase-2 tun-level DNS forwarding and is NOT claimed by
+ * any user-facing copy as DNS enforcement — see PHASE2.md. UI strings
+ * must keep saying "selection is informational; applied via system
+ * Private DNS only" until this is release-qualified.
+ *
  * Tun is configured (in FirewallVpnService DNS-redirect mode) to:
  *   - addAddress(VPN_LOCAL_ADDR, 32)        — our tun's local IP
  *   - addRoute(FAKE_DNS_IP, 32)             — only this IP routes via tun

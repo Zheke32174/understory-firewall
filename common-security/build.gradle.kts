@@ -24,6 +24,9 @@ android {
 
     buildFeatures {
         compose = true
+        // BuildConfig.DEBUG drives SuitePins' debug-vs-release cert-pin
+        // selection; AGP 8 disables library BuildConfig by default.
+        buildConfig = true
     }
 
     lint {
