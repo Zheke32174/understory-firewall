@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.AppOpsManager
 import android.app.admin.DevicePolicyManager
 import android.content.Context
+import android.content.pm.PackageManager
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
 import com.understory.security.Diagnostics
@@ -32,7 +33,18 @@ data class AuditFinding(
     val packageName: String,
     val label: String,
     val capabilities: List<RiskCapability>,
-)
+    /**
+     * Capabilities we could NOT confirm one way or the other (AppOps
+     * returned MODE_DEFAULT and the manifest-permission fallback was also
+     * inconclusive). Rendered as "unknown", NEVER as clean (CD-4d). A
+     * finding with only unknown caps still surfaces so the user isn't
+     * shown a false green.
+     */
+    val unknownCapabilities: List<RiskCapability> = emptyList(),
+) {
+    /** True if this finding carries at least one confirmed granted cap. */
+    val hasConfirmed: Boolean get() = capabilities.isNotEmpty()
+}
 
 enum class RiskCapability(
     val display: String,
@@ -192,30 +204,51 @@ object RemoteAdminAudit {
         for (ai in installed) {
             if (ai.packageName == ctx.packageName) continue
             val caps = mutableListOf<RiskCapability>()
+            val unknown = mutableListOf<RiskCapability>()
             if (ai.packageName in deviceAdmins) caps += RiskCapability.DeviceAdmin
             if (ai.packageName in a11yServices) caps += RiskCapability.AccessibilityService
             if (ai.packageName in notifListeners) caps += RiskCapability.NotificationListener
             if (ops != null) {
-                if (opGranted(ops, AppOpsManager.OPSTR_GET_USAGE_STATS, ai.uid, ai.packageName))
-                    caps += RiskCapability.UsageStats
-                if (opGranted(ops, AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW, ai.uid, ai.packageName))
-                    caps += RiskCapability.SystemOverlay
-                // OPSTR_REQUEST_INSTALL_PACKAGES and OPSTR_MANAGE_EXTERNAL_STORAGE are
-                // @hide / @SystemApi in AOSP and not exposed as Java constants in the
-                // public android.jar. Inline the documented op-strings (stable across
-                // Android 8+ for OPSTR_REQUEST_INSTALL_PACKAGES, Android 11+ for
-                // OPSTR_MANAGE_EXTERNAL_STORAGE — both ranges fully cover our minSdk 33).
-                if (opGranted(ops, "android:request_install_packages", ai.uid, ai.packageName))
-                    caps += RiskCapability.InstallPackages
-                if (opGranted(ops, "android:manage_external_storage", ai.uid, ai.packageName))
-                    caps += RiskCapability.ManageStorage
+                // Tri-state: on MODE_DEFAULT fall through to a manifest-
+                // permission check for the ops that have a paired runtime/
+                // special permission (usage-stats, overlay). Others stay
+                // AppOps-only.
+                when (opTri(ops, pm, AppOpsManager.OPSTR_GET_USAGE_STATS,
+                    "android.permission.PACKAGE_USAGE_STATS", ai.uid, ai.packageName)) {
+                    OpTri.Granted -> caps += RiskCapability.UsageStats
+                    OpTri.Unknown -> unknown += RiskCapability.UsageStats
+                    OpTri.NotGranted -> {}
+                }
+                when (opTri(ops, pm, AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW,
+                    "android.permission.SYSTEM_ALERT_WINDOW", ai.uid, ai.packageName)) {
+                    OpTri.Granted -> caps += RiskCapability.SystemOverlay
+                    OpTri.Unknown -> unknown += RiskCapability.SystemOverlay
+                    OpTri.NotGranted -> {}
+                }
+                // OPSTR_REQUEST_INSTALL_PACKAGES / OPSTR_MANAGE_EXTERNAL_STORAGE
+                // are @hide in the public android.jar. Inline the documented
+                // op-strings (stable across our minSdk 33 range). No paired
+                // permission fallback needed — these read cleanly.
+                when (opTri(ops, pm, "android:request_install_packages",
+                    "android.permission.REQUEST_INSTALL_PACKAGES", ai.uid, ai.packageName)) {
+                    OpTri.Granted -> caps += RiskCapability.InstallPackages
+                    OpTri.Unknown -> unknown += RiskCapability.InstallPackages
+                    OpTri.NotGranted -> {}
+                }
+                when (opTri(ops, pm, "android:manage_external_storage",
+                    "android.permission.MANAGE_EXTERNAL_STORAGE", ai.uid, ai.packageName)) {
+                    OpTri.Granted -> caps += RiskCapability.ManageStorage
+                    OpTri.Unknown -> unknown += RiskCapability.ManageStorage
+                    OpTri.NotGranted -> {}
+                }
             }
-            if (caps.isNotEmpty()) {
+            if (caps.isNotEmpty() || unknown.isNotEmpty()) {
                 findings += AuditFinding(
                     packageName = ai.packageName,
                     label = runCatching { ai.loadLabel(pm).toString() }
                         .getOrElse { ai.packageName },
                     capabilities = caps,
+                    unknownCapabilities = unknown,
                 )
             }
         }
@@ -236,26 +269,54 @@ object RemoteAdminAudit {
         )
     }
 
+    /** Tri-state result of an AppOps grant check (§5.4 fix, A5/D10). */
+    private enum class OpTri { Granted, NotGranted, Unknown }
+
+    /**
+     * Tri-state grant check with a MODE_DEFAULT → manifest-permission
+     * fallback. AppOps MODE_ALLOWED ⇒ Granted; MODE_IGNORED/ERRORED ⇒
+     * NotGranted. On MODE_DEFAULT (the op has no explicit user decision)
+     * we consult [pm.checkPermission] for the paired [manifestPerm]:
+     * GRANTED ⇒ Granted, DENIED ⇒ NotGranted. A query that throws or
+     * remains ambiguous returns Unknown — rendered honestly, never "clean."
+     */
     @Suppress("DEPRECATION")
-    private fun opGranted(ops: AppOpsManager, op: String, uid: Int, pkg: String): Boolean {
-        // checkOpNoThrow is the cross-version answer here. unsafeCheckOpNoThrow
-        // (API 29+) is the modern name but checkOpNoThrow remains functional
-        // and behaves identically for the cap-scan use case (we don't care
-        // about op-note side effects, only the current grant state).
-        //
-        // Per-call exceptions are logged at debug level only, not error: a
-        // SecurityException for a single op on a single package is normal
-        // (some ops are not queryable cross-package on some OEM builds)
-        // and would flood the diagnostics screen if elevated to error.
+    private fun opTri(
+        ops: AppOpsManager,
+        pm: PackageManager,
+        op: String,
+        manifestPerm: String,
+        uid: Int,
+        pkg: String,
+    ): OpTri {
+        // Per-call exceptions are logged at debug level: a SecurityException
+        // for one op on one package is normal on some OEM builds and would
+        // flood diagnostics if elevated to error.
         val mode = runCatching { ops.checkOpNoThrow(op, uid, pkg) }
             .getOrElse {
                 Diagnostics.log(
                     "firewall.RemoteAdminAudit",
                     "checkOpNoThrow($op, $pkg) threw: ${it.javaClass.simpleName}",
                 )
-                return false
+                return OpTri.Unknown
             }
-        return mode == AppOpsManager.MODE_ALLOWED
+        return when (mode) {
+            AppOpsManager.MODE_ALLOWED -> OpTri.Granted
+            AppOpsManager.MODE_IGNORED, AppOpsManager.MODE_ERRORED -> OpTri.NotGranted
+            else -> {
+                // MODE_DEFAULT (or an unexpected mode): defer to the paired
+                // manifest permission's grant state.
+                val perm = runCatching { pm.checkPermission(manifestPerm, pkg) }
+                    .getOrElse {
+                        return OpTri.Unknown
+                    }
+                when (perm) {
+                    PackageManager.PERMISSION_GRANTED -> OpTri.Granted
+                    PackageManager.PERMISSION_DENIED -> OpTri.NotGranted
+                    else -> OpTri.Unknown
+                }
+            }
+        }
     }
 
     /**

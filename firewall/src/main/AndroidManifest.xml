@@ -34,6 +34,17 @@
         tools:ignore="ProtectedPermissions" />
 
     <!--
+      PACKAGE_USAGE_STATS — special app access ("Usage access"), granted by
+      the user in Settings, never at runtime. Powers the opt-in Traffic-by-App
+      screen (NetworkStatsManager + foreground-window cross-reference). The
+      screen degrades to a "grant Usage access" affordance without it — the
+      permission is NEVER required for the app to function. Same special-access
+      pattern as WRITE_SECURE_SETTINGS above.
+    -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+
+    <!--
       The firewall is the ONE app in the suite that legitimately needs
       network visibility — it owns the VpnService slot and gates outbound
       traffic from blocked apps via a local tun. Permissions are explicit
@@ -152,6 +163,21 @@
         <package android:name="com.understory.browser" />
         <package android:name="com.understory.antivirus" />
         <package android:name="com.understory.vaultfolder" />
+        <!--
+          Tailscale — attribution only (name the incumbent in copy + read
+          installed/version for Tunnel Posture). The CM TRANSPORT_VPN veto
+          NEVER depends on this; if the package is invisible we degrade to
+          "another app" (design-v2/firewall.md §4/§5.1, SUITE #9).
+        -->
+        <package android:name="com.tailscale.ipn" />
+        <!--
+          Common consumer VPNs — cosmetic, for nicer incumbent copy only.
+          The guardrail's veto is package-independent.
+        -->
+        <package android:name="com.wireguard.android" />
+        <package android:name="org.mullvad.mullvadvpn" />
+        <package android:name="net.openvpn.openvpn" />
+        <package android:name="ch.protonvpn.android" />
         <!-- Lucky Patcher / Xposed / Magisk — same Tamper.luckyPatcherInstalled lookups. -->
         <package android:name="com.chelpus.lackypatch" />
         <package android:name="com.dimonvideo.luckypatcher" />
@@ -187,9 +213,10 @@
         android:supportsRtl="true">
 
         <!--
-          Activity-isolation set (excludeFromRecents/noHistory/singleInstance)
-          relaxed for the testing phase — see passgen/aegis manifests for
-          the full rationale. RELEASE-BLOCKER: re-evaluate before publish.
+          Activity-isolation set (excludeFromRecents/singleTask) kept for the
+          suite security posture. Orientation is sensor-portrait (SUITE #9): a
+          rigid portrait lock fought accessibility rotation without adding
+          protection; the FLAG_SECURE + recents-off hardening is what matters.
         -->
         <activity
             android:name=".MainActivity"
@@ -197,7 +224,7 @@
             android:launchMode="singleTask"
             android:excludeFromRecents="true"
             android:resizeableActivity="false"
-            android:screenOrientation="portrait"
+            android:screenOrientation="sensorPortrait"
             android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
             android:theme="@style/Theme.Firewall">
             <intent-filter>
@@ -207,18 +234,20 @@
         </activity>
 
         <!--
-          VpnService — captures and drops traffic from packages on the
-          user's blocklist. exported="true" is the platform contract for
-          the android.net.VpnService intent-filter (system binds after
-          user consent); BIND_VPN_SERVICE is signature-level so only the
-          OS can actually bind — other apps cannot.
-          foregroundServiceType="specialUse" with PROPERTY_SPECIAL_USE_
-          FGS_SUBTYPE="vpn" is the correct type for non-system VPN apps
-          on Android 14+. The previous "systemExempted" was reserved for
-          apps in the system-exempted list (which we are not), causing
-          Android 14+ to silently reject startForeground() calls — the
-          consent dialog appeared but the post-consent service start
-          failed quietly, leaving the toggle apparently inert.
+          VpnService — the WALLED-OFF Standalone engine (design-v2/firewall.md
+          §3). It only ever establishes a session when the user has opted into
+          Standalone mode, armed the engine, AND the VpnSlotProbe guardrail
+          confirms no other VPN holds the slot. On a Tailscale device that
+          state is unreachable, so this service stays dormant and the app is a
+          pure Companion egress dashboard. A registered-but-dormant VpnService
+          does NOT hold the slot (holding requires an established session), so
+          its manifest presence is doctrine-safe.
+
+          exported="true" is the platform contract for the android.net.VpnService
+          intent-filter (the system binds after user consent); BIND_VPN_SERVICE
+          is signature-level so only the OS can bind. foregroundServiceType=
+          "specialUse" with PROPERTY_SPECIAL_USE_FGS_SUBTYPE="vpn" is the
+          correct type for a non-system VPN app on Android 14+.
         -->
         <service
             android:name=".FirewallVpnService"
@@ -234,29 +263,13 @@
         </service>
 
         <!--
-          DNSCrypt proxy supervisor. Foreground service that runs the
-          bundled dnscrypt-proxy binary on 127.0.0.1:5354. Same-UID
-          only (exported=false). The binary is fetched into
-          jniLibs/<abi>/libdnscrypt-proxy.so by tools/fetch-dnscrypt-
-          proxy.sh; not committed to the repo (see firewall/.gitignore).
-        -->
-        <service
-            android:name=".DnsCryptProxyService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="dnscrypt" />
-        </service>
-
-        <!--
           Suite capability beacon. Read-only single-row provider that
           attests this app's package + version to peers. Signature-locked
           so only same-cert suite apps can query.
         -->
         <provider
             android:name=".SuiteCapsProvider"
-            android:authorities="com.understory.firewall.suitecaps"
+            android:authorities="${applicationId}.suitecaps"
             android:exported="true"
             android:readPermission="com.understory.suite.CAPS"
             android:writePermission="com.understory.suite.CAPS_WRITE"

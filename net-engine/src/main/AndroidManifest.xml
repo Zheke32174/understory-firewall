@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      No permissions, no components. The salvage engine's VpnService lives
+      in the app (it needs the manifest <service> + BIND_VPN_SERVICE). This
+      module carries only the pure packet parser + the protected forwarder.
+    -->
+</manifest>

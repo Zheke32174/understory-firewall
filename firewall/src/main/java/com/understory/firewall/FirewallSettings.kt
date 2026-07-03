@@ -4,202 +4,231 @@ import android.content.Context
 
 /**
  * Persisted firewall configuration. Plain SharedPreferences — these
- * values aren't credentials, just user preferences (which apps the
- * user has chosen to block).
+ * values aren't credentials, just user preferences (which apps the user
+ * flagged, which mode the app is in).
  *
- * The blocklist is the set of package names whose outbound traffic is
- * captured by our VpnService and dropped. Default: empty (nothing
- * blocked). Toggling an app to "blocked" adds it; toggling back
- * removes it.
+ * V2 model (design-v2/firewall.md §1, §8): the app has two modes.
+ *
+ *   COMPANION (default, permanent on any device with a VPN): observe /
+ *     advise only. No VpnService is ever established. The restrict set is
+ *     a *watchlist* the user acts on via Android's own per-app controls.
+ *
+ *   STANDALONE (opt-in, default-off): the salvaged VpnService engine may
+ *     run iff no other VPN holds the slot (VpnSlotProbe guardrail). The
+ *     restrict set additionally seeds the engine's hard-block list.
+ *
+ * The restrict set ([K_RESTRICT_LIST], née K_BLOCKLIST) is shared between
+ * both modes: flagging an app in Companion carries over if the user later
+ * enables Standalone.
  */
 object FirewallSettings {
     private const val PREF = "firewall_settings"
-    private const val K_BLOCKLIST = "blocklist"
-    private const val K_VPN_ENABLED = "vpn_enabled"
-    private const val K_VPN_PREEMPTED = "vpn_preempted"
+
+    // ---- V2 keys ----
+    private const val K_MODE = "firewall_mode"
+    private const val K_ENGINE_ARMED = "engine_armed"      // was K_VPN_ENABLED
+    private const val K_AUTO_STOPPED = "auto_stopped"      // was K_VPN_PREEMPTED
+    private const val K_RESTRICT_LIST = "restrict_list"    // was K_BLOCKLIST
+    private const val K_STANDALONE_EXPLAINED = "standalone_explained"
+    private const val K_MIGRATED_V2 = "migrated_v2"
     private const val K_DNS_PROVIDER = "dns_provider"
     private const val K_FIRST_RUN_AUDIT_DONE = "first_run_audit_done"
     private const val K_AUDIT_ACKNOWLEDGED = "audit_acknowledged"
-    private const val K_OVERLAY_ROUTING = "overlay_routing_enabled"
-    private const val K_OVERLAY_NETWORK = "overlay_network"
-    private const val K_BLOCKED_PORTS = "blocked_ports"
+
+    // ---- Legacy keys (read once during migration, then deleted) ----
+    private const val K_LEGACY_BLOCKLIST = "blocklist"
+    private const val K_LEGACY_VPN_ENABLED = "vpn_enabled"
+    private const val K_LEGACY_VPN_PREEMPTED = "vpn_preempted"
+    private const val K_LEGACY_OVERLAY_ROUTING = "overlay_routing_enabled"
+    private const val K_LEGACY_OVERLAY_NETWORK = "overlay_network"
+    private const val K_LEGACY_BLOCKED_PORTS = "blocked_ports"
+
+    private fun prefs(ctx: Context) =
+        ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
+
+    // ---------------------------------------------------------------
+    // Mode
+    // ---------------------------------------------------------------
 
     /**
-     * Comma-separated list of ports the user wants blocked. Each entry
-     * is a TCP/UDP port number 1..65535. Phase-1 stores intent only;
-     * Phase-2 (packet-forwarder VPN extension) consumes this set to
-     * actually drop matching packets across all apps.
+     * The persisted mode. Default [FirewallMode.COMPANION]. On the
+     * operator's Tailscale device this never leaves COMPANION because the
+     * guardrail keeps Standalone-armed permanently unreachable — the app
+     * is, in effect, the pure Companion egress dashboard.
      */
-    fun getBlockedPorts(ctx: Context): Set<Int> {
-        val raw = ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
-            .getString(K_BLOCKED_PORTS, "") ?: ""
-        return raw.split(',').mapNotNull { it.trim().toIntOrNull() }
-            .filter { it in 1..65_535 }
-            .toSet()
+    fun getMode(ctx: Context): FirewallMode {
+        val raw = prefs(ctx).getString(K_MODE, null)
+        return runCatching { FirewallMode.valueOf(raw ?: "") }
+            .getOrDefault(FirewallMode.COMPANION)
     }
 
-    fun setBlockedPorts(ctx: Context, ports: Set<Int>) {
-        val canonical = ports.filter { it in 1..65_535 }.sorted()
-            .joinToString(",")
-        ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
-            .putString(K_BLOCKED_PORTS, canonical)
-            .apply()
+    fun setMode(ctx: Context, mode: FirewallMode) {
+        prefs(ctx).edit().putString(K_MODE, mode.name).apply()
     }
 
-    /** Which overlay network the user has selected to route through.
-     *  One of "i2p" | "lokinet" | "yggdrasil"; default "i2p". */
-    fun getOverlayNetwork(ctx: Context): String =
-        ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
-            .getString(K_OVERLAY_NETWORK, "i2p")
-            ?: "i2p"
-
-    fun setOverlayNetwork(ctx: Context, network: String) {
-        ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
-            .putString(K_OVERLAY_NETWORK, network)
-            .apply()
-    }
-
-    /** Whether the firewall VPN should route blocked apps through the
-     *  selected overlay's SOCKS proxy instead of dropping their traffic.
-     *  Phase α scaffold: storing the toggle is supported; the
-     *  FirewallVpnService consumes this in a follow-up phase when the
-     *  SOCKS-relay path is implemented. Default false. */
-    fun isOverlayRoutingEnabled(ctx: Context): Boolean =
-        ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
-            .getBoolean(K_OVERLAY_ROUTING, false)
-
-    fun setOverlayRoutingEnabled(ctx: Context, enabled: Boolean) {
-        ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
-            .putBoolean(K_OVERLAY_ROUTING, enabled)
-            .apply()
-    }
-
-    /** Set of package names currently blocked. */
-    fun getBlockedPackages(ctx: Context): Set<String> {
-        return ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
-            .getStringSet(K_BLOCKLIST, emptySet())
-            ?.toSet()
-            ?: emptySet()
-    }
-
-    fun setBlockedPackages(ctx: Context, packages: Set<String>) {
-        ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
-            .putStringSet(K_BLOCKLIST, packages)
-            .apply()
-    }
-
-    fun isBlocked(ctx: Context, packageName: String): Boolean =
-        packageName in getBlockedPackages(ctx)
-
-    fun setBlocked(ctx: Context, packageName: String, blocked: Boolean) {
-        val current = getBlockedPackages(ctx).toMutableSet()
-        if (blocked) current += packageName else current -= packageName
-        setBlockedPackages(ctx, current)
-    }
+    // ---------------------------------------------------------------
+    // Engine arm request (only meaningful in STANDALONE)
+    // ---------------------------------------------------------------
 
     /**
-     * Whether the user has *requested* the VPN to be on. The VPN may
-     * actually be off (e.g. system killed the service) even when this
-     * is true — caller checks the actual VpnService state separately.
+     * Whether the user has *requested* the Standalone engine to be armed.
+     * Only meaningful when [getMode] == STANDALONE; in COMPANION this is
+     * effectively false and the engine never establishes a tun.
+     * The engine may actually be down (slot taken, service killed) even
+     * when this is true — the caller checks the live VpnSlot state.
      */
-    fun isVpnRequested(ctx: Context): Boolean =
-        ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
-            .getBoolean(K_VPN_ENABLED, false)
+    fun isEngineArmed(ctx: Context): Boolean =
+        prefs(ctx).getBoolean(K_ENGINE_ARMED, false)
 
-    fun setVpnRequested(ctx: Context, requested: Boolean) {
-        ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
-            .putBoolean(K_VPN_ENABLED, requested)
-            .apply()
+    fun setEngineArmed(ctx: Context, armed: Boolean) {
+        prefs(ctx).edit().putBoolean(K_ENGINE_ARMED, armed).apply()
     }
+
+    // ---------------------------------------------------------------
+    // Auto-stopped flag (neutral, replaces the "preempted" nag)
+    // ---------------------------------------------------------------
 
     /**
-     * Sticky flag set by [FirewallVpnService.onRevoke] when another VPN
-     * (e.g. Proton, system AlwaysOn VPN) takes the tunnel slot. Android
-     * only allows one active VpnService at a time and the most-recent
-     * `prepare()` call wins; when ours is revoked we lose the tun and
-     * the consent grant. The UI uses this flag to show a "preempted"
-     * banner with a one-tap re-enable that walks back through the
-     * consent dialog. Cleared on the next successful establish.
+     * Set by [FirewallVpnService.onRevoke] / the slot-watcher when a VPN
+     * takes the tunnel slot while the engine was armed. Drives the neutral
+     * hub message ("Standalone blocking stopped because a VPN is now using
+     * the VPN slot; it will resume when you turn that VPN off"), NOT a
+     * "Re-enable" nag. Cleared on the next successful arm or on mode-disable.
      */
-    fun isVpnPreempted(ctx: Context): Boolean =
-        ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
-            .getBoolean(K_VPN_PREEMPTED, false)
+    fun isAutoStopped(ctx: Context): Boolean =
+        prefs(ctx).getBoolean(K_AUTO_STOPPED, false)
 
-    fun setVpnPreempted(ctx: Context, preempted: Boolean) {
-        ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
-            .putBoolean(K_VPN_PREEMPTED, preempted)
-            .apply()
+    fun setAutoStopped(ctx: Context, autoStopped: Boolean) {
+        prefs(ctx).edit().putBoolean(K_AUTO_STOPPED, autoStopped).apply()
     }
+
+    // ---------------------------------------------------------------
+    // Restrict set (Companion watchlist + Standalone hard-block seed)
+    // ---------------------------------------------------------------
+
+    /** Set of package names on the restrict worklist. */
+    fun getRestrictedPackages(ctx: Context): Set<String> =
+        prefs(ctx).getStringSet(K_RESTRICT_LIST, emptySet())?.toSet() ?: emptySet()
+
+    fun setRestrictedPackages(ctx: Context, packages: Set<String>) {
+        prefs(ctx).edit().putStringSet(K_RESTRICT_LIST, packages).apply()
+    }
+
+    fun isRestricted(ctx: Context, packageName: String): Boolean =
+        packageName in getRestrictedPackages(ctx)
+
+    fun setRestricted(ctx: Context, packageName: String, restricted: Boolean) {
+        val current = getRestrictedPackages(ctx).toMutableSet()
+        if (restricted) current += packageName else current -= packageName
+        setRestrictedPackages(ctx, current)
+    }
+
+    // ---------------------------------------------------------------
+    // Standalone explainer seen
+    // ---------------------------------------------------------------
+
+    /** True once the user has seen (and confirmed past) the full-screen
+     *  Standalone explainer, so we don't re-nag after they enable it. */
+    fun isStandaloneExplained(ctx: Context): Boolean =
+        prefs(ctx).getBoolean(K_STANDALONE_EXPLAINED, false)
+
+    fun setStandaloneExplained(ctx: Context, explained: Boolean) {
+        prefs(ctx).edit().putBoolean(K_STANDALONE_EXPLAINED, explained).apply()
+    }
+
+    // ---------------------------------------------------------------
+    // DNS provider
+    // ---------------------------------------------------------------
 
     /**
      * The user's DNS provider preference, identified by [DnsProvider.id].
-     * Default = system-default (no override). Phase 1.5: the selection
-     * is informational — the only enforced apply path is Android's
-     * system Private DNS (PrivateDnsApplier when ADB-granted, else the
-     * Settings deep-link). A DNSCrypt selection additionally starts the
-     * local dnscrypt-proxy service and flips FirewallVpnService into
-     * its experimental DNS-redirect mode on the next establish; that
-     * path is a phase-2 preview and the UI deliberately does not
-     * present it as enforcement (see PHASE2.md).
+     * Default = system-default (no override). The only enforced apply path
+     * is Android's system Private DNS (DoT), via [PrivateDnsApplier] when
+     * WRITE_SECURE_SETTINGS is ADB-granted, else the Settings deep-link.
      */
     fun getDnsProviderId(ctx: Context): String =
-        ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
-            .getString(K_DNS_PROVIDER, DnsProvider.SYSTEM_DEFAULT.id)
+        prefs(ctx).getString(K_DNS_PROVIDER, DnsProvider.SYSTEM_DEFAULT.id)
             ?: DnsProvider.SYSTEM_DEFAULT.id
 
     fun setDnsProviderId(ctx: Context, id: String) {
-        ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
-            .putString(K_DNS_PROVIDER, id)
-            .apply()
+        prefs(ctx).edit().putString(K_DNS_PROVIDER, id).apply()
     }
 
+    // ---------------------------------------------------------------
+    // Audit flow (unchanged)
+    // ---------------------------------------------------------------
+
     /**
-     * One-shot flag set after the user has either accepted, declined, or
-     * dismissed the first-run audit prompt. The prompt offers to add
-     * every detected remote-admin-class app to the blocklist in one go;
-     * once handled (in either direction) we don't surface it again — the
-     * AuditScreen remains available from the main UI for manual review.
-     *
-     * Stored as a boolean so a future "reset audit prompt" debug action
-     * can clear it cleanly without having to invent a tri-state.
+     * One-shot flag set after the user has handled the first-run audit
+     * prompt (in either direction). Once handled we don't surface it
+     * again — the AuditScreen remains available for manual review.
      */
     fun isFirstRunAuditDone(ctx: Context): Boolean =
-        ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
-            .getBoolean(K_FIRST_RUN_AUDIT_DONE, false)
+        prefs(ctx).getBoolean(K_FIRST_RUN_AUDIT_DONE, false)
 
     fun setFirstRunAuditDone(ctx: Context, done: Boolean) {
-        ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
-            .putBoolean(K_FIRST_RUN_AUDIT_DONE, done)
-            .apply()
+        prefs(ctx).edit().putBoolean(K_FIRST_RUN_AUDIT_DONE, done).apply()
     }
 
     /**
-     * Per-package acknowledged set: apps the user has explicitly marked
-     * as "I know this one holds remote-admin caps and I'm okay with it"
-     * (work-profile MDM, Find My Device, a launcher with usage-stats by
-     * design, etc.). Acknowledged apps are filtered out of the audit's
-     * default view and excluded from the bulk "Block all" count, but
-     * still visible behind a toggle so the user can un-acknowledge.
-     *
-     * Acknowledging is *separate* from blocking: an app can be
-     * acknowledged (don't bother me about the cap) without being on
-     * the firewall blocklist. This is the right shape — the audit is
-     * a triage view, the blocklist is a network-policy view, and
-     * conflating them would force the user to either block legitimate
-     * apps or accept perpetual nag.
+     * Per-package acknowledged set: apps the user has explicitly marked as
+     * "I know this one holds remote-admin caps and I'm okay with it."
+     * Acknowledging is separate from restricting — the audit is a triage
+     * view, the restrict set is a worklist.
      */
-    fun getAuditAcknowledged(ctx: Context): Set<String> {
-        return ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
-            .getStringSet(K_AUDIT_ACKNOWLEDGED, emptySet())
-            ?.toSet()
-            ?: emptySet()
-    }
+    fun getAuditAcknowledged(ctx: Context): Set<String> =
+        prefs(ctx).getStringSet(K_AUDIT_ACKNOWLEDGED, emptySet())?.toSet() ?: emptySet()
 
     fun setAuditAcknowledged(ctx: Context, packageName: String, acknowledged: Boolean) {
         val current = getAuditAcknowledged(ctx).toMutableSet()
         if (acknowledged) current += packageName else current -= packageName
-        ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
-            .putStringSet(K_AUDIT_ACKNOWLEDGED, current)
-            .apply()
+        prefs(ctx).edit().putStringSet(K_AUDIT_ACKNOWLEDGED, current).apply()
+    }
+
+    // ---------------------------------------------------------------
+    // One-time V2 migration (§8)
+    // ---------------------------------------------------------------
+
+    /**
+     * Silent, lossless, one-time migration from the v1 key layout. Guarded
+     * by [K_MIGRATED_V2]. Copies the old blocklist into the restrict set,
+     * deletes the dead keys (ports, overlay), resets the DNS provider if it
+     * names a removed DNSCrypt id, and stamps the guard. Call once, early,
+     * before any screen reads settings. No migration UI.
+     */
+    fun migrateV2IfNeeded(ctx: Context) {
+        val p = prefs(ctx)
+        if (p.getBoolean(K_MIGRATED_V2, false)) return
+        val editor = p.edit()
+
+        // Blocklist → restrict set (curated app list survives as "watched").
+        // Only seed if the new key is unset, so a partial-run re-migration
+        // can't clobber a v2 user's edits.
+        if (!p.contains(K_RESTRICT_LIST)) {
+            val legacyBlock = p.getStringSet(K_LEGACY_BLOCKLIST, emptySet()) ?: emptySet()
+            editor.putStringSet(K_RESTRICT_LIST, legacyBlock.toSet())
+        }
+
+        // The old vpn-enabled/preempted flags do not carry over: v2 boots
+        // in COMPANION with the engine disarmed. We do not resurrect an
+        // armed engine from a v1 install (the guardrail owns arming now).
+
+        // Drop the removed DNSCrypt selection back to system default —
+        // those ids no longer exist in the catalog.
+        val dnsId = p.getString(K_DNS_PROVIDER, DnsProvider.SYSTEM_DEFAULT.id)
+        if (dnsId != null && dnsId.startsWith("dnscrypt-")) {
+            editor.putString(K_DNS_PROVIDER, DnsProvider.SYSTEM_DEFAULT.id)
+        }
+
+        // Delete dead keys (A11/A12 + the renamed originals).
+        editor.remove(K_LEGACY_BLOCKLIST)
+        editor.remove(K_LEGACY_VPN_ENABLED)
+        editor.remove(K_LEGACY_VPN_PREEMPTED)
+        editor.remove(K_LEGACY_OVERLAY_ROUTING)
+        editor.remove(K_LEGACY_OVERLAY_NETWORK)
+        editor.remove(K_LEGACY_BLOCKED_PORTS)
+
+        editor.putBoolean(K_MIGRATED_V2, true)
+        editor.apply()
     }
 }

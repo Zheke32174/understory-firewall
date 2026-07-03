@@ -12,8 +12,8 @@ android {
         applicationId = "com.understory.firewall"
         minSdk = 33
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1-skeleton"
+        versionCode = 2
+        versionName = "2.0"
         resourceConfigurations += listOf("en")
         base.archivesName = "firewall"
     }
@@ -80,13 +80,12 @@ android {
 
 dependencies {
     implementation(project(":common-security"))
-    // Overlay status singletons — read-only consumption to render the
-    // active proxy in firewall's posture banner and to gate the
-    // Overlay-routing toggle. We never start an overlay daemon from
-    // firewall (same-UID rule); the browser owns daemon lifecycle.
-    implementation(project(":overlay-i2p"))
-    implementation(project(":overlay-lokinet"))
-    implementation(project(":overlay-yggdrasil"))
+    // Salvaged packet engine (design-v2/firewall.md §7). The Standalone
+    // engine uses plain app-drop; VpnPacketParser/DnsRedirector are
+    // compiled but not called (they survive for a future userspace
+    // forwarder and carry their own JVM unit tests). DropStats lives here
+    // and IS used by the Standalone-armed drop counter.
+    implementation(project(":net-engine"))
 
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)

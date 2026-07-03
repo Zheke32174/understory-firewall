@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">firewall</string>
+    <!-- Store-facing display name (design-v2/firewall.md §10). Kills the
+         "firewall" overclaim: in the default Companion mode it blocks
+         nothing — it reads, explains, and routes. Package id stays
+         com.understory.firewall. -->
+    <string name="app_name">Understory Net Audit</string>
+    <!-- The VpnService session label shown by the OS in VPN status; only
+         appears in the walled-off Standalone mode. -->
+    <string name="engine_session_name">Understory Standalone blocking</string>
 </resources>

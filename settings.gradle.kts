@@ -22,7 +22,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "firewall"
 include(":common-security")
-include(":overlay-i2p")
-include(":overlay-lokinet")
-include(":overlay-yggdrasil")
+include(":net-engine")
 include(":firewall")
