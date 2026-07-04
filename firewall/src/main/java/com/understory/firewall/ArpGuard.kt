@@ -422,5 +422,3 @@ object ArpGuard {
         prefs(ctx).edit().putStringSet(K_NOTIFIED, keys).apply()
     }
 }
-</content>
-</invoke>
