@@ -57,4 +57,3 @@
     <!-- Boundary -->
     <string name="arpguard_boundary">This is a read-and-warn tool. It reads only the on-device neighbor table through the optional Shizuku shell, keeps a gateway MAC baseline on this device only, and can’t stop an attacker — use it to notice and react.</string>
 </resources>
-</content>
