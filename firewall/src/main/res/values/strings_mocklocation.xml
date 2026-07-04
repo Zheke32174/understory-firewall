@@ -38,4 +38,14 @@
     <string name="mock_location_status_need_coords">Enter a valid latitude and longitude first.</string>
     <string name="mock_location_status_slot_lost">Another app holds the mock-location slot, or it was turned off. Re-select Understory to continue.</string>
     <string name="mock_location_status_failed">Couldn\'t start: %1$s</string>
+    <!-- Map picker -->
+    <string name="mock_map_title">Pick on a map</string>
+    <string name="mock_map_privacy">Map tiles load from the OpenStreetMap server over the network, so this reveals the area you browse to that server. Drag to move; the centre crosshair is the point.</string>
+    <string name="mock_map_search_hint">Search a place</string>
+    <string name="mock_map_search">Search</string>
+    <string name="mock_map_searching">Searching…</string>
+    <string name="mock_map_no_result">No match found.</string>
+    <string name="mock_map_center">Centre: %1$s, %2$s</string>
+    <string name="mock_map_zoom_in">Zoom in</string>
+    <string name="mock_map_zoom_out">Zoom out</string>
 </resources>

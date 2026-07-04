@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AssistChip
@@ -23,10 +24,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import java.util.Locale
 import com.understory.elevation.Elevation
 import com.understory.elevation.Outcome
 import com.understory.security.Diagnostics
@@ -66,6 +71,12 @@ fun MockLocationScreen(onBack: () -> Unit) {
     var lonText by remember { mutableStateOf("") }
     var accuracyText by remember { mutableStateOf("5") }
     var jitterOn by remember { mutableStateOf(false) }
+
+    // Map picker: [mapTarget] is where the map should recentre (preset / search);
+    // panning updates lat/lon only, so it never fights the target.
+    var mapTarget by remember { mutableStateOf(MapTarget(PRESETS.first().lat, PRESETS.first().lon)) }
+    var searchText by remember { mutableStateOf("") }
+    var searching by remember { mutableStateOf(false) }
 
     // A one-line status/result message under the controls.
     var status by remember { mutableStateOf<String?>(null) }
@@ -132,13 +143,90 @@ fun MockLocationScreen(onBack: () -> Unit) {
                         for (preset in PRESETS) {
                             AssistChip(
                                 onClick = {
-                                    latText = preset.lat.toString()
-                                    lonText = preset.lon.toString()
+                                    latText = fmtCoord(preset.lat)
+                                    lonText = fmtCoord(preset.lon)
+                                    mapTarget = MapTarget(preset.lat, preset.lon)
                                 },
                                 label = { Text(preset.label) },
                             )
                         }
                     }
+                }
+
+                // Pick on a map — the primary "set location" surface. Pan so the
+                // centre crosshair sits on the target; drag updates lat/lon live.
+                SuiteCard {
+                    Text(
+                        stringResource(R.string.mock_map_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+                    Text(
+                        stringResource(R.string.mock_map_privacy),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = UnderstoryTheme.semantic.warning,
+                    )
+                    Spacer(Modifier.height(UnderstoryTheme.spacing.sm))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(UnderstoryTheme.spacing.sm),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        OutlinedTextField(
+                            value = searchText,
+                            onValueChange = { searchText = it },
+                            label = { Text(stringResource(R.string.mock_map_search_hint)) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                        )
+                        SecureOutlinedButton(
+                            onClick = {
+                                val q = searchText.trim()
+                                if (q.isEmpty()) return@SecureOutlinedButton
+                                searching = true
+                                scope.launch {
+                                    val hit = NominatimSearch.search(q)
+                                    searching = false
+                                    if (hit != null) {
+                                        mapTarget = MapTarget(hit.lat, hit.lon)
+                                        latText = fmtCoord(hit.lat)
+                                        lonText = fmtCoord(hit.lon)
+                                        status = hit.label
+                                    } else {
+                                        status = ctx.getString(R.string.mock_map_no_result)
+                                    }
+                                }
+                            },
+                        ) {
+                            Text(
+                                if (searching) stringResource(R.string.mock_map_searching)
+                                else stringResource(R.string.mock_map_search),
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(UnderstoryTheme.spacing.sm))
+                    OsmMapPicker(
+                        target = mapTarget,
+                        onCenterChanged = { lat, lon ->
+                            latText = fmtCoord(lat)
+                            lonText = fmtCoord(lon)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(260.dp)
+                            .clip(RoundedCornerShape(12.dp)),
+                    )
+                    Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+                    Text(
+                        text = stringResource(
+                            R.string.mock_map_center,
+                            latText.ifBlank { "—" },
+                            lonText.ifBlank { "—" },
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
 
                 // Coordinate + accuracy inputs.
@@ -340,6 +428,9 @@ private fun openDeveloperOptions(ctx: android.content.Context) {
 
 /** Default jitter radius applied when the jitter switch is on. */
 private const val DEFAULT_JITTER_M = 8f
+
+/** Format a coordinate to a stable 5-decimal string (locale-independent). */
+private fun fmtCoord(d: Double): String = String.format(Locale.US, "%.5f", d)
 
 /** A small set of coordinate presets so the user isn't forced to type. */
 private data class Preset(val label: String, val lat: Double, val lon: Double)

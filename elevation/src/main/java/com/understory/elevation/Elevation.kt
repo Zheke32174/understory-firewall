@@ -242,6 +242,94 @@ object Elevation {
             else -> dhizukuNotCompiled()
         }
 
+    /**
+     * Set an appops mode for a package via the Shizuku shell:
+     * `appops set <pkg> <op> <mode>`. This is the rootless kill for special
+     * accesses `pm revoke` cannot touch — e.g. SYSTEM_ALERT_WINDOW (overlay /
+     * tap-jack) and GET_USAGE_STATS — and is reversible (mode "allow"/"default").
+     * Args are passed as separate argv elements (no shell interpolation).
+     *
+     * @param op an AppOpsManager op name, e.g. "SYSTEM_ALERT_WINDOW".
+     * @param mode one of "allow", "ignore", "deny", "default".
+     */
+    suspend fun setAppOpMode(ctx: Context, pkg: String, op: String, mode: String): Outcome =
+        when (grantedTier(ctx)) {
+            ElevTier.SHIZUKU -> shellOutcome(ctx, "appops $op=$mode") {
+                runShell(ctx, listOf("appops", "set", pkg, op, mode))
+            }
+            ElevTier.NONE -> unsupported("appops control")
+            else -> dhizukuNotCompiled()
+        }
+
+    /**
+     * Clear an app's data (reset to first-install state) via the Shizuku shell:
+     * `pm clear <pkg>`. Kills cached tokens / exfil sessions / a11y+overlay setup
+     * WITHOUT uninstalling. Asks PackageManager to clear on the caller's behalf —
+     * it does NOT root-read another app's /data.
+     */
+    suspend fun clearAppData(ctx: Context, pkg: String): Outcome =
+        when (grantedTier(ctx)) {
+            ElevTier.SHIZUKU -> shellOutcome(ctx, "clear app data") {
+                runShell(ctx, listOf("pm", "clear", pkg))
+            }
+            ElevTier.NONE -> unsupported("clear app data")
+            else -> dhizukuNotCompiled()
+        }
+
+    /**
+     * Enable/disable a specific component (a scalpel between appops-ignore and
+     * uninstall — neutralise a declared a11y / notification-listener / device-admin
+     * receiver while leaving the app installed) via the Shizuku shell:
+     * `pm enable|disable <pkg>/<component>`. Reversible; note an app update or
+     * reboot can re-enable it.
+     *
+     * @param component the class name (or the full "pkg/component" form).
+     */
+    suspend fun setComponentEnabled(
+        ctx: Context,
+        pkg: String,
+        component: String,
+        enabled: Boolean,
+    ): Outcome =
+        when (grantedTier(ctx)) {
+            ElevTier.SHIZUKU -> shellOutcome(ctx, "component ${if (enabled) "enable" else "disable"}") {
+                val target = if (component.contains('/')) component else "$pkg/$component"
+                runShell(ctx, listOf("pm", if (enabled) "enable" else "disable", target))
+            }
+            ElevTier.NONE -> unsupported("component control")
+            else -> dhizukuNotCompiled()
+        }
+
+    /**
+     * Neutralise a device-admin receiver so a stalkerware app that pinned itself
+     * as device-admin (blocking uninstall) can be removed, via the Shizuku shell:
+     * `dpm remove-active-admin <pkg>/<admin-component>`.
+     *
+     * Honest boundary: this CANNOT remove a true Device Owner / Profile Owner —
+     * those return a nonzero exit and surface as [Outcome.Failed].
+     */
+    suspend fun removeActiveDeviceAdmin(ctx: Context, adminComponent: String): Outcome =
+        when (grantedTier(ctx)) {
+            ElevTier.SHIZUKU -> shellOutcome(ctx, "remove device-admin") {
+                runShell(ctx, listOf("dpm", "remove-active-admin", adminComponent))
+            }
+            ElevTier.NONE -> unsupported("device-admin control")
+            else -> dhizukuNotCompiled()
+        }
+
+    /**
+     * Run a READ-ONLY diagnostic shell command and return trimmed stdout, or null
+     * when not elevated or on any error/nonzero exit. For `settings get`,
+     * `dumpsys`, `appops get`, `cmd ... list`-style reads behind the posture
+     * surfaces. Never throws; callers MUST parse defensively and degrade on null.
+     */
+    suspend fun readShell(ctx: Context, cmd: List<String>): String? =
+        if (grantedTier(ctx) == ElevTier.SHIZUKU) {
+            runCatching { runShell(ctx, cmd).let { if (it.ok) it.out.trim() else null } }.getOrNull()
+        } else {
+            null
+        }
+
     // ---- internals ----------------------------------------------------------
 
     private fun isShizukuAlive(): Boolean =
