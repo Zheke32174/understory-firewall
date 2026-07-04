@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ARP-spoof guard feature strings. New file (the integrator owns the shared
+  strings.xml). All user-facing ARP-guard copy lives here. Copy is honest:
+  DETECTION only — the app cannot prevent ARP spoofing — and the elevation
+  requirement is stated plainly.
+-->
+<resources>
+    <string name="arpguard_title">ARP spoof guard</string>
+
+    <!-- Intro / doctrine -->
+    <string name="arpguard_intro">Watches the LAN neighbor table for the classic signs of a man-in-the-middle: your router’s MAC address changing, one device claiming several IPs, or a bogus gateway address. It detects and warns — it cannot block or prevent ARP spoofing.</string>
+
+    <!-- Not-elevated state -->
+    <string name="arpguard_needs_shizuku_title">Reading the neighbor table needs Shizuku</string>
+    <string name="arpguard_needs_shizuku_body">On Android 10 and newer, a normal app can’t read the kernel ARP/neighbor table. Grant the optional Shizuku access and this screen can scan for spoofing. It stays detect-only — nothing is blocked, and no VPN slot is used.</string>
+    <string name="arpguard_open_elevation">Grant Shizuku (optional)</string>
+
+    <!-- Scan controls -->
+    <string name="arpguard_scan">Scan now</string>
+    <string name="arpguard_scanning">Scanning…</string>
+    <string name="arpguard_scan_hint">Reads the neighbor table once and checks it against your saved gateway baseline.</string>
+
+    <!-- Findings -->
+    <string name="arpguard_findings_header">Findings</string>
+    <string name="arpguard_no_findings_title">Nothing suspicious</string>
+    <string name="arpguard_no_findings_body">No changed gateway MAC, duplicate MACs, or bogus gateway address in the current table.</string>
+    <string name="arpguard_sev_high">High</string>
+    <string name="arpguard_sev_medium">Medium</string>
+
+    <!-- Neighbor table -->
+    <string name="arpguard_table_header">Neighbor table</string>
+    <string name="arpguard_gateway_tag">gateway</string>
+    <string name="arpguard_no_mac">no MAC (incomplete)</string>
+    <string name="arpguard_empty_table">The table came back empty. Try again after some network activity.</string>
+    <string name="arpguard_source_prefix">Read via</string>
+
+    <!-- Baseline -->
+    <string name="arpguard_baseline_header">Trusted gateway</string>
+    <string name="arpguard_baseline_none">No baseline recorded. On a network you trust, set a baseline so a later gateway-MAC change is flagged.</string>
+    <string name="arpguard_baseline_set">Set baseline</string>
+    <string name="arpguard_baseline_clear">Clear baseline</string>
+    <string name="arpguard_baseline_recorded">Trusted gateway MAC recorded.</string>
+
+    <!-- Watch -->
+    <string name="arpguard_watch_header">Background watch</string>
+    <string name="arpguard_watch_label">Periodic re-scan</string>
+    <string name="arpguard_watch_on">On — re-scanning about every %1$s.</string>
+    <string name="arpguard_watch_off">Off — no background scans run.</string>
+    <string name="arpguard_watch_note">Background scans are best-effort: if Shizuku isn’t bound in the background, the check records “could not scan” rather than a false all-clear. Android may run these a little early or late to save power.</string>
+    <string name="arpguard_watch_last">Last check</string>
+    <string name="arpguard_watch_not_run">Not run yet</string>
+    <string name="arpguard_notif_off_title">Notifications are off</string>
+    <string name="arpguard_notif_off_body">The watch still runs and records each check below, but it can’t alert you until you allow notifications.</string>
+    <string name="arpguard_allow_notifications">Allow notifications</string>
+
+    <!-- Boundary -->
+    <string name="arpguard_boundary">This is a read-and-warn tool. It reads only the on-device neighbor table through the optional Shizuku shell, keeps a gateway MAC baseline on this device only, and can’t stop an attacker — use it to notice and react.</string>
+</resources>
+</content>

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Mock-location feature strings (location-privacy tool). Kept in a feature-scoped
+  file per the suite convention; the shared strings.xml is not touched here.
+-->
+<resources>
+    <string name="mock_location_title">Mock location</string>
+
+    <string name="mock_location_intro">This is a location-privacy tool, not a network control. It feeds a fake GPS point to apps that read your location. It works only while Understory holds the single \"mock location app\" slot — one app can hold it at a time.</string>
+
+    <!-- Not-selected (honest degrade) card. -->
+    <string name="mock_location_not_selected_title">Understory isn\'t the mock location app yet</string>
+    <string name="mock_location_not_selected_body">To feed a fake location, this app must be selected as the OS mock-location app. Enable Developer Options and pick Understory under \"Select mock location app,\" or (if you use Shizuku) enable it from here. Only one app can hold this slot at a time.</string>
+    <string name="mock_location_open_dev_options">Open Developer Options</string>
+    <string name="mock_location_enable_shizuku">Enable via Shizuku</string>
+    <string name="mock_location_recheck">Re-check</string>
+
+    <!-- Inputs. -->
+    <string name="mock_location_presets">Presets</string>
+    <string name="mock_location_lat">Latitude (-90 to 90)</string>
+    <string name="mock_location_lon">Longitude (-180 to 180)</string>
+    <string name="mock_location_accuracy">Reported accuracy (metres)</string>
+    <string name="mock_location_jitter">Add jitter</string>
+    <string name="mock_location_jitter_supporting">Nudge the point a few metres each update so it doesn\'t look perfectly static.</string>
+
+    <!-- Controls. -->
+    <string name="mock_location_start">Start</string>
+    <string name="mock_location_stop">Stop</string>
+
+    <!-- Live status line. -->
+    <string name="mock_location_status_live">Feeding %1$s, %2$s to apps.</string>
+    <string name="mock_location_status_idle">Not feeding. Set a point and tap Start.</string>
+
+    <!-- Transient result messages. -->
+    <string name="mock_location_status_started">Mock location started.</string>
+    <string name="mock_location_status_stopped">Mock location stopped.</string>
+    <string name="mock_location_status_enabled">This app is now the mock-location app.</string>
+    <string name="mock_location_status_need_coords">Enter a valid latitude and longitude first.</string>
+    <string name="mock_location_status_slot_lost">Another app holds the mock-location slot, or it was turned off. Re-select Understory to continue.</string>
+    <string name="mock_location_status_failed">Couldn\'t start: %1$s</string>
+</resources>

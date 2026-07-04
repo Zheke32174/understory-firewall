@@ -135,10 +135,122 @@ class DnsRedirector(
         onError(msg)
     }
 
+    /**
+     * Convenience wrapper over [rebindRiskInResponse] for use inside [forward]
+     * when the DNS-redirect engine mode wants to refuse a rebinding answer
+     * before writing it back to the tun. Pure delegation; kept as an instance
+     * method so a future forwarder can call it without touching the companion
+     * object. NOTE: not invoked in the current shipping app-drop engine (see the
+     * SALVAGE NOTE at the top of this file) — this is engine-mode capability,
+     * unit-tested via the companion object below, not active companion behavior.
+     */
+    fun responseIsRebinding(queriedHost: String, dnsResponse: ByteArray): Boolean =
+        rebindRiskInResponse(queriedHost, dnsResponse).rebindRisk
+
     companion object {
         private const val MTU = 1500
         /** Per-query timeout. 3s matches Android's default DNS retry
          *  interval; slower responses get retried by the system. */
         private const val DNS_TIMEOUT_MS = 3_000
+
+        /**
+         * Extract every A (IPv4) and AAAA (IPv6) answer address from a raw DNS
+         * *response* message ([dnsResponse] is the DNS payload only — no IP/UDP
+         * headers, i.e. exactly the bytes [forward] returns). Total and
+         * bounds-checked: returns an empty list for a malformed / truncated
+         * message rather than throwing.
+         *
+         * DNS message layout (RFC 1035 §4):
+         *   Header (12 bytes): ID, flags, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT
+         *   Question section  (QDCOUNT entries): QNAME, QTYPE(2), QCLASS(2)
+         *   Answer section    (ANCOUNT entries): NAME, TYPE(2), CLASS(2),
+         *                       TTL(4), RDLENGTH(2), RDATA(RDLENGTH)
+         * Names use label compression (a length byte with the top two bits set
+         * is a pointer); we skip names without following pointers, which is all
+         * we need to reach each RR's fixed fields.
+         */
+        fun extractAnswerIps(dnsResponse: ByteArray): List<InetAddress> {
+            val n = dnsResponse.size
+            if (n < 12) return emptyList()
+            fun u16(off: Int): Int =
+                ((dnsResponse[off].toInt() and 0xFF) shl 8) or (dnsResponse[off + 1].toInt() and 0xFF)
+
+            val qd = u16(4)
+            val an = u16(6)
+            // No answers, or an implausible count from a malformed message.
+            if (an <= 0 || an > 1000) return emptyList()
+
+            var pos = 12
+            // Skip the question section.
+            repeat(qd) {
+                pos = skipName(dnsResponse, pos)
+                if (pos < 0 || pos + 4 > n) return emptyList()
+                pos += 4 // QTYPE + QCLASS
+            }
+
+            val out = ArrayList<InetAddress>()
+            repeat(an) {
+                pos = skipName(dnsResponse, pos)
+                if (pos < 0 || pos + 10 > n) return out
+                val type = u16(pos)
+                val rdLen = u16(pos + 8)
+                val rdStart = pos + 10
+                if (rdStart + rdLen > n) return out
+                when (type) {
+                    TYPE_A -> if (rdLen == 4) {
+                        runCatching {
+                            out.add(InetAddress.getByAddress(dnsResponse.copyOfRange(rdStart, rdStart + 4)))
+                        }
+                    }
+                    TYPE_AAAA -> if (rdLen == 16) {
+                        runCatching {
+                            out.add(InetAddress.getByAddress(dnsResponse.copyOfRange(rdStart, rdStart + 16)))
+                        }
+                    }
+                }
+                pos = rdStart + rdLen
+            }
+            return out
+        }
+
+        /**
+         * Advance past a DNS name starting at [start]. Handles the two forms
+         * that appear before an RR's fixed fields: a sequence of length-prefixed
+         * labels terminated by a zero byte, or a compression pointer (top two
+         * bits of the length byte set) which is a 2-byte field ending the name.
+         * Returns the offset just past the name, or -1 if it runs off the end.
+         */
+        private fun skipName(buf: ByteArray, start: Int): Int {
+            var pos = start
+            val n = buf.size
+            while (pos < n) {
+                val len = buf[pos].toInt() and 0xFF
+                when {
+                    len == 0 -> return pos + 1
+                    (len and 0xC0) == 0xC0 -> {
+                        // Compression pointer occupies 2 bytes and ends the name.
+                        return if (pos + 2 <= n) pos + 2 else -1
+                    }
+                    else -> pos += 1 + len
+                }
+            }
+            return -1
+        }
+
+        /**
+         * The engine hook: given the [queriedHost] the app asked about and the
+         * raw DNS [dnsResponse] payload, return the rebinding [RebindClassifier.Verdict]
+         * over the response's A/AAAA answers. A DNS-redirect engine mode can use
+         * `verdict.rebindRisk` to drop or rewrite a public name that lies about
+         * resolving to a private address.
+         */
+        fun rebindRiskInResponse(
+            queriedHost: String,
+            dnsResponse: ByteArray,
+        ): RebindClassifier.Verdict =
+            RebindClassifier.classify(queriedHost, extractAnswerIps(dnsResponse))
+
+        private const val TYPE_A = 1
+        private const val TYPE_AAAA = 28
     }
 }

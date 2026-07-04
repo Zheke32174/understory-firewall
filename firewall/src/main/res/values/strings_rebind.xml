@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DNS-rebinding audit (companion, on-demand, rootless). Feature-owned strings;
+  the shared strings.xml is NOT edited here (integrator step). All user-facing
+  copy for RebindAuditScreen lives in this file.
+-->
+<resources>
+    <string name="rebind_title">DNS rebinding audit</string>
+
+    <string name="rebind_intro">A public website name should never resolve to a private address like 127.0.0.1 or 192.168.x.x. When it does, that’s a DNS‑rebinding signal — a way for a page to reach devices on your own network. This checks a name on demand; nothing is sent anywhere except the one lookup you ask for.</string>
+
+    <string name="rebind_host_label">Hostname to check</string>
+    <string name="rebind_host_hint">e.g. example.com</string>
+    <string name="rebind_resolve_button">Resolve &amp; check</string>
+    <string name="rebind_resolving">Resolving…</string>
+
+    <string name="rebind_verdict_safe">Looks safe</string>
+    <string name="rebind_verdict_risk">Rebinding risk</string>
+    <string name="rebind_verdict_local">Local / intranet name</string>
+
+    <string name="rebind_safe_detail">This public name resolved only to public addresses.</string>
+    <string name="rebind_local_detail">This is a local/intranet name (a literal IP, localhost, or a .local/.lan/.internal/.home.arpa name), so a private address is expected — not a rebinding signal.</string>
+    <string name="rebind_resolved_ips">Resolved addresses:</string>
+    <string name="rebind_no_ips">No addresses resolved for that name.</string>
+    <string name="rebind_resolve_failed">Couldn’t resolve that name. Check the spelling and your connection.</string>
+    <string name="rebind_empty_host">Enter a hostname first.</string>
+
+    <string name="rebind_resolver_title">Check my resolver</string>
+    <string name="rebind_resolver_detail">Resolves a couple of well‑known public names and confirms they don’t come back as private addresses. If they do, your DNS resolver may be lying — a sign of tampering or a captive network.</string>
+    <string name="rebind_resolver_button">Check my resolver</string>
+    <string name="rebind_resolver_checking">Checking resolver…</string>
+    <string name="rebind_resolver_ok">Resolver looks honest — the canary names resolved to public addresses.</string>
+    <string name="rebind_resolver_lying">Warning: a canary name resolved to a private/reserved address. Your resolver may be tampering with answers.</string>
+    <string name="rebind_resolver_unreachable">Couldn’t reach the canary names to check. Try again on a working connection.</string>
+
+    <string name="rebind_engine_note_title">Live blocking is engine‑only</string>
+    <string name="rebind_engine_note_body">This audit is rootless and on‑demand — it inspects one lookup when you tap. System‑wide blocking of rebinding answers is available only in the opt‑in Standalone engine, which is off by default and never runs while another VPN is up.</string>
+    <string name="rebind_engine_note_open">Open Standalone engine</string>
+
+    <string name="cd_rebind_open_engine">Open the Standalone engine</string>
+</resources>

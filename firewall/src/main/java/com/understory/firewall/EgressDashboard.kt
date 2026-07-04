@@ -19,8 +19,10 @@ import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NetworkCheck
+import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.filled.Schedule
@@ -342,6 +344,24 @@ private fun ToolsSection(onOpen: (FirewallRoute) -> Unit) {
         title = "Egress canaries",
         supporting = "Prove on the wire what your DNS and exit IP actually are.",
         onClick = { onOpen(FirewallRoute.Canary) },
+    )
+    ToolRow(
+        icon = Icons.Filled.Router,
+        title = "ARP spoof guard",
+        supporting = "Watch the LAN neighbor table for MITM",
+        onClick = { onOpen(FirewallRoute.ArpGuard) },
+    )
+    ToolRow(
+        icon = Icons.Filled.Shield,
+        title = "DNS rebinding audit",
+        supporting = "Flag public names that resolve to private IPs",
+        onClick = { onOpen(FirewallRoute.Rebinding) },
+    )
+    ToolRow(
+        icon = Icons.Filled.LocationOn,
+        title = "Mock location",
+        supporting = "Feed a fake GPS location to apps",
+        onClick = { onOpen(FirewallRoute.MockLocation) },
     )
     ToolRow(
         icon = Icons.Filled.Lock,

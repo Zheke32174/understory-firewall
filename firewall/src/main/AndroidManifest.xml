@@ -121,9 +121,16 @@
     <!-- NFC -->
     <uses-permission android:name="android.permission.NFC" tools:node="remove" />
     <uses-permission android:name="android.permission.NFC_TRANSACTION_EVENT" tools:node="remove" />
-    <!-- Location -->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" tools:node="remove" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" tools:node="remove" />
+    <!--
+      Location — FINE + COARSE are *granted* for the opt-in Mock Location tool
+      (location-privacy: LocationManager test-provider feed). They back the
+      addTestProvider/setTestProviderLocation calls, which require the app to
+      hold location permission in addition to the OS mock-location slot. Nothing
+      runs until the user picks a point and taps Start. BACKGROUND_LOCATION stays
+      stripped — the mock feed is foreground-service-scoped only.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" tools:node="remove" />
     <!-- Audio -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove" />
@@ -338,6 +345,41 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!--
+          ARP-guard watch receiver. Handles the app-private ARP_GUARD_CHECK alarm
+          (a scheduled neighbor-table re-scan) plus BOOT_COMPLETED / MY_PACKAGE_REPLACED
+          to re-arm the inexact AlarmManager alarm after a reboot or update (alarms
+          don't survive either). exported="false": only our own PendingIntent and the
+          system's protected boot/replace broadcasts reach it. Inert unless the user
+          enabled the watch; a stale alarm after disabling is dropped without rescheduling.
+        -->
+        <receiver
+            android:name=".ArpGuardWatchReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+          Mock-location foreground service (location-privacy tool, NOT a VPN). Keeps
+          the LocationManager test-provider feed alive while the user has a fake point
+          active, with a persistent notification + Stop action. exported=false: only
+          our own MockLocationScreen starts/stops it. specialUse FGS type with the
+          PROPERTY_SPECIAL_USE_FGS_SUBTYPE="mock_location" declaration required on
+          Android 14+. Holds no network slot.
+        -->
+        <service
+            android:name=".MockLocationService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="mock_location" />
+        </service>
 
     </application>
 
