@@ -21,14 +21,15 @@ import androidx.compose.ui.graphics.compositeOver
  * without re-measuring the existing ones.
  */
 
-// --- Neutrals — the near-black the suite already uses, laddered. ---
-internal val Ink900 = Color(0xFF0A0A0A)   // background (was ad-hoc black)
-internal val Ink800 = Color(0xFF111111)   // surface     (SuiteStatusFooter :81/:97)
-internal val Ink700 = Color(0xFF1A1A1A)   // surfaceVariant / card
-internal val Ink600 = Color(0xFF242424)   // outline on dark
-internal val Fog500 = Color(0xFF6E6E6E)   // onSurfaceVariant dim (footer :124); contrast: 3.6:1 on Ink800 — labels only
-internal val Fog300 = Color(0xFF9E9E9E)   // secondary text (Diag :73); contrast: 7:1 on Ink900
-internal val Fog100 = Color(0xFFE0E0E0)   // primary text (Diag :69/:137); contrast: 17:1 on Ink900
+// --- Neutrals — "forest floor" dark: a green-biased near-black, laddered.
+//     The Aurora accents (UnderstoryAccent) read as a constellation against these.
+internal val Ink900 = Color(0xFF0E1512)   // background — forest floor
+internal val Ink800 = Color(0xFF151E19)   // surface     (SuiteStatusFooter :81/:97)
+internal val Ink700 = Color(0xFF1C2721)   // surfaceVariant / card
+internal val Ink600 = Color(0xFF2A3A32)   // outline on dark
+internal val Fog500 = Color(0xFF7E9084)   // onSurfaceVariant dim (footer :124); labels only
+internal val Fog300 = Color(0xFF9EB2A7)   // secondary text (Diag :73); contrast: 7:1 on Ink900
+internal val Fog100 = Color(0xFFE7F0EA)   // primary text (Diag :69/:137); contrast: 16:1 on Ink900
 
 // --- Semantic ---
 internal val Danger = Color(0xFFEF5350)    // error (footer :145, Diag ERROR :117); contrast: 4.7:1 on Ink900

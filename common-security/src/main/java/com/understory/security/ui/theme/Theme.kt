@@ -33,18 +33,22 @@ val LocalUnderstoryThemeActive = staticCompositionLocalOf { false }
 
 /**
  * One accent seed per app — the suite's ONLY per-app theming freedom, so the
- * seven apps stay visibly a family but each keeps an identity. The hues are
- * dim/desaturated on purpose (the suite's security posture, not a splash of
- * brand color).
+ * apps stay visibly a family but each keeps a distinct identity. These are the
+ * "Aurora" signature hues: one saturated colour per app, read against the
+ * forest-floor dark neutrals (see [understoryDarkColors]). Secret-bearing
+ * surfaces still render muted (never a bright value) — the accent is chrome, not
+ * the vault. Manager/vault/aegis lean cool (control + lock); firewall/antivirus
+ * lean warm (caution + alert), matching each app's semantic weight.
  */
 enum class UnderstoryAccent(val seed: Color) {
-    PASSGEN(Color(0xFF7E9E7E)),
-    AEGIS(Color(0xFF8AA3C9)),
-    VAULTFOLDER(Color(0xFFB08AC9)),
-    BACKUPS(Color(0xFF8AC9B0)),
-    BROWSER(Color(0xFFC9B08A)),
-    FIREWALL(Color(0xFFC98A8A)),
-    ANTIVIRUS(Color(0xFF8AC9C9)),
+    PASSGEN(Color(0xFF6FB98A)),      // canopy green
+    AEGIS(Color(0xFF8E9BEA)),        // indigo (OTP, cool-lock family)
+    VAULTFOLDER(Color(0xFF9A8BEA)),  // locked violet
+    BACKUPS(Color(0xFF45C7A6)),      // mint / teal-green
+    BROWSER(Color(0xFF5CC8E8)),      // sky cyan
+    FIREWALL(Color(0xFFE7B24A)),     // signal amber
+    ANTIVIRUS(Color(0xFFEC6B5E)),    // alert coral
+    MANAGER(Color(0xFF2FD3C3)),      // electric teal — control-plane authority
 }
 
 /**

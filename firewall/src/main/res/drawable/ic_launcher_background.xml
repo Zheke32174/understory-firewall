@@ -10,8 +10,8 @@
             <gradient android:type="linear"
                 android:startX="0" android:startY="0"
                 android:endX="108" android:endY="108"
-                android:startColor="#FFD4A1A1"
-                android:endColor="#FFAD7777" />
+                android:startColor="#FFECC16E"
+                android:endColor="#FFC79940" />
         </aapt:attr>
     </path>
 </vector>
