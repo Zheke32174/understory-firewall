@@ -341,6 +341,13 @@ private fun ToolsSection(onOpen: (FirewallRoute) -> Unit) {
         onClick = { onOpen(FirewallRoute.AppFirewall) },
     )
     ToolRow(
+        icon = Icons.Filled.Lock,
+        title = "Firewall policy",
+        supporting = "Default policy (allow-all vs lockdown), block-when-screen-off, and " +
+            "saved profiles. Adds a Quick-Settings Lockdown tile.",
+        onClick = { onOpen(FirewallRoute.PolicyControls) },
+    )
+    ToolRow(
         icon = Icons.AutoMirrored.Filled.List,
         title = "Restrict worklist",
         supporting = "Apps you've flagged — open Android's own per-app data controls.",

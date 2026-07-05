@@ -173,7 +173,14 @@
     <uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE" tools:node="remove" />
     <uses-permission android:name="android.permission.BIND_DEVICE_ADMIN" tools:node="remove" />
     <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" tools:node="remove" />
-    <uses-permission android:name="android.permission.BIND_QUICK_SETTINGS_TILE" tools:node="remove" />
+    <!--
+      BIND_QUICK_SETTINGS_TILE — required so the OS can bind the slot-free
+      firewall's "Lockdown" Quick-Settings tile (LockdownTileService). It is a
+      signature|privileged bind permission the SYSTEM holds; declaring it here
+      only lets our <service> assert it as the required binder, it confers no
+      capability on the app. Kept (not stripped) specifically for the tile.
+    -->
+    <uses-permission android:name="android.permission.BIND_QUICK_SETTINGS_TILE" />
     <!-- Sensors -->
     <uses-permission android:name="android.permission.BODY_SENSORS" tools:node="remove" />
     <uses-permission android:name="android.permission.BODY_SENSORS_BACKGROUND" tools:node="remove" />
@@ -379,6 +386,48 @@
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="mock_location" />
+        </service>
+
+        <!--
+          Slot-free firewall boot re-arm (Stage-3 §3). Re-arms the kernel
+          OEM_DENY_3 chain and re-applies the persisted effective policy after a
+          reboot / app update, ONCE the Shizuku shell becomes available again.
+          HONEST: rootless firewalls have no true boot persistence — rules are
+          inactive from boot until the shell tier is re-granted; this receiver
+          polls for that and applies then (see FirewallBootReceiver). Never
+          claims seamless boot enforcement. exported="false": only the system's
+          protected boot/replace broadcasts reach it; it no-ops when there is no
+          persisted policy to restore.
+        -->
+        <receiver
+            android:name=".policy.FirewallBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+          Slot-free firewall "Lockdown" Quick-Settings tile (Stage-3 §4). Toggles
+          BLOCK_ALL (whitelist lockdown) on/off from the QS panel; exemptions
+          still win so it can never sever Tailscale. Degrades to an UNAVAILABLE
+          state when no Shizuku shell tier is granted. The android:permission is
+          the platform contract for a QS tile — only the system may bind it.
+        -->
+        <service
+            android:name=".policy.LockdownTileService"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="Lockdown"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="false" />
         </service>
 
     </application>

@@ -59,6 +59,7 @@ import kotlinx.coroutines.withContext
 fun PolicyFirewallScreen(
     onBack: () -> Unit,
     onOpenElevation: () -> Unit,
+    onOpenControls: () -> Unit = {},
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -66,9 +67,11 @@ fun PolicyFirewallScreen(
 
     var available by remember { mutableStateOf(manager.isAvailable()) }
     var tierLabel by remember { mutableStateOf(manager.tierLabel()) }
+    var lockdown by remember { mutableStateOf(manager.isLockdown()) }
     var apps by remember { mutableStateOf<List<AppEntry>>(emptyList()) }
     var exempt by remember { mutableStateOf<Set<String>>(emptySet()) }
     var blocked by remember { mutableStateOf(manager.blockedPackages()) }
+    var allowed by remember { mutableStateOf(manager.allowedPackages()) }
     var query by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
@@ -76,10 +79,17 @@ fun PolicyFirewallScreen(
     LaunchedEffect(Unit) {
         available = manager.isAvailable()
         tierLabel = manager.tierLabel()
+        lockdown = manager.isLockdown()
         apps = withContext(Dispatchers.IO) { AppListLoader.load(ctx) }
         exempt = withContext(Dispatchers.IO) { UidExemptions.exemptPackages(ctx) }
         blocked = manager.blockedPackages()
+        allowed = manager.allowedPackages()
+        // Bring the screen-off monitor up if the user has any conditional flags;
+        // registered against the app process, honestly best-effort (see monitor).
+        ScreenPolicyMonitor.refresh(ctx)
     }
+
+    val installedPkgs = remember(apps) { apps.map { it.packageName }.toSet() }
 
     val filtered = remember(apps, query) {
         val q = query.trim().lowercase()
@@ -123,6 +133,32 @@ fun PolicyFirewallScreen(
                     "Blocks apps on every network without the VPN slot. A routing " +
                         "tunnel (Tor / DNS adblock) still needs the VPN slot or root."
                 )
+                if (lockdown) {
+                    Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+                    Text(
+                        "Lockdown on: every non-exempt app is blocked. The switches below " +
+                            "punch an app THROUGH the lockdown (allow it). Tailscale stays exempt.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            // Link to the Stage-3 policy controls (default policy, screen-off
+            // rules, named profiles, Quick-Settings tile).
+            SuiteCard(onClick = onOpenControls) {
+                Text(
+                    "Policy controls",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+                Text(
+                    "Default policy (allow-all vs lockdown), block-when-screen-off, and " +
+                        "saved profiles (Home / Untrusted Wi-Fi / Lockdown).",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             if (!available) {
@@ -149,20 +185,20 @@ fun PolicyFirewallScreen(
                 return@Column
             }
 
-            // Block all / Allow all default toggle.
+            // Block all / Allow all — these now flip the persistent default
+            // policy (lockdown), so the choice survives and drives new installs
+            // too, not just a one-shot sweep of the apps present right now.
             Row(horizontalArrangement = Arrangement.spacedBy(UnderstoryTheme.spacing.sm)) {
                 SecureButton(
                     onClick = {
                         if (busy) return@SecureButton
                         busy = true
                         scope.launch {
-                            // "Block all" = every non-exempt installed app. Exempt
-                            // apps are filtered at the manager choke point too.
-                            val desired = apps.map { it.packageName }
-                                .filterNot { it in exempt }.toSet()
-                            val r = manager.applyAll(desired)
+                            val r = manager.applyLockdown(installedPkgs)
+                            lockdown = manager.isLockdown()
                             blocked = manager.blockedPackages()
-                            status = "Block all: ${desired.size} apps, ${r.changed} changed" +
+                            allowed = manager.allowedPackages()
+                            status = "Lockdown on: ${r.changed} changed" +
                                 if (r.failed > 0) ", ${r.failed} failed" else ""
                             busy = false
                         }
@@ -175,8 +211,10 @@ fun PolicyFirewallScreen(
                         busy = true
                         scope.launch {
                             manager.clearAll()
+                            lockdown = manager.isLockdown()
                             blocked = manager.blockedPackages()
-                            status = "Allow all: policies cleared"
+                            allowed = manager.allowedPackages()
+                            status = "Allow all: policies cleared, default is allow-by-default"
                             busy = false
                         }
                     },
@@ -211,7 +249,15 @@ fun PolicyFirewallScreen(
                 ) {
                     items(filtered, key = { "p-${it.packageName}" }) { entry ->
                         val isExempt = entry.packageName in exempt
-                        val isBlocked = entry.packageName in blocked
+                        // In lockdown (BLOCK_ALL): an app is effectively BLOCKED
+                        // unless it is in the allow set; the switch toggles the
+                        // allow set. In allow-by-default (ALLOW_ALL): the switch
+                        // toggles the blocked set, as in Stage-1.
+                        val isBlocked = if (lockdown) {
+                            entry.packageName !in allowed
+                        } else {
+                            entry.packageName in blocked
+                        }
                         AppPolicyRow(
                             entry = entry,
                             isExempt = isExempt,
@@ -221,9 +267,24 @@ fun PolicyFirewallScreen(
                                 if (busy) return@AppPolicyRow
                                 busy = true
                                 scope.launch {
-                                    val outcome = manager.setBlocked(entry.packageName, wantBlock)
-                                    blocked = manager.blockedPackages()
-                                    status = renderOutcome(entry.label, outcome)
+                                    val screenOn = ScreenPolicyMonitor.isScreenOn(ctx)
+                                    if (lockdown) {
+                                        // wantBlock=false means "allow" (add to allow set);
+                                        // wantBlock=true means "remove the allowance".
+                                        manager.setAllowed(
+                                            entry.packageName,
+                                            allowed = !wantBlock,
+                                            installedPackages = installedPkgs,
+                                            screenOn = screenOn,
+                                        )
+                                        allowed = manager.allowedPackages()
+                                        status = if (wantBlock) "${entry.label}: blocked (lockdown)"
+                                        else "${entry.label}: allowed through lockdown"
+                                    } else {
+                                        val outcome = manager.setBlocked(entry.packageName, wantBlock)
+                                        blocked = manager.blockedPackages()
+                                        status = renderOutcome(entry.label, outcome)
+                                    }
                                     busy = false
                                 }
                             },
