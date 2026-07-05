@@ -334,6 +334,13 @@ private fun OverviewSection(
 @Composable
 private fun ToolsSection(onOpen: (FirewallRoute) -> Unit) {
     ToolRow(
+        icon = Icons.Filled.Shield,
+        title = "App firewall (slot-free)",
+        supporting = "Block apps on every network without the VPN slot. Needs Shizuku; " +
+            "coexists with Tailscale. Not a routing tunnel.",
+        onClick = { onOpen(FirewallRoute.AppFirewall) },
+    )
+    ToolRow(
         icon = Icons.AutoMirrored.Filled.List,
         title = "Restrict worklist",
         supporting = "Apps you've flagged — open Android's own per-app data controls.",

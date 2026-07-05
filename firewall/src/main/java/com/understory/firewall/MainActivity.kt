@@ -167,7 +167,7 @@ class MainActivity : ComponentActivity() {
 enum class FirewallRoute {
     Main, TunnelPosture, Audit, Dns, Traffic, Restrict, Canary, Posture, Limits,
     StandaloneHub, Diagnostics, PostureWatch, Elevation,
-    ArpGuard, Rebinding, MockLocation,
+    ArpGuard, Rebinding, MockLocation, AppFirewall,
 }
 
 /** Helper to start/stop the Standalone engine service. */
@@ -280,6 +280,13 @@ private fun FirewallRoot(
         FirewallRoute.MockLocation -> {
             androidx.activity.compose.BackHandler { backToMain() }
             MockLocationScreen(onBack = backToMain)
+        }
+        FirewallRoute.AppFirewall -> {
+            androidx.activity.compose.BackHandler { backToMain() }
+            com.understory.firewall.policy.PolicyFirewallScreen(
+                onBack = backToMain,
+                onOpenElevation = { setRoute(FirewallRoute.Elevation) },
+            )
         }
     }
 }
