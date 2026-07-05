@@ -62,6 +62,16 @@ fun DnsHardeningScreen(onBack: () -> Unit) {
 
             item {
                 BoundaryText(
+                    "This is a DNS DESTINATION lever: it encrypts your queries to a chosen " +
+                        "upstream (DoT), so your network can't read or tamper with them. It is " +
+                        "NOT content filtering — it doesn't block ads or trackers by itself " +
+                        "(a filtering resolver like NextDNS/Quad9 can, upstream). For on-device " +
+                        "ad/tracker sinkholing, use the DNS-filter tunnel."
+                )
+            }
+
+            item {
+                BoundaryText(
                     "Private DNS composes with Tailscale — with a Tailscale exit node or " +
                         "MagicDNS enabled, Tailscale may override the system resolver; " +
                         "verify with the DNS canary."

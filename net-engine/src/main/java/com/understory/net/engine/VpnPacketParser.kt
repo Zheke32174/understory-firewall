@@ -5,12 +5,12 @@ import java.net.Inet4Address
 /**
  * Minimal IPv4 + UDP packet parser/builder for a userspace tun forwarder.
  *
- * SALVAGE NOTE (design-v2/firewall.md §7): this is pure JVM (only
- * `java.net`), bounds-checked, and RFC-768 zero-checksum correct. It is
- * compiled and unit-tested in this module but NOT called by the shipping
- * Standalone engine, which uses a plain app-drop VpnService (no packet
- * parsing). It survives here for a future userspace forwarder and to lock
- * in the hard-won parsing correctness under test.
+ * NOTE (updated at S6): this is pure JVM (only `java.net`), bounds-checked,
+ * and RFC-768 zero-checksum correct. It is now CALLED by the S6 adblock-DNS
+ * tunnel (`firewall/tunnel/DnsFilterTun`) to parse captured DNS queries and
+ * build the responses written back to the tun. (Its earlier salvage note said
+ * it was dormant/uncalled; that predates S6.) The APP_DROP tunnel flavor still
+ * uses a plain drop with no packet parsing.
  *
  * Wire layout parsed:
  *

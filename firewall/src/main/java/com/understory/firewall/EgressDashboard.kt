@@ -334,11 +334,32 @@ private fun OverviewSection(
 @Composable
 private fun ToolsSection(onOpen: (FirewallRoute) -> Unit) {
     ToolRow(
+        icon = Icons.Filled.Security,
+        title = "Firewall tiers overview",
+        supporting = "Which tier is active, Tailscale coexistence, and the honest caveat " +
+            "for each — the map of everything below.",
+        onClick = { onOpen(FirewallRoute.TierOverview) },
+    )
+    ToolRow(
         icon = Icons.Filled.Shield,
         title = "App firewall (slot-free)",
         supporting = "Block apps on every network without the VPN slot. Needs Shizuku; " +
             "coexists with Tailscale. Not a routing tunnel.",
         onClick = { onOpen(FirewallRoute.AppFirewall) },
+    )
+    ToolRow(
+        icon = Icons.Filled.VpnKey,
+        title = "DNS-filter tunnel (adblock)",
+        supporting = "Sinkhole ads/trackers/malware in DNS. TAKES the VPN slot — mutually " +
+            "exclusive with Tailscale. Off by default.",
+        onClick = { onOpen(FirewallRoute.DnsFilterHub) },
+    )
+    ToolRow(
+        icon = Icons.Filled.QueryStats,
+        title = "Connection log",
+        supporting = "Live per-app DNS allow/block events while the tunnel is on; policy " +
+            "block counters when it's off.",
+        onClick = { onOpen(FirewallRoute.Visibility) },
     )
     ToolRow(
         icon = Icons.Filled.Lock,
@@ -390,6 +411,13 @@ private fun ToolsSection(onOpen: (FirewallRoute) -> Unit) {
         supporting = "Rootless by default. Optionally grant Shizuku or Dhizuku to " +
             "turn advisory controls into real per-app enforcement — no VPN slot used.",
         onClick = { onOpen(FirewallRoute.Elevation) },
+    )
+    ToolRow(
+        icon = Icons.Filled.AdminPanelSettings,
+        title = "Root firewall (advanced)",
+        supporting = "Granular per-network / LAN / per-port rules — requires root. " +
+            "Dormant and honestly disabled on this unrooted device.",
+        onClick = { onOpen(FirewallRoute.RootTier) },
     )
 }
 

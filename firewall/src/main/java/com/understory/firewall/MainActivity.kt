@@ -168,6 +168,8 @@ enum class FirewallRoute {
     Main, TunnelPosture, Audit, Dns, Traffic, Restrict, Canary, Posture, Limits,
     StandaloneHub, Diagnostics, PostureWatch, Elevation,
     ArpGuard, Rebinding, MockLocation, AppFirewall, PolicyControls,
+    // S4/S6/S7/S8 + coherence pass:
+    TierOverview, DnsFilterHub, Visibility, RootTier,
 }
 
 /** Helper to start/stop the Standalone engine service. */
@@ -295,6 +297,36 @@ private fun FirewallRoot(
                 onBack = backToMain,
                 onOpenElevation = { setRoute(FirewallRoute.Elevation) },
             )
+        }
+        FirewallRoute.TierOverview -> {
+            androidx.activity.compose.BackHandler { backToMain() }
+            TierOverviewScreen(
+                onOpenPolicy = { setRoute(FirewallRoute.AppFirewall) },
+                onOpenTunnel = { setRoute(FirewallRoute.DnsFilterHub) },
+                onOpenDns = { setRoute(FirewallRoute.Dns) },
+                onOpenRoot = { setRoute(FirewallRoute.RootTier) },
+                onOpenElevation = { setRoute(FirewallRoute.Elevation) },
+                onBack = backToMain,
+            )
+        }
+        FirewallRoute.DnsFilterHub -> {
+            androidx.activity.compose.BackHandler { backToMain() }
+            com.understory.firewall.tunnel.DnsFilterHubScreen(
+                activity = activity,
+                onBack = backToMain,
+                onOpenVisibility = { setRoute(FirewallRoute.Visibility) },
+            )
+        }
+        FirewallRoute.Visibility -> {
+            androidx.activity.compose.BackHandler { backToMain() }
+            com.understory.firewall.tunnel.VisibilityScreen(
+                onBack = backToMain,
+                onOpenTunnel = { setRoute(FirewallRoute.DnsFilterHub) },
+            )
+        }
+        FirewallRoute.RootTier -> {
+            androidx.activity.compose.BackHandler { backToMain() }
+            com.understory.firewall.root.RootTierScreen(onBack = backToMain)
         }
     }
 }

@@ -34,6 +34,8 @@ object FirewallSettings {
     private const val K_DNS_PROVIDER = "dns_provider"
     private const val K_FIRST_RUN_AUDIT_DONE = "first_run_audit_done"
     private const val K_AUDIT_ACKNOWLEDGED = "audit_acknowledged"
+    private const val K_TUNNEL_MODE = "tunnel_mode"
+    private const val K_UPSTREAM_DNS_IP = "tunnel_upstream_dns_ip"
 
     // ---- Legacy keys (read once during migration, then deleted) ----
     private const val K_LEGACY_BLOCKLIST = "blocklist"
@@ -134,6 +136,39 @@ object FirewallSettings {
 
     fun setStandaloneExplained(ctx: Context, explained: Boolean) {
         prefs(ctx).edit().putBoolean(K_STANDALONE_EXPLAINED, explained).apply()
+    }
+
+    // ---------------------------------------------------------------
+    // Standalone tunnel flavor + upstream resolver (S6)
+    // ---------------------------------------------------------------
+
+    /**
+     * Which flavor of the slot-consuming tunnel the armed engine runs. Default
+     * [TunnelMode.DNS_FILTER] — the S6 adblock-DNS tunnel is the honest headline
+     * feature of the tunnel tier. Only meaningful in STANDALONE + armed.
+     */
+    fun getTunnelMode(ctx: Context): TunnelMode {
+        val raw = prefs(ctx).getString(K_TUNNEL_MODE, null)
+        return runCatching { TunnelMode.valueOf(raw ?: "") }
+            .getOrDefault(TunnelMode.DNS_FILTER)
+    }
+
+    fun setTunnelMode(ctx: Context, mode: TunnelMode) {
+        prefs(ctx).edit().putString(K_TUNNEL_MODE, mode.name).apply()
+    }
+
+    /**
+     * The plaintext upstream resolver IP the DNS-filter tunnel forwards allowed
+     * queries to. Empty ⇒ use a sane default (Cloudflare 1.1.1.1). HONEST: this
+     * is a PLAINTEXT UDP forward; encryption of the upstream is not implemented
+     * in the tunnel — pair with system Private DNS (S4) for an encrypted system
+     * resolver.
+     */
+    fun getUpstreamDnsIp(ctx: Context): String =
+        prefs(ctx).getString(K_UPSTREAM_DNS_IP, "")?.takeIf { it.isNotBlank() } ?: "1.1.1.1"
+
+    fun setUpstreamDnsIp(ctx: Context, ip: String) {
+        prefs(ctx).edit().putString(K_UPSTREAM_DNS_IP, ip.trim()).apply()
     }
 
     // ---------------------------------------------------------------

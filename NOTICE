@@ -1,0 +1,44 @@
+Understory Net Audit — third-party attribution
+================================================
+
+The following open-source projects were STUDIED for BEHAVIOR ONLY during the
+design of the DNS-filter tunnel, connection-visibility, and per-app attribution
+features. No source code from these projects is copied into this repository —
+every corresponding implementation here is an independent, clean-room
+reimplementation. They are credited here in good faith.
+
+RethinkDNS (https://github.com/celzero/rethink-dns)
+  Licensed under the Apache License 2.0.
+  Copyright RethinkDNS and its authors.
+  Studied for: the on-device DNS-blocklist matching approach (a compressed trie
+  answering "is this domain blocked?"; our clean-room implementation uses a
+  simpler domain-suffix HashSet — see net-engine/DnsBlocklist.kt), the
+  per-flow app attribution via ConnectivityManager.getConnectionOwnerUid (see
+  firewall/tunnel/ConnectionAttributor.kt), the DNS-only VpnService tun
+  establishment pattern, and the NXDOMAIN/zero-IP sinkhole answer.
+
+PCAPdroid (https://github.com/emanuele-f/PCAPdroid)
+  Licensed under the GNU General Public License v3.
+  Copyright 2020-2021 Emanuele Faranda.
+  Studied for: the connection-log data model and the DNS-query→connection
+  association approach (our clean-room event log is a lean domain+app+verdict
+  ring buffer — see firewall/tunnel/DnsEventLog.kt). No GPL code is included.
+
+InviZible Pro (https://github.com/Gedsh/InviZible)
+  Licensed under the GNU General Public License v3.
+  Studied for: the unprivileged daemon subprocess (ProcessStarter) pattern for
+  running DNSCrypt/Tor. Understory does NOT ship such daemons; encrypted-
+  resolver routing is a documented, unimplemented stub (see
+  firewall/tunnel/DnsFilterTun.kt). No GPL code is included.
+
+de1984 (https://github.com/…/de1984)
+  Studied for: the slot-free ConnectivityManager per-app firewall backend
+  (Android 13+ `cmd connectivity` OEM_DENY_3 chain) and the UID-exemption
+  safety gate. Reimplemented over Understory's own Shizuku broker (see
+  firewall/policy/ConnectivityManagerBackend.kt, policy/UidExemptions.kt).
+
+Bundled blocklist
+  firewall/src/main/assets/blocklist/base.hosts.gz is a small, curated SEED of
+  well-known ad/tracker/malware domain roots, hand-authored for this project
+  (not copied verbatim from any single public list). It is user-updatable from
+  an https:// blocklist URL of the user's choosing.

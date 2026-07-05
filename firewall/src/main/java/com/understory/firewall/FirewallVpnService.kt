@@ -9,8 +9,13 @@ import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
+import com.understory.firewall.tunnel.BlocklistRepository
+import com.understory.firewall.tunnel.ConnectionAttributor
+import com.understory.firewall.tunnel.DnsEventLog
+import com.understory.firewall.tunnel.DnsFilterTun
 import com.understory.net.engine.DropStats
 import java.io.FileInputStream
+import java.net.InetAddress
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -41,10 +46,16 @@ class FirewallVpnService : VpnService() {
     private var tunFd: ParcelFileDescriptor? = null
     private val running = AtomicBoolean(false)
     private var readerThread: Thread? = null
+    /** The S6 DNS-filter loop (DNS_FILTER mode only); null in APP_DROP. */
+    private var dnsFilter: DnsFilterTun? = null
+    private var dnsFilterThread: Thread? = null
     /** Count of apps actually captured by the current tun. Drives the
      *  honest FGS notification (never claims "N blocked" when N of them
-     *  are uninstalled). 0 while idle. */
+     *  are uninstalled). 0 while idle. In DNS_FILTER mode this is -1 to
+     *  signal "filtering all apps' DNS", not a per-app count. */
     @Volatile private var establishedCount: Int = 0
+    /** The flavor of the current session, read once at establish. */
+    @Volatile private var activeTunnelMode: TunnelMode = TunnelMode.APP_DROP
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // Promote to foreground first — Android kills services that take
@@ -112,6 +123,18 @@ class FirewallVpnService : VpnService() {
     }
 
     private fun establish() {
+        activeTunnelMode = FirewallSettings.getTunnelMode(this)
+        when (activeTunnelMode) {
+            TunnelMode.DNS_FILTER -> establishDnsFilter()
+            TunnelMode.APP_DROP -> establishAppDrop()
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // APP_DROP flavor (legacy): capture the restricted apps and drop.
+    // ---------------------------------------------------------------
+
+    private fun establishAppDrop() {
         val restricted = FirewallSettings.getRestrictedPackages(this)
 
         if (restricted.isEmpty()) {
@@ -190,6 +213,85 @@ class FirewallVpnService : VpnService() {
         runCatching { oldThread?.join(500L) }
     }
 
+    // ---------------------------------------------------------------
+    // DNS_FILTER flavor (S6): capture DNS on the tun, sinkhole ads/
+    // trackers, forward the rest, attribute + log per app.
+    // ---------------------------------------------------------------
+
+    private fun establishDnsFilter() {
+        // Load the blocklist (bundled + fetched + custom) OFF the main thread —
+        // onStartCommand runs on the main thread and a large fetched cache could
+        // ANR. The filter reads BlocklistRepository.current per query and that
+        // publishes atomically when reload finishes, so the worst case is a few
+        // early queries seeing the pre-reload (empty) list — honest, not a crash.
+        val appCtx = applicationContext
+        Thread({ runCatching { BlocklistRepository.reload(appCtx) } }, "firewall-blocklist-load").start()
+
+        // A DNS-ONLY tun: claim only the fake resolver IP's route + advertise it
+        // as the DNS server, so ONLY DNS traffic enters the tun. All other
+        // traffic bypasses us untouched (honest: we filter DNS, we do not route
+        // or inspect the rest). Clean-room from RethinkDNS's DNS-only mode.
+        val fakeDns = InetAddress.getByName(FAKE_DNS_ADDR)
+        val builder = Builder()
+            .setSession(getString(R.string.engine_session_name))
+            .addAddress(VPN_LOCAL_ADDR, 32)
+            .addDnsServer(FAKE_DNS_ADDR)
+            .addRoute(FAKE_DNS_ADDR, 32)
+            .setMtu(MTU)
+            .setBlocking(true)
+
+        // Do NOT capture ourselves (avoid a loop) — our upstream forward is
+        // protect()ed, but excluding self is belt-and-suspenders.
+        runCatching { builder.addDisallowedApplication(packageName) }
+
+        val newTun = builder.establish()
+        if (newTun == null) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            running.set(false)
+            return
+        }
+
+        FirewallSettings.setAutoStopped(this, false)
+        establishedCount = -1 // sentinel: "filtering all apps' DNS"
+        DnsEventLog.clear()
+        runCatching {
+            getSystemService(NotificationManager::class.java)
+                ?.notify(NOTIF_ID, buildNotification())
+        }
+
+        val oldTun = tunFd
+        val oldThread = readerThread
+        val oldFilter = dnsFilter
+        val oldFilterThread = dnsFilterThread
+        tunFd = newTun
+
+        val attributor = ConnectionAttributor(applicationContext)
+        // Upstream resolver: plaintext UDP to the user-set IP (default 1.1.1.1).
+        // Encrypted-resolver routing is a documented stub (see DnsFilterTun).
+        val upstream = DnsFilterTun.UpstreamResolver.plaintext(
+            FirewallSettings.getUpstreamDnsIp(this),
+        )
+        val answerStyle = BlocklistRepository.answerStyle(this)
+
+        val filter = DnsFilterTun(
+            service = this,
+            tun = newTun,
+            fakeDnsIp = fakeDns,
+            upstream = upstream,
+            attributor = attributor,
+            blocklistProvider = { BlocklistRepository.current },
+            answerStyle = answerStyle,
+        )
+        dnsFilter = filter
+        dnsFilterThread = Thread(filter, "firewall-dns-filter").also { it.start() }
+
+        runCatching { oldFilter?.stop() }
+        runCatching { oldTun?.close() }
+        runCatching { oldThread?.join(500L) }
+        runCatching { oldFilterThread?.join(500L) }
+    }
+
     /** Tear down any prior tun and sit idle (foreground service alive, no
      *  tun). Lets the user arm before adding apps to restrict. */
     private fun idle() {
@@ -206,6 +308,10 @@ class FirewallVpnService : VpnService() {
 
     private fun stopEngine() {
         running.set(false)
+        runCatching { dnsFilter?.stop() }
+        dnsFilter = null
+        runCatching { dnsFilterThread?.interrupt() }
+        dnsFilterThread = null
         runCatching { tunFd?.close() }
         tunFd = null
         runCatching { readerThread?.interrupt() }
@@ -233,16 +339,19 @@ class FirewallVpnService : VpnService() {
             stopIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        // Honest count: the number of apps ACTUALLY captured by the live
-        // tun, not the size of the persisted restrict set (which may point
-        // at uninstalled apps). An idle engine says "no apps blocked yet."
-        val text = if (establishedCount > 0)
-            "Blocking $establishedCount app(s)"
-        else
-            "Armed · no apps blocked yet"
+        // Honest text per flavor. DNS_FILTER (sentinel -1) filters every app's
+        // DNS; APP_DROP names the count of apps actually captured by the live
+        // tun (not the persisted set, which may point at uninstalled apps).
+        val text = when {
+            establishedCount < 0 -> "Filtering DNS · sinkholing ads & trackers"
+            establishedCount > 0 -> "Blocking $establishedCount app(s)"
+            else -> "Armed · no apps blocked yet"
+        }
+        val title = if (activeTunnelMode == TunnelMode.DNS_FILTER)
+            "DNS-filter tunnel active" else "Standalone blocking active"
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
-            .setContentTitle("Standalone blocking active")
+            .setContentTitle(title)
             .setContentText(text)
             .setOngoing(true)
             .setSilent(true)
@@ -275,6 +384,9 @@ class FirewallVpnService : VpnService() {
         private const val VPN_LOCAL_ADDR = "192.0.2.42"
         // RFC 3849 2001:db8::/32 — the documentation prefix.
         private const val VPN_LOCAL_ADDR_V6 = "2001:db8::1"
+        // The fake DNS server the DNS-filter tun advertises (also in TEST-NET-1),
+        // so apps send DNS here and ONLY DNS enters the tun.
+        private const val FAKE_DNS_ADDR = "192.0.2.53"
         private const val MTU = 1500
     }
 }
