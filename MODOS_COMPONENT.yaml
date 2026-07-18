@@ -1,0 +1,57 @@
+apiVersion: modos.pleiades/v1alpha1
+kind: Component
+metadata:
+  name: understory-firewall
+  repository: Zheke32174/understory-firewall
+  visibility: public
+  lifecycle: experimental
+  defaultBranch: main
+spec:
+  roles:
+    - android-egress-observer
+    - network-posture-explainer
+    - private-dns-control-surface
+    - optional-local-vpn-firewall
+  authority: local-enforcement
+  authorityConditions:
+    - companion-mode-is-observation-only
+    - standalone-enforcement-requires-explicit-local-steward-opt-in
+    - standalone-mode-refuses-to-start-while-another-vpn-is-active
+  inputs:
+    - local-android-network-state
+    - installed-application-metadata
+    - user-selected-network-policy
+    - egress-canary-results
+    - operating-system-private-dns-state
+  outputs:
+    - network-posture-observations
+    - per-app-egress-explanations
+    - private-dns-navigation-requests
+    - signed-security-events
+    - locally-enforced-vpn-policy-when-opted-in
+  capabilitiesProvided:
+    - network.android.observe
+    - network.android.explain
+    - network.android.canary.verify
+    - network.android.vpn.enforce.local
+  capabilitiesRequired:
+    - android.network.public-api
+    - android.vpn-service.local
+    - steward.approval.network-enforcement
+    - test.android.network-compatibility
+  dataClasses:
+    - public
+    - internal
+    - private
+    - untrusted
+    - evidence
+  failurePolicy: degrade-observe-only
+  promotionPolicy: evidence-gated
+  policies:
+    - observation-does-not-grant-enforcement-authority
+    - remote-agents-cannot-enable-standalone-vpn-enforcement
+    - another-active-vpn-forces-enforcement-refusal
+    - dns-and-egress-observations-retain-source-provenance
+    - shared-library-code-remains-canonical-in-understory-common
+    - sensitive-network-state-stays-out-of-general-model-context
+  notes: Companion mode is the normal slot-free observation and explanation path. Packet blocking exists only through an explicit, default-off local VPN mode and remains bounded by Android's VPN ownership rules and direct steward action.
