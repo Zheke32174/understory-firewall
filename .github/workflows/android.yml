@@ -1,7 +1,24 @@
 name: android
+
 on:
   push:
+    branches: [ main ]
+  pull_request:
   workflow_dispatch:
+    inputs:
+      verify_release_signing:
+        description: Run the strict offline release-signing and certificate-pin gate
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -19,20 +36,52 @@ jobs:
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-35" "build-tools;35.0.0" > /dev/null
       - name: Build debug APK + unit tests
         run: gradle --no-daemon assembleDebug testDebugUnitTest
-      - name: Upload APK artifact
+      - name: Upload APK workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: firewall-debug-apk
           path: firewall/build/outputs/apk/**/*.apk
-  # Manual-only release lane (workflow_dispatch). On a box holding the offline
-  # release keystore, run the same gradle line locally with
-  # -PreleaseKeystore/-PreleaseKeystorePassFile to sign and pin-assert the
-  # release APK. On plain CI (no keystore) this job exercises the
-  # unsigned-refusal path instead: verifyCertPin fails the unsigned release
-  # APK under -PrequireSignedRelease=true, so a red run here is the gate
-  # working, not a build regression. The default push job is unaffected.
+      - name: Prepare durable release assets
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="${GITHUB_REPOSITORY#*/}"
+          apk=$(find firewall/build/outputs/apk -type f -name '*debug*.apk' ! -name '*androidTest*' | sort | head -n 1)
+          test -n "$apk" && test -s "$apk"
+          mkdir -p dist
+          cp "$apk" "dist/${repo}-debug.apk"
+          (cd dist && sha256sum "${repo}-debug.apk" > "${repo}-debug.apk.sha256")
+      - name: Publish rolling APK release
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          repo="${GITHUB_REPOSITORY#*/}"
+          tag="continuous-apk"
+          cat > release-notes.md <<EOF
+          Installable Android debug build from the current default branch.
+
+          - Signing: Android CI debug key
+          - Source commit: \`${GITHUB_SHA}\`
+          - Integrity: verify with the attached \`.sha256\` file
+          - Release-key builds remain gated by the repository's offline keystore and certificate-pin checks.
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f "$tag" "$GITHUB_SHA"
+          git push --force origin "refs/tags/$tag"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/* --clobber
+            gh release edit "$tag" --title "$repo continuous APK" --notes-file release-notes.md --prerelease
+          else
+            gh release create "$tag" dist/* --target "$GITHUB_SHA" --title "$repo continuous APK" --notes-file release-notes.md --prerelease
+          fi
+
   release-check:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.verify_release_signing
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
