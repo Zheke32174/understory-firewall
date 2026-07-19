@@ -52,7 +52,7 @@ jobs:
           mkdir -p dist
           cp "$apk" "dist/${repo}-debug.apk"
           (cd dist && sha256sum "${repo}-debug.apk" > "${repo}-debug.apk.sha256")
-      - name: Publish rolling APK release
+      - name: Publish and verify rolling APK release
         if: github.event_name != 'pull_request'
         shell: bash
         env:
@@ -61,6 +61,7 @@ jobs:
           set -euo pipefail
           repo="${GITHUB_REPOSITORY#*/}"
           tag="continuous-apk"
+          verified_tag="continuous-apk-verified"
           cat > release-notes.md <<EOF
           Installable Android debug build from the current default branch.
 
@@ -79,6 +80,11 @@ jobs:
           else
             gh release create "$tag" dist/* --target "$GITHUB_SHA" --title "$repo continuous APK" --notes-file release-notes.md --prerelease
           fi
+          assets=$(gh release view "$tag" --json assets --jq '.assets[].name')
+          grep -Fxq "${repo}-debug.apk" <<< "$assets"
+          grep -Fxq "${repo}-debug.apk.sha256" <<< "$assets"
+          git tag -f "$verified_tag" "$GITHUB_SHA"
+          git push --force origin "refs/tags/$verified_tag"
 
   release-check:
     if: github.event_name == 'workflow_dispatch' && inputs.verify_release_signing
