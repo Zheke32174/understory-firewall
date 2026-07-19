@@ -1,0 +1,132 @@
+name: Android APK Release
+
+on:
+  push:
+    branches: [main, master]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.github/ISSUE_TEMPLATE/**'
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.github/ISSUE_TEMPLATE/**'
+  workflow_dispatch:
+    inputs:
+      verify_release_signing:
+        description: Run strict offline release-signing and certificate-pin verification
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Install Android SDK components
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-35" "build-tools;35.0.0" > /dev/null
+      - name: Assemble every debug APK
+        run: gradle --no-daemon assembleDebug
+      - name: Run unit tests
+        run: gradle --no-daemon test
+      - name: Upload CI APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apks
+          path: '**/build/outputs/apk/**/*.apk'
+          if-no-files-found: error
+      - name: Prepare release assets
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="${GITHUB_REPOSITORY#*/}"
+          mkdir -p dist
+          count=0
+          while IFS= read -r -d '' apk; do
+            rel="${apk#./}"
+            module="${rel%%/build/*}"
+            base="$(basename "$apk" .apk)"
+            safe="$(printf '%s-%s' "$module" "$base" | tr '/ ' '--')"
+            cp "$apk" "dist/${repo}-${safe}.apk"
+            count=$((count + 1))
+          done < <(find . -path '*/build/outputs/apk/*' -type f -name '*.apk' ! -name '*androidTest*' -print0 | sort -z)
+          test "$count" -gt 0
+          (cd dist && sha256sum ./*.apk > SHA256SUMS)
+      - name: Publish normal Latest release and verify downloads
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          repo="${GITHUB_REPOSITORY#*/}"
+          tag="continuous-apk"
+          verified_tag="android-release-verified"
+          cat > release-notes.md <<EOF
+          ## Downloadable Android build
+
+          This is an assembled, installable Android APK release from the current default branch.
+
+          - Signing: Android CI debug key
+          - Source commit: ${GITHUB_SHA}
+          - APK variants: every generated non-test debug APK is attached below
+          - Integrity: verify APKs against the attached SHA256SUMS file
+          - Source: GitHub automatically provides Source code (zip) and Source code (tar.gz)
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f "$tag" "$GITHUB_SHA"
+          git push --force origin "refs/tags/$tag"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/* --clobber
+            gh release edit "$tag" --target "$GITHUB_SHA" --title "$repo Android APK Release" --notes-file release-notes.md --draft=false --prerelease=false --latest
+          else
+            gh release create "$tag" dist/* --target "$GITHUB_SHA" --title "$repo Android APK Release" --notes-file release-notes.md --latest
+          fi
+          assets="$(gh release view "$tag" --json assets --jq '.assets[].name')"
+          test "$(grep -Ec '\.apk$' <<< "$assets")" -ge 1
+          grep -Fxq 'SHA256SUMS' <<< "$assets"
+          test "$(gh release view "$tag" --json isDraft --jq '.isDraft')" = false
+          test "$(gh release view "$tag" --json isPrerelease --jq '.isPrerelease')" = false
+          test -n "$(gh release view "$tag" --json zipballUrl --jq '.zipballUrl')"
+          test -n "$(gh release view "$tag" --json tarballUrl --jq '.tarballUrl')"
+          release_url="$(gh release view "$tag" --json url --jq '.url')"
+          printf '### Download\n[%s Android APK Release](%s)\n' "$repo" "$release_url" >> "$GITHUB_STEP_SUMMARY"
+          git tag -f "$verified_tag" "$GITHUB_SHA"
+          git push --force origin "refs/tags/$verified_tag"
+
+  release-signing-check:
+    if: github.event_name == 'workflow_dispatch' && inputs.verify_release_signing
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Install Android SDK components
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-35" "build-tools;35.0.0" > /dev/null
+      - name: Assemble release and verify certificate pin
+        run: gradle --no-daemon assembleRelease verifyCertPin -PrequireSignedRelease=true
