@@ -1,0 +1,55 @@
+apiVersion: modos.pleiades/v1alpha1
+kind: Component
+metadata:
+  name: understory-network-posture-and-firewall
+  repository: Zheke32174/understory-firewall
+  visibility: public
+  lifecycle: experimental
+  defaultBranch: main
+  labels:
+    modos.pleiades/subsystem: application-canopy
+    modos.pleiades/organ-class: network-posture-organ
+spec:
+  roles:
+    - offline-egress-posture-dashboard
+    - companion-mode-network-observer
+    - opt-in-standalone-vpn-firewall
+    - dns-and-egress-canary-verifier
+  authority: local-enforcement
+  inputs:
+    - local-tunnel-and-private-dns-state
+    - installed-application-network-posture
+    - explicit-user-mode-selection
+    - operating-system-vpn-slot-state
+  outputs:
+    - egress-and-dns-verdicts
+    - system-control-deep-links
+    - optional-standalone-packet-blocking
+    - network-posture-diagnostics
+  capabilitiesProvided:
+    - network.posture.observe@v1
+    - network.egress.block.standalone@v1
+  capabilitiesRequired:
+    - library.mobile.common@v1
+    - android.vpn.service@v1
+  dataClasses:
+    - public
+    - internal
+    - private
+    - untrusted
+  failurePolicy: fail-closed
+  promotionPolicy: evidence-gated
+  relations:
+    - type: depends-on
+      targetRef: repo:Zheke32174/understory-common
+      scope: build
+      required: true
+    - type: subsystem-of
+      targetRef: component:understory-agent-trunk
+      scope: distribution
+      required: true
+  notes: >-
+    Companion mode is the default and observes without occupying the VPN slot or
+    blocking traffic. Packet blocking exists only in explicit standalone mode,
+    which must refuse to start while another VPN is present. DNS hardening uses
+    the operating system's Private DNS rather than hidden overlay routing.
