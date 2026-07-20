@@ -1,0 +1,43 @@
+apiVersion: modos.pleiades/v1alpha1
+kind: Component
+metadata:
+  name: understory-net-audit
+  repository: Zheke32174/understory-firewall
+  visibility: public
+  lifecycle: alpha
+  defaultBranch: main
+spec:
+  roles:
+    - android-egress-observer
+    - companion-network-audit
+    - optional-standalone-vpn-firewall
+  authority: local-enforcement
+  inputs:
+    - android-network-and-vpn-state
+    - per-app-data-restriction-state
+    - system-private-dns-state
+    - installed-app-remote-administration-capabilities
+    - steward-explicit-standalone-mode-intent
+  outputs:
+    - local-egress-posture-view
+    - dns-and-exit-canary-receipts
+    - typed-navigation-to-existing-android-controls
+    - standalone-local-filter-events
+  capabilitiesProvided:
+    - network.egress.observe.local
+    - android.network-controls.navigate
+    - dns.posture.observe.local
+    - vpn.local.filter.optional
+  capabilitiesRequired:
+    - identity.user.local
+    - android.package-metadata.read
+    - android.network-state.read
+    - audit.local.write
+    - vpn.slot.user-approved
+  dataClasses:
+    - public
+    - private
+    - untrusted
+  failurePolicy: degrade-observation-only
+  promotionPolicy: signed-pr-and-device-receipt
+  notes: Companion mode is the default and has observation/navigation authority only; it never takes the VPN slot and blocks nothing. Packet filtering is available only through explicit steward opt-in to Standalone mode, which must fail closed whenever another VPN is present. This app does not define PDK capabilities, replace Android or Tailscale policy, edit shared suite modules locally, or gain root/Shizuku authority. Shared suite code remains canonical in understory-common and must be propagated with content receipts.

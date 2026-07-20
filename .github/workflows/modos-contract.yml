@@ -1,0 +1,47 @@
+name: MODOS contract
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate contract shape and authority notes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('MODOS_COMPONENT.yaml')
+          text = path.read_text(encoding='utf-8')
+          required = (
+              'apiVersion: modos.pleiades/v1alpha1',
+              'kind: Component',
+              'name: understory-net-audit',
+              'repository: Zheke32174/understory-firewall',
+              'authority: local-enforcement',
+              'failurePolicy: degrade-observation-only',
+              'promotionPolicy: signed-pr-and-device-receipt',
+              'vpn.local.filter.optional',
+              'Companion mode is the default',
+              'must fail closed whenever another VPN is present',
+              'does not define PDK capabilities',
+              'understory-common',
+          )
+          missing = [item for item in required if item not in text]
+          if missing:
+              raise SystemExit('missing contract invariants: ' + ', '.join(missing))
+          PY
+      - name: Reject accidental secret material
+        run: |
+          set -euo pipefail
+          if grep -RInE --exclude-dir=.git \
+            'BEGIN (OPENSSH|RSA|EC) PRIVATE KEY|gh[pousr]_[A-Za-z0-9_]{30,}|sk-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}' .; then
+            echo 'potential secret material found' >&2
+            exit 1
+          fi
