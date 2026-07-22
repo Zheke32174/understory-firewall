@@ -5,116 +5,22 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import java.security.MessageDigest
 
-/**
- * Discovers installed suite peers, validates each via cert-pin, and
- * returns the union of capabilities they offer.
- *
- * Usage from any suite app:
- *
- *     val snap = SuiteCapabilityRegistry.snapshot(context)
- *     if (snap.has(SuiteCapability.OTP_STORE)) {
- *         // an aegis peer holds OTP seeds — offer "back up my seeds" etc.
- *     }
- *     when (snap.tier) {
- *         SuiteTier.MESH -> enableQuorumAttestation()
- *         else -> { /* base behaviour */ }
- *     }
- *
- * Registration of new peers: edit [KNOWN_PEERS] only. Each entry maps a
- * package name to a *version → capability set* table — the consumer's
- * authoritative belief about what the peer at that version provides. A
- * peer that returns a version not listed here contributes zero
- * capabilities, even if cert-verified. This is the bedrock defense
- * against capability-spoofing: no peer can self-declare a power its
- * KNOWN_PEERS entry doesn't grant.
- *
- * Refresh model: callers re-invoke [snapshot] from a `PACKAGE_ADDED` /
- * `PACKAGE_REMOVED` BroadcastReceiver to live-update their UI when peers
- * come and go. The query is cheap (~1 PackageManager call + 1
- * ContentResolver query per known peer) so re-running it is fine.
- */
+/** Release-only discovery of cert-verified suite capabilities. */
 object SuiteCapabilityRegistry {
+    private val EXPECTED_SUITE_CERT_SHA256 = SuitePins.EXPECTED_RELEASE_CERT_SHA256
 
-    /**
-     * Same digest as [Tamper] / [SuiteAttestation] — all three sites read
-     * [SuitePins.EXPECTED_CERT_SHA256], the single pin source.
-     */
-    private val EXPECTED_SUITE_CERT_SHA256 = SuitePins.EXPECTED_CERT_SHA256
-
-    /**
-     * The consumer's authoritative belief about each peer:
-     *   peer package -> (peer-attested version -> capability set at that version).
-     *
-     * When a peer ships a new version with new capabilities, ALL consumer
-     * apps must update this table to "see" the new powers. That's
-     * intentional — a peer cannot grow its own privileges.
-     *
-     * Unlisted versions (peer is too new, or too old) contribute zero
-     * capabilities. The consumer keeps running, just without the peer's
-     * uplift.
-     *
-     * BEACON RULE (see [SuiteCapability] KDoc): a (package, version) row
-     * maps a capability ONLY when a live peer-invocable path in that app
-     * at that version actually backs it. Each v1 row below maps exactly
-     * the power the app's shipped code delivers to a peer — nothing
-     * aspirational. Rows deliberately absent / empty:
-     *   - aegis maps OTP_STORE (storage only). It does NOT map OTP_VAULT:
-     *     no code-issue IPC ships at v1, so no peer can request a code.
-     *   - backups maps BACKUP_ENVELOPE (single-file envelope + deposit
-     *     target). It does NOT map cross-app BACKUP_ORCHESTRATOR: the
-     *     cross-app BackupProvider IPC does not exist yet.
-     *   - browser maps NOTHING at v1: its SEND share-target ships (and a
-     *     disabled-by-default VIEW intake alias), but those are user-facing
-     *     system-share doorways, NOT the peer-invocable IPC that
-     *     HARDENED_BROWSER denotes, so the mapped set is empty. It is still a
-     *     valid suite member — it consumes peers and counts toward tier;
-     *     it simply offers an empty capability set (handled below).
-     * When a deferred surface ships, add its capability at the new
-     * version row in the SAME coordinated change across all consumers.
-     */
     private val KNOWN_PEERS: Map<String, Map<Int, Set<SuiteCapability>>> = mapOf(
-        "com.understory.passgen" to mapOf(
-            1 to setOf(SuiteCapability.IDENTITY_VAULT),
-        ),
-        "com.understory.aegis" to mapOf(
-            1 to setOf(SuiteCapability.OTP_STORE),
-        ),
-        "com.understory.firewall" to mapOf(
-            1 to setOf(SuiteCapability.NET_POSTURE_AUDIT),
-        ),
-        "com.understory.backups" to mapOf(
-            1 to setOf(SuiteCapability.BACKUP_ENVELOPE),
-        ),
-        "com.understory.browser" to mapOf(
-            // v1 offers no peer-facing surface (share-target/VIEW intake
-            // not yet built). Empty set, not omitted, so the peer is still
-            // discovered, cert-checked, and tier-counted — just inert.
-            1 to emptySet(),
-        ),
-        "com.understory.antivirus" to mapOf(
-            1 to setOf(SuiteCapability.APK_AUDITOR),
-        ),
-        "com.understory.vaultfolder" to mapOf(
-            1 to setOf(SuiteCapability.FILE_VAULT),
-        ),
-        // Future apps slot in here. Each new entry needs a same-named
-        // ContentProvider in the peer app and a documented tier-unlock
-        // entry in SUITE_DESIGN.md.
-        // "com.understory.sandbox"     to mapOf(1 to setOf(LOCAL_POLICY)),
+        "com.understory.passgen" to mapOf(1 to setOf(SuiteCapability.IDENTITY_VAULT)),
+        "com.understory.aegis" to mapOf(1 to setOf(SuiteCapability.OTP_STORE)),
+        "com.understory.firewall" to mapOf(1 to setOf(SuiteCapability.NET_POSTURE_AUDIT)),
+        "com.understory.backups" to mapOf(1 to setOf(SuiteCapability.BACKUP_ENVELOPE)),
+        "com.understory.browser" to mapOf(1 to emptySet()),
+        "com.understory.antivirus" to mapOf(1 to setOf(SuiteCapability.APK_AUDITOR)),
+        "com.understory.vaultfolder" to mapOf(1 to setOf(SuiteCapability.FILE_VAULT)),
     )
 
-    /**
-     * The ContentProvider authority pattern every suite app exposes.
-     * Authority = `{packageName}.suitecaps`. Single row. Two columns:
-     * `version` (int) and `cert_sha256` (string, lowercase hex). The
-     * cert_sha256 column is informational — the consumer recomputes from
-     * `PackageManager` for the actual security check. It's just there to
-     * help diagnose mismatches.
-     */
-    fun providerAuthorityFor(packageName: String): String =
-        "$packageName.suitecaps"
+    fun providerAuthorityFor(packageName: String): String = "$packageName.suitecaps"
 
-    /** Column names returned by every BaseCapabilityProvider. */
     object Cols {
         const val VERSION = "version"
         const val CERT_SHA256 = "cert_sha256"
@@ -124,125 +30,71 @@ object SuiteCapabilityRegistry {
         val ownPackage: String,
         val peers: List<PeerInfo>,
     ) {
-        /** All capabilities the union of cert-verified peers contributes. */
         val capabilities: Set<SuiteCapability> by lazy {
-            peers.filter { it.certVerified }
-                .flatMap { it.capabilities }
-                .toSet()
+            peers.filter(PeerInfo::certVerified).flatMap(PeerInfo::capabilities).toSet()
         }
 
-        /** Convenience: does ANY verified peer offer this capability? */
-        fun has(c: SuiteCapability): Boolean = c in capabilities
+        fun has(capability: SuiteCapability): Boolean = capability in capabilities
 
-        /** Verified peers offering [c], ordered by package name. */
-        fun peersWith(c: SuiteCapability): List<String> =
-            peers.filter { it.certVerified && c in it.capabilities }
-                .map { it.packageName }
-                .sorted()
+        fun peersWith(capability: SuiteCapability): List<String> = peers
+            .filter { it.certVerified && capability in it.capabilities }
+            .map(PeerInfo::packageName)
+            .sorted()
 
-        /** Cumulative tier including the local app itself. */
         val tier: SuiteTier by lazy {
-            val verifiedPeers = peers.count { it.certVerified }
-            val total = verifiedPeers + 1  // +1 for the local app
-            when {
-                total >= 5 -> SuiteTier.MESH
-                total >= 3 -> SuiteTier.TRIPLE
-                total == 2 -> SuiteTier.PAIR
+            when (peers.count(PeerInfo::certVerified) + 1) {
+                in 5..Int.MAX_VALUE -> SuiteTier.MESH
+                in 3..4 -> SuiteTier.TRIPLE
+                2 -> SuiteTier.PAIR
                 else -> SuiteTier.STANDALONE
             }
         }
 
-        /**
-         * Peers that returned a version we don't recognize (peer is newer
-         * or older than this consumer's KNOWN_PEERS entry). Useful for
-         * surfacing "update available" prompts.
-         */
-        val unknownVersionPeers: List<String> get() =
-            peers.filter { it.certVerified && it.capabilities.isEmpty() }
-                .map { it.packageName }
+        val unknownVersionPeers: List<String>
+            get() = peers.filter { it.certVerified && it.capabilities.isEmpty() }
+                .map(PeerInfo::packageName)
     }
 
-    /**
-     * Discover and validate every known peer. Excludes the calling app
-     * itself.
-     *
-     * This call is cheap (~milliseconds) so it can run on the main thread
-     * during cold start. Cache it in your Activity / ViewModel for the
-     * lifetime of the screen, then re-query on `PACKAGE_ADDED` /
-     * `PACKAGE_REMOVED` broadcasts.
-     */
     fun snapshot(ctx: Context): Snapshot {
-        val ourPackage = ctx.packageName
-        val pm = ctx.packageManager
-        val peerInfos = mutableListOf<PeerInfo>()
+        val ownPackage = ctx.packageName
+        if (BuildConfig.DEBUG) return Snapshot(ownPackage, emptyList())
 
-        for ((peerPkg, versionTable) in KNOWN_PEERS) {
-            if (peerPkg == ourPackage) continue
-
-            // Step 1: peer installed?
-            val pkgInfo = try {
-                pm.getPackageInfo(peerPkg, PackageManager.GET_SIGNING_CERTIFICATES)
+        val peers = mutableListOf<PeerInfo>()
+        for ((peerPackage, versions) in KNOWN_PEERS) {
+            if (peerPackage == ownPackage) continue
+            val packageInfo = try {
+                ctx.packageManager.getPackageInfo(peerPackage, PackageManager.GET_SIGNING_CERTIFICATES)
             } catch (_: PackageManager.NameNotFoundException) {
-                continue  // Not installed — skip silently, not a defense fail.
+                continue
             } catch (_: Throwable) {
-                continue  // Visibility / policy denied — out of our hands.
+                continue
             }
-
-            // Step 2: cert pin check. Untrusted peer contributes 0 caps.
-            val certVerified = signingCertMatches(pkgInfo.signingInfo)
-
-            // Step 3: ask the peer's provider for its attested version.
-            //         Defensively wrapped — a faulty provider must not
-            //         take down the registry query.
-            val attestedVersion = runCatching {
-                queryPeerVersion(ctx, peerPkg)
-            }.getOrDefault(-1)
-
-            // Step 4: translate (peer, version) into local capability set.
-            //         An unknown version yields the empty set, which is
-            //         the safe default — peer is "seen but inert".
-            val caps = if (certVerified && attestedVersion >= 0) {
-                versionTable[attestedVersion] ?: emptySet()
-            } else {
-                emptySet()
-            }
-
-            peerInfos += PeerInfo(
-                packageName = peerPkg,
-                attestedVersion = attestedVersion,
-                capabilities = caps,
-                certVerified = certVerified,
-            )
+            val verified = signingCertMatches(packageInfo.signingInfo)
+            val version = runCatching { queryPeerVersion(ctx, peerPackage) }.getOrDefault(-1)
+            val capabilities = if (verified && version >= 0) versions[version] ?: emptySet() else emptySet()
+            peers += PeerInfo(peerPackage, version, capabilities, verified)
         }
-
-        return Snapshot(ownPackage = ourPackage, peers = peerInfos)
+        return Snapshot(ownPackage, peers.sortedBy(PeerInfo::packageName))
     }
 
     private fun signingCertMatches(signingInfo: android.content.pm.SigningInfo?): Boolean {
-        if (signingInfo == null) return false
-        val sigs = signingInfo.apkContentsSigners ?: return false
-        return sigs.any { sig ->
+        val signers = signingInfo?.apkContentsSigners ?: return false
+        return signers.any { signer ->
             val digest = MessageDigest.getInstance("SHA-256")
-                .digest(sig.toByteArray())
+                .digest(signer.toByteArray())
                 .joinToString("") { "%02x".format(it) }
             digest.equals(EXPECTED_SUITE_CERT_SHA256, ignoreCase = true)
         }
     }
 
-    private fun queryPeerVersion(ctx: Context, peerPkg: String): Int {
-        val authority = providerAuthorityFor(peerPkg)
-        val uri = Uri.parse("content://$authority/version")
-        // Explicit projection: even though every peer is cert-pinned (a
-        // hostile cursor here implies the suite cert is already
-        // compromised), passing only the column we read bounds a buggy
-        // peer's blast radius — we never allocate space for extra cols.
-        val projection = arrayOf(Cols.VERSION)
-        val cursor = ctx.contentResolver.query(uri, projection, null, null, null)
+    private fun queryPeerVersion(ctx: Context, peerPackage: String): Int {
+        val uri = Uri.parse("content://${providerAuthorityFor(peerPackage)}/version")
+        val cursor = ctx.contentResolver.query(uri, arrayOf(Cols.VERSION), null, null, null)
             ?: return -1
-        return cursor.use { c ->
-            if (!c.moveToFirst()) return -1
-            val idx = c.getColumnIndex(Cols.VERSION)
-            if (idx < 0) -1 else c.getInt(idx)
+        return cursor.use {
+            if (!it.moveToFirst()) return -1
+            val index = it.getColumnIndex(Cols.VERSION)
+            if (index < 0) -1 else it.getInt(index)
         }
     }
 }
