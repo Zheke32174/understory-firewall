@@ -101,6 +101,22 @@ class MaskerService : Service() {
             }
         }
 
+        /** BLE tracker/follower detection. Held by the service so the accumulated history
+         *  outlives the WebView — the analysis and the evidence are native even though the scan
+         *  cadence that feeds it is still page-driven. See TrackerWatch for the precise split. */
+        @Volatile var trackerWatch: TrackerWatch? = null
+            private set
+
+        fun ensureTrackerWatch(ctx: Context): TrackerWatch {
+            trackerWatch?.let { return it }
+            synchronized(this) {
+                trackerWatch?.let { return it }
+                val vault = SecureLog(ctx.applicationContext)
+                val t = TrackerWatch { sev, msg, badge -> vault.append(sev, msg, badge, "native") }
+                trackerWatch = t; return t
+            }
+        }
+
         fun ensureEscalationGuard(ctx: Context): EscalationGuard {
             escalationGuard?.let { return it }
             synchronized(this) {

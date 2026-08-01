@@ -1343,6 +1343,42 @@
       </div>
     <div class="sheet" id="sheet-data">
       <div class="sect">
+        <div class="head"><span class="t">Follower detection</span><span class="tag" id="tkState">—</span></div>
+        <div class="body">
+          <div class="grid">
+            <div class="stat"><small>Tracked identities</small><b id="tkCount">—</b></div>
+            <div class="stat"><small>Scan sessions</small><b id="tkSess">—</b></div>
+            <div class="stat"><small>Following</small><b id="tkFollow">—</b></div>
+          </div>
+          <div class="row"><div class="cell full"><button class="btn" id="tkRefresh">Refresh</button></div></div>
+          <div id="tkList"></div>
+          <div class="muted">Detects a BLE tracker that is <b>travelling with you</b> — the analysis runs
+            natively and commits straight to the encrypted log, so the page cannot alter a verdict or
+            suppress a finding, and the history survives a reload.
+            <br><br>
+            <b>Why a single scan can never answer this.</b> A tracker in your bag and a tracker on a shelf
+            you walked past look identical in one sweep. They differ over time: the one travelling with you
+            keeps being seen, across places far enough apart that a fixed beacon could not reach both. So a
+            follow requires <b>both</b> — persistence across several separate scan sessions <i>and</i> real
+            displacement since it was first seen. A beacon reaches tens of metres; if the same identity is
+            still with you half a kilometre later, it moved with you.
+            <br><br>
+            <b>MAC rotation is handled.</b> Trackers rotate their hardware address to defeat simple
+            blocklists, but the advertisement payload usually stays constant — so identities are keyed on
+            the payload, and the same payload appearing under several addresses is itself reported. Vendor
+            fingerprints (Apple Find My, Samsung SmartTag, Tile, Chipolo) are read from manufacturer data.
+            <br><br>
+            <b>Deliberately conservative, and it will name your own things.</b> Your AirTag, your earbuds,
+            a tag belonging to someone travelling with you, and a tag in a shared car all produce a genuine
+            follow signature — because they genuinely are following you. The alert says exactly that rather
+            than implying malice. Identify it before assuming the worst.
+            <br><br>
+            The scan cadence that feeds this is still driven by the page, so it runs while the app is
+            alive rather than fully in the background — the analysis and the record are native, the trigger
+            is not yet.</div>
+        </div>
+      </div>
+      <div class="sect">
         <div class="head"><span class="t">Tower &amp; position log</span><span class="tag" id="twState">off</span>
           <div class="sw" id="twEn" aria-pressed="false"></div></div>
         <div class="body">
@@ -4336,6 +4372,8 @@ const Accessories=(function(){
     const el=$('bleCadMode'); if(el&&!v)el.textContent='idle';
   }
   function push(d){ try{ d.tag=RF.classifyBle(d); }catch(e){}
+    // Mirror every sighting into the native analyser (batched — see feedTracker).
+    try{ RF.feedTracker(d); }catch(e){}
     const existing=devices.find(x=>x.id===d.id);
     if(existing){
       if(d.rssi!=null){ existing.hist=existing.hist||[]; existing.hist.push(d.rssi); if(existing.hist.length>24)existing.hist.shift(); existing.rssi=d.rssi; }
@@ -5091,6 +5129,34 @@ const RF=(function(){
   };
   function shortUuid(u){ const m=/^0000([0-9a-f]{4})-0000-1000-8000-00805f9b34fb$/i.exec(u||''); return m?m[1].toLowerCase():(u||'').toLowerCase(); }
   function wellKnownUuid(u){ return WELLKNOWN_SVC[shortUuid(u)]||null; }
+  /* Hand every scan result set to the NATIVE tracker analyser. The heuristics and the record
+     live in Kotlin now: the page can no longer alter a verdict or suppress a finding, and the
+     accumulated history survives a reload. The local classifyBle() below is kept only to label
+     rows in the list — it is display, not detection.
+     Cheap and once per scan, not per device, so it does not put a bridge round-trip on the
+     per-device path. */
+  /* BATCHED. push() is per-device, and a bridge round-trip per advertisement would put a
+     synchronous native call on the hottest path in the app — the exact mistake the DOM hammer
+     exists to demonstrate. Devices are collected and flushed once per window instead, which
+     also gives the native side a natural "scan session" boundary to count persistence against
+     (a device seen fifty times in one sweep must not score as fifty sessions). */
+  let trkBatch=new Map(), trkTimer=null;
+  const TRK_FLUSH_MS=1500;
+  function feedTracker(d){
+    if(!window.EMITracker||!EMITracker.ingest) return;
+    if(d&&d.address) trkBatch.set(d.address,d);
+    if(trkTimer) return;
+    trkTimer=setTimeout(()=>{
+      trkTimer=null;
+      const list=[...trkBatch.values()]; trkBatch=new Map();
+      if(!list.length) return;
+      try{
+        const la=(typeof Sensors!=='undefined'&&Sensors.lat!=null)?Sensors.lat:NaN;
+        const lo=(typeof Sensors!=='undefined'&&Sensors.lon!=null)?Sensors.lon:NaN;
+        EMITracker.ingest(JSON.stringify(list), la, lo);
+      }catch(e){}
+    }, TRK_FLUSH_MS);
+  }
   function classifyBle(d){
     let tag=null;
     if(d.mfg){
@@ -5133,7 +5199,7 @@ const RF=(function(){
       it.append(b,s); list.appendChild(it); });
     el.appendChild(list);
   }
-  return { wifiScanNow, classifyBle, renderAccKinds, wellKnownUuid, toggleTrust, setChaoticWifi, budgetState,
+  return { wifiScanNow, classifyBle, feedTracker, renderAccKinds, wellKnownUuid, toggleTrust, setChaoticWifi, budgetState,
     get wifiCadenceMode(){return wifiCadence.mode;},
     exportWifiLog(){ if(!wifiScanLog.length){toast('Nothing scanned yet');return;} downloadFile(wifiLogToCsv(),'emi-wifi-scan-log.csv','text/csv'); },
     get lastWifi(){return lastWifi;}, get ACCESSORY_KINDS(){return ACCESSORY_KINDS;} };
@@ -6487,7 +6553,7 @@ document.querySelectorAll('#logSheets .chip').forEach(c=>c.addEventListener('cli
   if(want==='security'){ Tapjack.render(true); CellSec.render(true); NetSec.render(true); }
   if(want==='vault') vaultRefresh(true);
   else if(want==='data') vaultRefresh(false);
-  if(want==='data'){ CollectedData.render(); TowerUI.render(); }
+  if(want==='data'){ CollectedData.render(); TowerUI.render(); Follower.render(); }
 }));
 
 /* ---- Tapjacking / overlay readout ---- */
@@ -6539,6 +6605,45 @@ $('tjOverlaySet').addEventListener('click',()=>{
 $('tjA11ySet').addEventListener('click',()=>{
   try{ if(window.EMITapjack&&EMITapjack.openAccessibilitySettings){ EMITapjack.openAccessibilitySettings(); return; } }catch(e){}
   toast('Needs the installed app'); });
+
+/* ---- Follower detection viewer (analysis is native; this only renders) ---- */
+const Follower=(function(){
+  let last=null;
+  const set=(id,v)=>{const el=$(id); if(el)el.textContent=String(v);};
+  function render(){
+    if(!window.EMITracker){ set('tkState','native build only'); return; }
+    try{ last=JSON.parse(EMITracker.stats()); }catch(e){ last=null; }
+    if(!last){ set('tkState','error'); return; }
+    const c=(last.candidates||[]);
+    const following=c.filter(x=>x.following).length;
+    set('tkState', following>0?(following+' FOLLOWING'):'nothing following');
+    set('tkCount', last.tracked!=null?last.tracked:'—');
+    set('tkSess', last.sessions!=null?last.sessions:'—');
+    set('tkFollow', following);
+    const L=$('tkList'); if(!L) return;
+    L.innerHTML='';
+    if(!c.length){ const e=document.createElement('div'); e.className='muted';
+      e.style.marginTop='8px'; e.textContent='No device has been seen often enough to assess yet.';
+      L.appendChild(e); return; }
+    c.sort((a,b)=>(b.following?1:0)-(a.following?1:0)||b.sessions-a.sessions);
+    c.slice(0,12).forEach(x=>{
+      const d=document.createElement('div');
+      d.style.cssText='margin-top:8px;padding:7px;font-size:10.5px;line-height:1.5;border-left:3px solid '+
+        (x.following?'#c0392b':'var(--rule)')+';background:rgba(255,255,255,.32)';
+      // textContent: labels derive from advertised vendor data — never parsed as markup.
+      d.textContent=(x.following?'FOLLOWING · ':'')+x.label+
+        '  ·  '+x.sessions+' scans  ·  '+x.addresses+' MAC'+(x.addresses===1?'':'s')+
+        '  ·  '+x.minutes+' min  ·  moved '+x.movedM+'m  ·  '+x.rssi+'dBm';
+      L.appendChild(d);
+    });
+  }
+  return { render, get last(){ return last; } };
+})();
+$('tkRefresh').addEventListener('click',()=>{ Follower.render();
+  const l=Follower.last, f=l?(l.candidates||[]).filter(x=>x.following).length:0;
+  toast(l ? (f>0?(f+' device(s) appear to be travelling with you')
+                :'Nothing is following — '+(l.tracked||0)+' identities tracked')
+          : 'Follower detection unavailable'); });
 
 /* ---- LAN interception detector (defensive inverse of the ARP-spoofing tools) ---- */
 const NetSec=(function(){

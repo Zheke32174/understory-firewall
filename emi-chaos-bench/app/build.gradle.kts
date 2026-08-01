@@ -50,4 +50,11 @@ dependencies {
     // tier could never activate. 2.5.3 is pinned deliberately: 2.6.0 requires compileSdk 37
     // (this app targets 34) and 2.5.4+ ship Java 21 bytecode.
     implementation("io.github.iamr0s:Dhizuku-API:2.5.3")
+
+    // Unit tests. org.json is only a STUB in the Android JAR — every method throws
+    // "not mocked" under plain JVM tests — so a real implementation has to be on the test
+    // classpath or anything touching JSONObject fails for reasons unrelated to the code
+    // under test.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }
