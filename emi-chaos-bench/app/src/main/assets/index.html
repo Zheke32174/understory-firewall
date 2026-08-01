@@ -3371,6 +3371,94 @@ const BandGuard=(function(){
 })();
 
 /* ============ SENSORS ============ */
+/* ============ MOTION STATE — the app answers its own question ==========================
+   The cell alerts used to end with "Normal during handover/movement — worth a look if you're
+   stationary." That sentence hands the decisive test back to the user, and it is the ONE part
+   of the analysis the phone can do better than they can: it has an accelerometer, a
+   speedometer and a position history, and it knows whether it moved.
+
+   It matters because the discriminator is real. A serving-cell or channel change while you are
+   walking or driving is a handover — the most ordinary event on a mobile network. The SAME
+   change while the phone has not moved is what a cell-site simulator looks like from the
+   handset: a new cell appears with a better signal, the phone reselects onto it, and nothing
+   about your position explains why.
+
+   So this keeps a rolling window of movement evidence and lets the cell checks state the
+   correlation themselves. Three independent sources, because any one of them can be absent or
+   wrong:
+     - GNSS displacement, the strongest signal when location is available and accurate;
+     - reported speed;
+     - accelerometer variance, which works with location off and catches being carried.
+
+   Deliberately conservative: it only claims STATIONARY when it has actual evidence of not
+   moving. Absent sensors give "unknown", never "stationary" — inventing stillness would
+   manufacture false accusations, which is the failure mode this whole app is built to avoid. */
+const Motion=(function(){
+  const HIST_MS=180000;                 // 3 minutes of history
+  let fixes=[];                         // {t,lat,lon,acc}
+  let accVar=[], lastAcc=0;
+  function haversine(a,b){
+    const R=6371000, toR=Math.PI/180;
+    const dLat=(b.lat-a.lat)*toR, dLon=(b.lon-a.lon)*toR;
+    const s=Math.sin(dLat/2)**2+Math.cos(a.lat*toR)*Math.cos(b.lat*toR)*Math.sin(dLon/2)**2;
+    return 2*R*Math.asin(Math.min(1,Math.sqrt(s)));
+  }
+  function prune(now){
+    fixes=fixes.filter(f=>now-f.t<HIST_MS);
+    accVar=accVar.filter(x=>now-x.t<HIST_MS);
+  }
+  return {
+    /* Called from the geolocation callback. */
+    fix(lat,lon,acc){
+      if(typeof lat!=='number'||typeof lon!=='number') return;
+      const now=Date.now(); fixes.push({t:now,lat,lon,acc:acc||9999}); prune(now);
+    },
+    /* Called cheaply from the sensor loop; accelerometer magnitude minus gravity. */
+    sample(){
+      try{
+        const m=Math.hypot(Sensors.val('ax'),Sensors.val('ay'),Sensors.val('az'));
+        const now=Date.now();
+        if(now-lastAcc<1000) return; lastAcc=now;
+        accVar.push({t:now,m}); prune(now);
+      }catch(e){}
+    },
+    /* 'stationary' | 'moving' | 'unknown', with the evidence that decided it. */
+    state(){
+      const now=Date.now(); prune(now);
+      const usable=fixes.filter(f=>f.acc<=50);
+      let gnss=null, spanMs=0, maxMove=0;
+      if(usable.length>=2){
+        spanMs=usable[usable.length-1].t-usable[0].t;
+        for(let i=1;i<usable.length;i++)
+          maxMove=Math.max(maxMove,haversine(usable[0],usable[i]));
+        // Needs at least 60s of span to say anything; movement judged against the worst
+        // accuracy in the window so GPS jitter is never read as travel.
+        const jitter=Math.max(...usable.map(f=>f.acc));
+        if(spanMs>=60000) gnss = maxMove > Math.max(60,jitter*2) ? 'moving' : 'stationary';
+      }
+      const spd=Math.abs(Sensors.val('spd'));            // normalised, 1.0 ≈ 15 m/s
+      const spdSays = spd>0.08 ? 'moving' : null;         // ~1.2 m/s, walking pace
+      let accSays=null;
+      if(accVar.length>=20){
+        const ms=accVar.map(x=>x.m);
+        const mean=ms.reduce((a,b)=>a+b,0)/ms.length;
+        const v=ms.reduce((a,b)=>a+(b-mean)*(b-mean),0)/ms.length;
+        accSays = v>0.004 ? 'moving' : 'stationary';      // resting phone is very quiet
+      }
+      // Any credible source saying "moving" wins — false "stationary" is the costly error.
+      if(gnss==='moving'||spdSays==='moving'||accSays==='moving')
+        return {state:'moving', why:`gnss=${gnss||'—'} speed=${spdSays||'—'} accel=${accSays||'—'}`};
+      if(gnss==='stationary'||accSays==='stationary'){
+        const bits=[];
+        if(gnss==='stationary') bits.push(`moved ${Math.round(maxMove)}m over ${Math.round(spanMs/1000)}s of GNSS fixes`);
+        if(accSays==='stationary') bits.push('accelerometer flat');
+        return {state:'stationary', why:bits.join(', ')};
+      }
+      return {state:'unknown', why:'no usable motion evidence'};
+    }
+  };
+})();
+
 const Sensors=(function(){
   const raw={gx:0,gy:0,gz:0,ox:0,oy:0,oz:0,ax:0,ay:0,az:0,mag:0,magS:0,spd:0,hdg:0,alt:0,net:0,rtt:0,shake:0,mic:0,baro:0,light:0};
   const norm={};
@@ -3385,6 +3473,9 @@ const Sensors=(function(){
     if(m>13 && perfNow()-lastA>250){ lastA=perfNow(); onShake(); } }
   function geo(p){ const c=p.coords; raw.spd=n(((c.speed||0)/15)); raw.hdg=n(((c.heading||0)/180)-1);
     raw.alt=n(((c.altitude||0)/400)); Sensors.lat=c.latitude; Sensors.lon=c.longitude; Scene.geoCheck(c.latitude,c.longitude);
+    // Feed the motion estimator, so the cell checks can decide "were you stationary?" themselves
+    // instead of printing that question at the user.
+    try{ Motion.fix(c.latitude,c.longitude,c.accuracy); }catch(e){}
     try{ Wardrive.crumb(); }catch(e){} }
   function bridge(){ try{ if(window.EMIBridge&&EMIBridge.getSensors){ const s=JSON.parse(EMIBridge.getSensors());
       for(const k in s) if(k in raw) raw[k]=s[k]; } }catch(e){} }
@@ -5535,9 +5626,31 @@ const CellGuard=(function(){
         // described as the same event.
         const bandTxt=s.bands&&s.bands.length?` (band ${s.bands.join('/')})`:'';
         if(samePlmn&&s.gen===prev.gen){ alerts++;
-          Alerts.push(2,`Radio channel changed on the same carrier and same ${s.gen}G radio: `+
-            `ARFCN ${prev.arfcn} → ${s.arfcn}${bandTxt}. Normal during handover/movement — worth a `+
-            `look if you're stationary.`,'cell-band'); }
+          /* THE APP ANSWERS ITS OWN QUESTION.
+             This used to end with "worth a look if you're stationary", which handed the single
+             most decisive test back to the user — while the phone was holding the accelerometer
+             and position history needed to settle it. A channel change while you are walking or
+             driving is the most ordinary event on a mobile network. The same change while the
+             device demonstrably has not moved is what a cell-site simulator looks like from the
+             handset. So the correlation is computed and stated, and severity follows it. */
+          const mo=(function(){ try{ return Motion.state(); }catch(e){ return {state:'unknown',why:'motion estimator unavailable'}; } })();
+          const base=`Radio channel changed on the same carrier and same ${s.gen}G radio: `+
+            `ARFCN ${prev.arfcn} → ${s.arfcn}${bandTxt}.`;
+          if(mo.state==='stationary'){
+            Alerts.push(3, base+` THE DEVICE WAS STATIONARY when this happened (${mo.why}). A `+
+              `retune with no movement to explain it is the pattern a cell-site simulator `+
+              `produces: a new cell appears with a better signal and the handset reselects onto `+
+              `it. Repeaters, load balancing and network maintenance also do this — but this is `+
+              `the case worth looking at, and it is no longer being left for you to notice.`,
+              'cell-band');
+          } else if(mo.state==='moving'){
+            Alerts.push(1, base+` The device was moving (${mo.why}), which is the ordinary `+
+              `explanation — this is a handover.`,'cell-band');
+          } else {
+            Alerts.push(2, base+` Movement could not be determined (${mo.why}), so this cannot `+
+              `be separated from an ordinary handover. Enable Sensors/location for the app to `+
+              `make that call itself.`,'cell-band');
+          } }
         else if(samePlmn){ alerts++;
           Alerts.push(1,`Radio changed generation on the same carrier: ${prev.gen}G → ${s.gen}G `+
             `(${prev.gen>=5?'NR-ARFCN':'EARFCN'} ${prev.arfcn} → ${s.gen>=5?'NR-ARFCN':'EARFCN'} `+

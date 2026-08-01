@@ -75,14 +75,63 @@ class SecureLog(private val ctx: Context) {
         private const val MAX_BYTES = 4L * 1024 * 1024      // roll past this
         private val GENESIS: ByteArray = MessageDigest.getInstance("SHA-256")
             .digest("EMI-VAULT-v1".toByteArray())
+
+        /** One monitor per PROCESS, because there is one log file per process. See [lock]. */
+        private val FILE_LOCK = Any()
+
+        /**
+         * How far either side of the expected sequence number [walk] will look when a record
+         * fails to authenticate. Bounded deliberately: this exists to absorb the small
+         * position-vs-sequence slip left by concurrent appends, not to brute-force a corrupt
+         * file. A handful of racing writers can slip by a few; nothing legitimate slips by 16.
+         */
+        private const val RESYNC_WINDOW = 16L
+
+        /**
+         * Set when a write is known to have failed, and never cleared by a later success.
+         *
+         * lastError used to be an instance field, which meant a failure inside ScanEngine's
+         * SecureLog could not be seen by the LogsScreen's SecureLog — different objects — so
+         * verify() would report a clean bill of health for a log that had been silently losing
+         * records. The state being described belongs to the FILE, so it lives with the file's
+         * lock.
+         */
+        @Volatile private var sharedError: String? = null
     }
 
     private val dir = File(ctx.filesDir, "vault").apply { mkdirs() }
     private val logFile = File(dir, "alerts.log")
     private val headFile = File(dir, "alerts.head")
-    private val lock = Any()
 
-    @Volatile private var lastError: String? = null
+    /**
+     * THE LOCK IS PROCESS-WIDE, NOT PER-INSTANCE, AND THAT DISTINCTION IS THE WHOLE CHAIN.
+     *
+     * This was `private val lock = Any()` — an instance field — while SEVEN separate SecureLog
+     * instances exist in this process: ScanEngine's, CellSecurity's, NetGuard's,
+     * EscalationGuard's, TrackerWatch's, TapjackGuard's, OverlayWatch's, LogsScreen's and the
+     * page's VaultBridge. They all write the same alerts.log, from the scan thread, two timer
+     * threads, the BLE handler thread, an accessibility callback and the UI thread.
+     *
+     * Seven locks guarding one file is no lock at all. append() is read-modify-write across
+     * TWO files — it reads the head for the sequence number and previous hash, writes a record,
+     * then writes the new head — so two concurrent appends can both read seq N, both write a
+     * record claiming seq N with the same prev hash, and leave a head that describes neither.
+     * The result is a log whose chain does not verify, reported to the user as TAMPERING.
+     *
+     * That is the worst possible failure mode here: the one alarm that is supposed to mean
+     * "someone edited your evidence" would fire because two of the app's own detectors happened
+     * to find something in the same millisecond. It would be unreproducible, and it would
+     * discredit the exact signal the vault exists to provide.
+     *
+     * Companion-object scope makes it one monitor for the whole process, which is the actual
+     * granularity of the resource being guarded: the file.
+     */
+    private val lock = FILE_LOCK
+
+    /** Process-wide (see [sharedError]) — a write failure anywhere must be visible everywhere. */
+    private var lastError: String?
+        get() = sharedError
+        set(v) { sharedError = v }
 
     // ---- key handling ------------------------------------------------------------------
 
@@ -159,9 +208,36 @@ class SecureLog(private val ctx: Context) {
         }
     }
 
+    /**
+     * Written ATOMICALLY: sealed into a temp file, fsynced, then renamed over the real one.
+     *
+     * The head is the only thing that says how many records exist, and append() derives the next
+     * sequence number from it. A torn or half-written head therefore does not merely lose a
+     * count — it desynchronises sequence from file position for every record written afterwards,
+     * which is the same permanent, unrecoverable break as a concurrent append. writeBytes()
+     * truncates the file first, so a kill or a full disk between truncate and write left exactly
+     * that: a zero-length head, read back as "damaged", and an append that then restarted the
+     * sequence at 0 on top of an existing log.
+     *
+     * rename() on the same filesystem is atomic, so a reader sees either the whole old head or
+     * the whole new one, never a partial. The fd.sync() before the rename is what makes that
+     * true across a power loss rather than only across a process kill.
+     */
     private fun writeHead(h: Head) {
         val o = JSONObject().put("count", h.count).put("head", h.head)
-        headFile.writeBytes(seal(o.toString().toByteArray(), -1L))
+        val sealed = seal(o.toString().toByteArray(), -1L)
+        val tmp = File(dir, "alerts.head.tmp")
+        RandomAccessFile(tmp, "rw").use { f ->
+            f.setLength(0)
+            f.write(sealed)
+            f.fd.sync()
+        }
+        if (!tmp.renameTo(headFile)) {
+            // Fall back rather than lose the update, but say so — a non-atomic head is a
+            // liability worth knowing about.
+            headFile.writeBytes(sealed)
+            lastError = "head written non-atomically (rename failed)"
+        }
     }
 
     // ---- append ------------------------------------------------------------------------
@@ -174,8 +250,33 @@ class SecureLog(private val ctx: Context) {
         try {
             rotateIfNeeded()
             val head = readHead()
-            val seq = if (head.count < 0) 0L else head.count
-            val prev = if (head.count <= 0) hex(GENESIS) else head.head
+
+            /* A DAMAGED HEAD MUST NOT RESTART THE SEQUENCE AT ZERO.
+             *
+             * readHead() returns count = -1 when the head cannot be decrypted, and this used to
+             * map that straight to seq = 0. On a log that already held N records that is
+             * catastrophic and silent: the new record goes at file position N but is sealed as
+             * sequence 0, so position and sequence are permanently out of step and EVERY record
+             * from there on fails authentication — the exact failure pattern seen on device, an
+             * AEADBadTagException partway through an otherwise perfect log.
+             *
+             * A head is small and single-purpose; the log itself is the larger and more
+             * trustworthy artifact. So when the head is unreadable, the sequence is recovered by
+             * counting the records that are actually there, and the damage is recorded rather
+             * than absorbed. Restarting from 0 is only correct when the log is genuinely empty.
+             */
+            val seq: Long
+            val prev: String
+            if (head.count < 0) {
+                val recovered = countByWalking()
+                lastError = "head was unreadable; sequence recovered from the log itself " +
+                    "($recovered records found). The head is being rebuilt."
+                seq = recovered
+                prev = if (recovered <= 0L) hex(GENESIS) else lastChainHash()
+            } else {
+                seq = head.count
+                prev = if (head.count <= 0L) hex(GENESIS) else head.head
+            }
 
             val rec = JSONObject()
                 .put("seq", seq)
@@ -212,6 +313,23 @@ class SecureLog(private val ctx: Context) {
         }
     }
 
+    /**
+     * Records actually present, counted by reading them. Used only to recover from a damaged
+     * head — the ordinary count() reads the head, which is O(1). Callers already hold [lock].
+     */
+    private fun countByWalking(): Long {
+        var n = 0L
+        try { walk { _, _, _ -> n++ } } catch (_: Exception) {}
+        return n
+    }
+
+    /** Chain value after the last readable record, for rebuilding a destroyed head. */
+    private fun lastChainHash(): String {
+        var chain = GENESIS
+        try { walk { _, _, plain -> chain = sha256(chain, plain) } } catch (_: Exception) {}
+        return hex(chain)
+    }
+
     private fun intBE(v: Int) = byteArrayOf(
         (v ushr 24).toByte(), (v ushr 16).toByte(), (v ushr 8).toByte(), v.toByte()
     )
@@ -223,10 +341,44 @@ class SecureLog(private val ctx: Context) {
 
     // ---- read --------------------------------------------------------------------------
 
-    private fun walk(onRecord: (Long, JSONObject, ByteArray) -> Unit) {
+    /**
+     * Walks the log, and RESYNCHRONISES rather than giving up at the first record it cannot
+     * authenticate.
+     *
+     * WHY THIS WAS NECESSARY, FROM REAL DEVICE DATA. Exports from one device showed 70 records
+     * verifying cleanly, then — later the same hour — 279 readable records against a head
+     * claiming 463, and then 732. Readable records were frozen at 279 while the log kept
+     * growing, and the failure was AEADBadTagException: a GCM authentication failure.
+     *
+     * The cause was the per-instance lock (see [lock]): concurrent appends from two of the
+     * app's own detectors both read sequence N and both wrote a record sealed with AAD "seq:N".
+     * From that point every record sits one position later in the file than the sequence number
+     * baked into its ciphertext, so open(blob, seq) fails for the rest of the log FOREVER —
+     * not because anything was tampered with, but because the position-to-sequence mapping
+     * slipped by one.
+     *
+     * The old walk threw on the first such failure, which discarded every record after it. 453
+     * of that user's records were intact on disk and unreadable purely because of where the
+     * loop gave up.
+     *
+     * So: on an authentication failure, try neighbouring sequence numbers within a bounded
+     * window. If one authenticates, the drift is adopted and the walk continues — recovering
+     * the entire tail. The record framing (4-byte length prefix) is unaffected by this defect,
+     * which is what makes recovery possible at all.
+     *
+     * This is a REPAIR PATH, not a weakening of the guarantee. A record still has to
+     * authenticate under SOME sequence number with the Keystore key, which forged or edited
+     * data cannot do. Drift is reported through [onGap] so verify() can say a slip happened
+     * rather than quietly papering over it.
+     */
+    private fun walk(
+        onGap: ((Long, String) -> Unit)? = null,
+        onRecord: (Long, JSONObject, ByteArray) -> Unit
+    ) {
         if (!logFile.exists()) return
         RandomAccessFile(logFile, "r").use { f ->
             var seq = 0L
+            var drift = 0L                      // position -> sequence correction, once resynced
             val lenBuf = ByteArray(4)
             while (f.filePointer < f.length()) {
                 if (f.read(lenBuf) != 4) break
@@ -234,8 +386,39 @@ class SecureLog(private val ctx: Context) {
                         ((lenBuf[2].toInt() and 255) shl 8) or (lenBuf[3].toInt() and 255)
                 if (n <= IV_LEN || n > 1 shl 20 || f.filePointer + n > f.length()) break
                 val blob = ByteArray(n); f.readFully(blob)
-                val plain = open(blob, seq)          // throws if edited or repositioned
-                onRecord(seq, JSONObject(String(plain)), plain)
+
+                var plain: ByteArray? = null
+                var used = seq + drift
+                try {
+                    plain = open(blob, used)
+                } catch (_: Exception) {
+                    // Search a bounded window for the sequence this record was actually sealed
+                    // under. Bounded so a genuinely corrupt file cannot turn this into a long
+                    // brute-force over the whole key space of sequence numbers.
+                    for (d in -RESYNC_WINDOW..RESYNC_WINDOW) {
+                        if (d == 0L) continue
+                        val cand = seq + drift + d
+                        if (cand < 0) continue
+                        try {
+                            plain = open(blob, cand)
+                            drift += d
+                            used = cand
+                            onGap?.invoke(seq, "sequence slipped by $d at record $seq " +
+                                "(concurrent-append defect, fixed in this version) — resynced " +
+                                "and continued")
+                            break
+                        } catch (_: Exception) { /* keep searching the window */ }
+                    }
+                }
+                if (plain == null) {
+                    // Genuinely unreadable even after resync. Report and stop: continuing past
+                    // an unexplained record would let the chain be recomputed over a gap.
+                    onGap?.invoke(seq, "record $seq could not be authenticated under any " +
+                        "sequence in the resync window")
+                    throw javax.crypto.AEADBadTagException(
+                        "record $seq failed authentication and could not be resynchronised")
+                }
+                onRecord(used, JSONObject(String(plain)), plain)
                 seq++
             }
         }
@@ -270,10 +453,23 @@ class SecureLog(private val ctx: Context) {
     fun count(): Long = synchronized(lock) {
         val head = readHead()
         if (head.count >= 0) return head.count
-        var n = 0L
-        try { walk { _, _, _ -> n++ } } catch (_: Exception) {}
-        n
+        countByWalking()
     }
+
+    /**
+     * How many records can actually be READ, as opposed to how many the head claims exist.
+     *
+     * These two numbers are supposed to be equal and on a real device they were not: the head
+     * said 830 and only 279 could be decrypted, with the gap growing every minute. count() alone
+     * therefore made a badly damaged vault look healthy — it reported the head's number, which
+     * kept rising, while the readable evidence had been frozen for over an hour.
+     *
+     * A counter-surveillance log that cannot be read is worth exactly nothing, and the user must
+     * not have to open an export to find that out. This is what lets the Logs screen say so on
+     * sight. It is O(records) with a decrypt each, so it belongs off the main thread with the
+     * other real work — never on a refresh loop.
+     */
+    fun readableCount(): Long = synchronized(lock) { countByWalking() }
 
     // ---- verify ------------------------------------------------------------------------
 
@@ -355,8 +551,11 @@ class SecureLog(private val ctx: Context) {
         var n = 0L
         var firstBad = -1L
         var stopped: String? = null
+        val gaps = JSONArray()
         try {
-            walk { seq, rec, plain ->
+            walk(onGap = { at, why ->
+                if (gaps.length() < 20) gaps.put(JSONObject().put("at", at).put("why", why))
+            }) { seq, rec, plain ->
                 if (firstBad < 0) {
                     val expectPrev = hex(chain)
                     if (rec.optString("prev") != expectPrev) firstBad = seq
@@ -367,6 +566,7 @@ class SecureLog(private val ctx: Context) {
         } catch (e: Exception) {
             stopped = "${e.javaClass.simpleName}: ${e.message}"
         }
+        if (gaps.length() > 0) o.put("resyncs", gaps)
         val head = readHead()
         val chainOk = firstBad < 0 && stopped == null
         val headOk = head.count == n && (n == 0L || head.head == hex(chain))
@@ -377,9 +577,40 @@ class SecureLog(private val ctx: Context) {
         o.put("headMatches", headOk)
         if (firstBad >= 0) o.put("firstBadSeq", firstBad)
         if (stopped != null) o.put("decryptStopped", stopped)
-        if (!headOk && head.count > n)
-            o.put("note", "the head records ${head.count} entries but only $n are present — " +
-                "the tail of the log has been removed")
+
+        /* THE DIAGNOSIS MUST NOT ACCUSE WHEN THE APP IS THE CAUSE.
+         *
+         * This used to say, unconditionally, "the tail of the log has been removed" whenever
+         * the head counted more entries than were readable. On a real device that produced a
+         * flat accusation of tampering — 279 readable against a head of 732 — when the actual
+         * cause was this app's own concurrent-append defect (see the note on `lock`). Records
+         * were not removed; they were on disk and unreadable because their sequence numbers had
+         * slipped out of step with their positions.
+         *
+         * A tamper-evident log that cries tamper at its own bug is worse than one that says
+         * nothing, because it burns the credibility of the one alarm that is supposed to
+         * matter. So the two causes are now distinguished by the evidence that separates them:
+         * a decrypt/authentication failure points at the slip, a clean read that simply ends
+         * early points at real truncation.
+         */
+        if (!headOk && head.count > n) {
+            val authFailed = stopped?.contains("AEADBadTag", ignoreCase = true) == true ||
+                stopped?.contains("Bad Tag", ignoreCase = true) == true ||
+                gaps.length() > 0
+            o.put("note", if (authFailed)
+                "the head counts ${head.count} entries and $n could be read. Reading stopped at " +
+                "an AUTHENTICATION failure, not at the end of the file — the missing records are " +
+                "still on disk. This is the signature of the concurrent-append defect fixed in " +
+                "this version, in which two of this app's own detectors wrote the same sequence " +
+                "number and knocked every later record's position out of step with the sequence " +
+                "sealed into it. THIS IS NOT EVIDENCE OF TAMPERING. This version resynchronises " +
+                "past the slip on read; records written before the fix may remain unreadable."
+            else
+                "the head records ${head.count} entries but only $n are present, and reading " +
+                "ended cleanly rather than on an authentication failure — consistent with the " +
+                "tail of the log having been REMOVED.")
+            o.put("likelyCause", if (authFailed) "app-defect-sequence-slip" else "truncation")
+        }
         lastError?.let { o.put("lastError", it) }
         o.put("strongBox", strongBoxInUse())
         return o.toString()

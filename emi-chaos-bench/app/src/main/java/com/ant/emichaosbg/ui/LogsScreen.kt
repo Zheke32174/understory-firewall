@@ -132,9 +132,33 @@ class LogsScreen(ctx: Context) : ScrollView(ctx) {
      */
     fun refreshCheap() {
         tag.text = "reading…"
-        Async.load(this, { log.count() }) { n ->
+        Async.load(this, {
+            // Cheap health check alongside the count. The count alone was actively misleading
+            // on a real device: the head reported 830 records while only 279 could be read, and
+            // this screen displayed the head's number with no indication that the rest were
+            // unreachable. A vault that cannot be read is the one state the user must not have
+            // to go hunting through an export to discover.
+            val n = log.count()
+            val readable = log.readableCount()
+            longArrayOf(n, readable)
+        }) { r ->
+            val n = r[0]; val readable = r[1]
             vaultVals[0].text = n.toString()
-            tag.text = if (n == 0L) "empty" else "$n record(s)"
+            tag.text = when {
+                n == 0L -> "empty"
+                readable < n -> "UNREADABLE PAST #$readable"
+                else -> "$n record(s)"
+            }
+            if (readable < n) {
+                vaultVals[1].text = "BROKEN"
+                lastExport.text = "⚠ THE VAULT IS NOT FULLY READABLE.\n\n" +
+                    "The head counts $n records; only $readable can be decrypted. The remaining " +
+                    "${n - readable} are still on disk but cannot be authenticated, so they " +
+                    "cannot be shown or exported.\n\n" +
+                    "Press VERIFY for the diagnosis — it distinguishes a sequence slip caused " +
+                    "by this app from data that authenticates under no sequence at all, which " +
+                    "would mean something else wrote to the file."
+            }
         }
     }
 
