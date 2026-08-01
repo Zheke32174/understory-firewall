@@ -163,6 +163,11 @@ class MainActivity : ComponentActivity() {
         // the parts of AIMSICD/SnoopSnitch that do not need baseband diag).
         webView.addJavascriptInterface(
             CellSecurityBridge(MaskerService.ensureCellSecurity(this)), "EMICell")
+        // LAN interception detection (the defensive inverse of the ARP-spoofing tools) and the
+        // tower/position log. Both read-only from the page's side.
+        webView.addJavascriptInterface(
+            NetGuardBridge(MaskerService.ensureNetGuard(this)), "EMINet")
+        webView.addJavascriptInterface(MaskerService.ensureTowerLog(this), "EMITower")
         // Read-only view onto the SERVICE-owned native scan/detection engine. The page can
         // start it, stop it and look at it; it has no way to raise, edit, suppress or delete a
         // finding, because detection and recording happen on the far side of this boundary.

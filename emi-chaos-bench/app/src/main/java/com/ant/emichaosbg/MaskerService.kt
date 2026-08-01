@@ -74,6 +74,33 @@ class MaskerService : Service() {
             }
         }
 
+        /** LAN interception detector and the tower/position log — both service-owned, both
+         *  driven from the background timer. Neither is ever called from the display loop:
+         *  every one of them does binder or file I/O, and that is the class of call that
+         *  froze the UI when the vault was being verified once a second. */
+        @Volatile var netGuard: NetGuard? = null
+            private set
+        @Volatile var towerLog: TowerLog? = null
+            private set
+
+        fun ensureNetGuard(ctx: Context): NetGuard {
+            netGuard?.let { return it }
+            synchronized(this) {
+                netGuard?.let { return it }
+                val n = NetGuard(ctx.applicationContext, SecureLog(ctx.applicationContext))
+                netGuard = n; return n
+            }
+        }
+
+        fun ensureTowerLog(ctx: Context): TowerLog {
+            towerLog?.let { return it }
+            synchronized(this) {
+                towerLog?.let { return it }
+                val t = TowerLog(ctx.applicationContext)
+                towerLog = t; return t
+            }
+        }
+
         fun ensureEscalationGuard(ctx: Context): EscalationGuard {
             escalationGuard?.let { return it }
             synchronized(this) {
@@ -88,6 +115,11 @@ class MaskerService : Service() {
     /** Slow cadence — these conditions are sticky, so polling hard would only cost battery. */
     private var escalationTimer: java.util.Timer? = null
 
+    /** The position/tower log needs a shorter tick than the 5-minute security sweep, because
+     *  its own interval and distance triggers decide whether a fix is actually recorded — this
+     *  only has to offer it the chance often enough. Still a background thread. */
+    private var towerTimer: java.util.Timer? = null
+
     private var wakeLock: android.os.PowerManager.WakeLock? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -96,6 +128,8 @@ class MaskerService : Service() {
         isRunning = false
         try { escalationTimer?.cancel() } catch (_: Exception) {}
         escalationTimer = null
+        try { towerTimer?.cancel() } catch (_: Exception) {}
+        towerTimer = null
         destroyHeadless()
         try { wakeLock?.let { if (it.isHeld) it.release() } } catch (_: Exception) {}
         wakeLock = null
@@ -211,8 +245,19 @@ class MaskerService : Service() {
                         // flip is most useful to catch while the phone is sitting in a pocket,
                         // which is exactly when no UI is polling.
                         try { ensureCellSecurity(this@MaskerService).scan() } catch (_: Throwable) {}
+                        try { ensureNetGuard(this@MaskerService).scan() } catch (_: Throwable) {}
                     }
                 }, 8_000L, 5 * 60_000L)
+            }
+        }
+
+        if (towerTimer == null) {
+            towerTimer = java.util.Timer("emi-tower", true).also { t ->
+                t.scheduleAtFixedRate(object : java.util.TimerTask() {
+                    override fun run() {
+                        try { ensureTowerLog(this@MaskerService).tick() } catch (_: Throwable) {}
+                    }
+                }, 10_000L, 15_000L)
             }
         }
 

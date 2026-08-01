@@ -1237,6 +1237,44 @@
     </div>
 
       <div class="sect">
+        <div class="head"><span class="t">LAN interception</span><span class="tag" id="ngState">—</span></div>
+        <div class="body">
+          <div class="grid">
+            <div class="stat"><small>Devices seen</small><b id="ngDev">—</b></div>
+            <div class="stat"><small>Duplicate MACs</small><b id="ngDup">—</b></div>
+            <div class="stat"><small>Gateway MAC</small><b id="ngGw">—</b></div>
+            <div class="stat"><small>VPN</small><b id="ngVpn">—</b></div>
+            <div class="stat"><small>Private DNS</small><b id="ngPdns">—</b></div>
+            <div class="stat"><small>ARP readable</small><b id="ngArp">—</b></div>
+          </div>
+          <div class="row"><div class="cell full"><button class="btn" id="ngScan">Check now</button></div></div>
+          <div id="ngList"></div>
+          <div class="muted">The <b>detector</b> for what cSploit and Intercepter-NG <i>do</i>. Those tools
+            ARP-poison a network to become the gateway and then read or rewrite everyone else's traffic.
+            None of that is built here and none of it will be — but the same knowledge pointed the other
+            way is exactly what a counter-surveillance tool should carry.
+            <br><br>
+            <b>How it looks from the victim's side.</b> The attacker tells your phone "the gateway is at my
+            MAC address" and your kernel believes it. So the signature sits in a table this device already
+            keeps for its own reasons: <b>one MAC answering for several IPs</b> (a poisoner impersonating
+            the gateway ends up bound to multiple addresses), and <b>the gateway's MAC changing</b> while
+            you stay on the same network — the moment of the takeover. Both have innocent explanations: a
+            router that is also DNS and DHCP, or a mesh handing you to another access point. They are
+            reported with their addresses rather than asserted as attacks.
+            <br><br>
+            <b>Everything here is a read.</b> <code>/proc/net/arp</code> is the kernel's own table,
+            populated by traffic this device was already part of — the same category as <code>ip neigh</code>.
+            No ARP is sent, no packet injected, no host probed, no other device's traffic touched. That
+            distinction is the whole point: the attack tools transmit, this does not.
+            <br><br>
+            <b>Resolver and tunnel posture</b> come from LinkProperties — local state the OS already holds.
+            This deliberately does <i>not</i> probe a remote resolver or fetch a canary URL to test for
+            DPI: that would mean this app generating traffic of its own, which is a posture it does not
+            have and should not gain quietly. If ARP is unreadable (Android 10+ restricts it on many
+            builds) it says so, rather than reporting a clean network it never actually looked at.</div>
+        </div>
+      </div>
+      <div class="sect">
         <div class="head"><span class="t">Cellular security</span><span class="tag" id="csState">—</span></div>
         <div class="body">
           <div class="grid">
@@ -1285,6 +1323,49 @@
         </div>
       </div>
     <div class="sheet" id="sheet-data">
+      <div class="sect">
+        <div class="head"><span class="t">Tower &amp; position log</span><span class="tag" id="twState">off</span>
+          <div class="sw" id="twEn" aria-pressed="false"></div></div>
+        <div class="body">
+          <div class="grid">
+            <div class="stat"><small>Fixes</small><b id="twFixes">—</b></div>
+            <div class="stat"><small>Unique cells</small><b id="twCells">—</b></div>
+            <div class="stat"><small>Seen once</small><b id="twSingle">—</b></div>
+            <div class="stat"><small>Interval</small><b id="twInt">—</b></div>
+            <div class="stat"><small>Distance</small><b id="twDist">—</b></div>
+            <div class="stat"><small>Accuracy gate</small><b id="twAcc">—</b></div>
+          </div>
+          <div class="row">
+            <button class="btn" id="twGpx">Export GPX</button>
+            <button class="btn" id="twKml">Export KML</button>
+            <button class="btn" id="twCsv">Export CSV</button>
+          </div>
+          <div class="muted">Tower Collector and GPSLogger, ported — both are rootless already, so this is
+            a port rather than a lesser form. Records which cell you were attached to, where, and how
+            strongly, on GPSLogger's interval + distance triggers with an accuracy gate that throws away
+            fixes too vague to be worth keeping.
+            <br><br>
+            <b>Why it belongs here rather than beside the live cellular checks.</b> Those work on what is
+            visible right now — one sample, no memory. Half of what makes an interception device visible
+            only exists across time and space: a cell that appears in one place and never again, an
+            identity that shows up at two locations kilometres apart, a tower present for twenty minutes
+            and then gone. None of that is detectable from a single reading. This is the record that makes
+            those questions answerable, and it flags <b>the same cell identity seen at an impossible
+            distance</b> from where it was first logged — a fixed tower cannot be in two places. Carrier
+            reconfiguration recycles cell IDs too, so it says to check the dates.
+            <br><br>
+            <b>This log contains location, unavoidably</b> — a position log without positions is nothing.
+            That is exactly why it is kept <i>out</i> of the encrypted alert vault, which is deliberately
+            location-free: the vault is the file most worth stealing, and mixing a movement history into
+            it would destroy that property. This is a separate store you export deliberately, and it is
+            the one part of the app to treat as sensitive on its own terms.
+            <br><br>
+            <b>Nothing is uploaded.</b> Tower Collector's OpenCelliD submission is deliberately not
+            ported — an app that quietly uploads a counter-surveillance user's movements would be
+            self-defeating. Runs on the service, so it keeps logging with the app backgrounded, which is
+            when you are actually moving past towers.</div>
+        </div>
+      </div>
       <div class="sect">
         <div class="head"><span class="t">Collected data</span><span class="tag" id="cdState">—</span></div>
         <div class="body">
@@ -6384,10 +6465,10 @@ document.querySelectorAll('#logSheets .chip').forEach(c=>c.addEventListener('cli
     x.setAttribute('aria-pressed', String(x.dataset.sheet===want)));
   document.querySelectorAll('#page-logs .sheet').forEach(x=>
     x.classList.toggle('on', x.id==='sheet-'+want));
-  if(want==='security'){ Tapjack.render(true); CellSec.render(true); }
+  if(want==='security'){ Tapjack.render(true); CellSec.render(true); NetSec.render(true); }
   if(want==='vault') vaultRefresh(true);
   else if(want==='data') vaultRefresh(false);
-  if(want==='data') CollectedData.render();
+  if(want==='data'){ CollectedData.render(); TowerUI.render(); }
 }));
 
 /* ---- Tapjacking / overlay readout ---- */
@@ -6439,6 +6520,95 @@ $('tjOverlaySet').addEventListener('click',()=>{
 $('tjA11ySet').addEventListener('click',()=>{
   try{ if(window.EMITapjack&&EMITapjack.openAccessibilitySettings){ EMITapjack.openAccessibilitySettings(); return; } }catch(e){}
   toast('Needs the installed app'); });
+
+/* ---- LAN interception detector (defensive inverse of the ARP-spoofing tools) ---- */
+const NetSec=(function(){
+  let last=null;
+  const set=(id,v)=>{const el=$(id); if(el)el.textContent=v;};
+  function render(force){
+    if(!window.EMINet){ set('ngState','native build only'); return; }
+    // On-demand only. scan() reads /proc and does binder calls; it must never land on the
+    // display loop — that is the class of call that froze the app.
+    try{ last=JSON.parse(force?EMINet.scan():EMINet.cached()); }catch(e){ last=null; }
+    if(!last){ set('ngState','error'); return; }
+    if(last.ok===false){ set('ngState','not yet run'); return; }
+    const dup=(last.duplicateMacs||[]).length;
+    set('ngState', dup>0?(dup+' duplicate MAC'+(dup===1?'':'s')):'nothing anomalous');
+    set('ngDev', String(last.arpEntries!=null?last.arpEntries:'—'));
+    set('ngDup', String(dup));
+    set('ngGw', last.gatewayMac||'—');
+    set('ngVpn', last.vpn===true?'on':(last.vpn===false?'off':'—'));
+    set('ngPdns', last.privateDns===true?(last.privateDnsName||'on'):(last.privateDns===false?'off':'—'));
+    set('ngArp', last.arpReadable===false?'restricted':'yes');
+    const L=$('ngList'); if(!L) return;
+    L.innerHTML='';
+    const add=(title,rows)=>{
+      const h=document.createElement('div');
+      h.className='muted'; h.style.cssText='margin-top:10px;font-weight:600';
+      h.textContent=title; L.appendChild(h);
+      if(!rows.length){ const e=document.createElement('div'); e.className='muted';
+        e.textContent='none'; L.appendChild(e); return; }
+      rows.forEach(t=>{ const d=document.createElement('div');
+        d.style.cssText='font-size:10.5px;padding:4px 0;border-bottom:1px dashed var(--rule)';
+        // textContent: MACs and IPs come off the wire — never parsed as markup.
+        d.textContent=t; L.appendChild(d); });
+    };
+    add('Duplicate MACs', (last.duplicateMacs||[]).map(d=>d.mac+'  ->  '+(d.ips||[]).join(', ')));
+    add('DNS servers', (last.dnsServers||[]).slice(0,6));
+    if(last.arpReadable===false){
+      const w=document.createElement('div'); w.className='muted'; w.style.marginTop='8px';
+      w.textContent='ARP table is not readable on this build, so the duplicate-MAC and gateway '+
+        'checks could not run. Reporting that rather than a clean result you did not actually get.';
+      L.appendChild(w);
+    }
+  }
+  return { render, get last(){ return last; } };
+})();
+$('ngScan').addEventListener('click',()=>{ NetSec.render(true);
+  const l=NetSec.last;
+  toast(l ? ((l.duplicateMacs||[]).length>0
+      ? ((l.duplicateMacs||[]).length+' device(s) answering for multiple IPs — check the list')
+      : (l.arpReadable===false?'ARP table restricted on this build':'LAN check: nothing anomalous'))
+    : 'LAN check unavailable'); });
+
+/* ---- Tower & position log (Tower Collector + GPSLogger) ---- */
+const TowerUI=(function(){
+  const set=(id,v)=>{const el=$(id); if(el)el.textContent=String(v);};
+  function render(){
+    if(!window.EMITower){ set('twState','native build only'); return; }
+    let st=null; try{ st=JSON.parse(EMITower.stats()); }catch(e){}
+    if(!st) return;
+    set('twState', st.running?'logging':'off');
+    set('twFixes', st.fixes!=null?st.fixes:'—');
+    set('twCells', st.uniqueCells!=null?st.uniqueCells:'—');
+    set('twSingle', st.singletonCells!=null?st.singletonCells:'—');
+    set('twInt', (st.intervalSec!=null?st.intervalSec:'—')+'s');
+    set('twDist', (st.distanceM!=null?st.distanceM:'—')+'m');
+    set('twAcc', (st.accuracyGateM!=null?st.accuracyGateM:'—')+'m');
+    const sw=$('twEn'); if(sw) sw.setAttribute('aria-pressed', String(!!st.running));
+  }
+  return { render };
+})();
+$('twEn').addEventListener('click',()=>{
+  if(!window.EMITower){ toast('Needs the installed app'); return; }
+  const b=$('twEn'), want=b.getAttribute('aria-pressed')!=='true';
+  try{ if(want) EMITower.start(); else EMITower.stop(); }catch(e){}
+  b.setAttribute('aria-pressed',String(want));
+  TowerUI.render();
+  toast(want?'Tower & position logging on — this log contains location':'Tower logging off');
+});
+function towerExport(kind,ext,mime){
+  if(!window.EMITower){ toast('Needs the installed app'); return; }
+  try{
+    const t=kind==='gpx'?EMITower.exportGpx():(kind==='kml'?EMITower.exportKml():EMITower.exportCsv());
+    // Header-only CSV / empty track means nothing logged — say so instead of writing a stub file.
+    if(!t||t.length<80){ toast('Nothing logged yet'); return; }
+    saveExport(t,'emi-towers-'+vaultStamp()+'.'+ext,mime);
+  }catch(e){ toast('Export failed — '+(e&&e.message?e.message:'bridge error')); }
+}
+$('twGpx').addEventListener('click',()=>towerExport('gpx','gpx','application/gpx+xml'));
+$('twKml').addEventListener('click',()=>towerExport('kml','kml','application/vnd.google-earth.kml+xml'));
+$('twCsv').addEventListener('click',()=>towerExport('csv','csv','text/csv'));
 
 /* ---- Cellular security (PrivacyCell + rootless AIMSICD heuristics) ---- */
 const CellSec=(function(){
