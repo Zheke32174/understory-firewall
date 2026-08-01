@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -416,22 +417,34 @@ private fun UpstreamCard() {
     val ctx = LocalContext.current
     var ip by remember { mutableStateOf(FirewallSettings.getUpstreamDnsIp(ctx)) }
     var dotHost by remember { mutableStateOf(FirewallSettings.getDotHostname(ctx)) }
+    // Transport: "plaintext" | "dot" | "doh". A blank hostname always means plaintext, so the
+    // selector is only meaningful once a hostname is set.
+    var mode by remember { mutableStateOf(FirewallSettings.getUpstreamMode(ctx)) }
+    var dohPath by remember { mutableStateOf(FirewallSettings.getDohPath(ctx)) }
     var style by remember { mutableStateOf(BlocklistRepository.answerStyle(ctx)) }
     var saved by remember { mutableStateOf<String?>(null) }
 
+    val effectiveMode = if (dotHost.isBlank()) "plaintext" else mode
     SuiteCard {
         Text("Upstream resolver", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
         Text(
-            if (dotHost.isNotBlank())
-                "Allowed queries forward over VERIFIED DNS-over-TLS (RFC 7858) to the resolver " +
-                    "IP on :853, authenticated against the DoT hostname — fail-closed on a bad " +
-                    "certificate. This is encryption inside the tunnel itself, independent of " +
-                    "system Private DNS."
-            else
-                "Allowed queries forward over PLAINTEXT UDP. To encrypt the in-tunnel upstream, " +
-                    "set a DoT hostname below (pick a preset) — that switches this resolver to " +
-                    "verified DNS-over-TLS. Leaving it blank keeps plaintext UDP.",
+            when (effectiveMode) {
+                "doh" ->
+                    "Allowed queries forward over VERIFIED DNS-over-HTTPS (RFC 8484) to the " +
+                        "resolver IP on :443, authenticated against the hostname — fail-closed on " +
+                        "a bad certificate. DoH rides ordinary HTTPS, so a network that blocks " +
+                        ":853 to force plaintext DNS cannot single it out."
+                "dot" ->
+                    "Allowed queries forward over VERIFIED DNS-over-TLS (RFC 7858) to the resolver " +
+                        "IP on :853, authenticated against the hostname — fail-closed on a bad " +
+                        "certificate. Encryption inside the tunnel itself, independent of system " +
+                        "Private DNS."
+                else ->
+                    "Allowed queries forward over PLAINTEXT UDP. To encrypt the in-tunnel upstream, " +
+                        "set a hostname below (pick a preset) and choose DoT or DoH. Leaving the " +
+                        "hostname blank keeps plaintext UDP."
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -448,15 +461,41 @@ private fun UpstreamCard() {
             value = dotHost,
             onValueChange = { dotHost = it },
             singleLine = true,
-            label = { Text("DoT hostname (blank = plaintext UDP)") },
+            label = { Text("Verification hostname (blank = plaintext UDP)") },
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+        // Transport selector — only DoT/DoH matter once a hostname is present.
+        Text("Encrypted transport", style = MaterialTheme.typography.labelLarge)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(UnderstoryTheme.spacing.xs)) {
+            listOf("dot" to "DoT (:853)", "doh" to "DoH (:443)", "plaintext" to "Plaintext")
+                .forEach { (key, label) ->
+                    FilterChip(
+                        selected = effectiveMode == key,
+                        onClick = { mode = key },
+                        enabled = key == "plaintext" || dotHost.isNotBlank(),
+                        label = { Text(label) },
+                    )
+                }
+        }
+        if (effectiveMode == "doh") {
+            Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+            OutlinedTextField(
+                value = dohPath,
+                onValueChange = { dohPath = it },
+                singleLine = true,
+                label = { Text("DoH path (default /dns-query)") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
         // One-tap encrypted presets: fill IP + verified hostname together so they always match.
+        val presets = if (mode == "doh") DnsFilterTun.UpstreamResolver.DOH_PRESETS
+            else DnsFilterTun.UpstreamResolver.DOT_PRESETS
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(UnderstoryTheme.spacing.xs),
         ) {
-            DnsFilterTun.UpstreamResolver.DOT_PRESETS.forEach { (name, presetIp, host) ->
+            presets.forEach { (name, presetIp, host) ->
                 AssistChip(
                     onClick = { ip = presetIp; dotHost = host },
                     label = { Text(name.substringBefore(" (")) },
@@ -477,9 +516,13 @@ private fun UpstreamCard() {
         SecureButton(onClick = {
             FirewallSettings.setUpstreamDnsIp(ctx, ip)
             FirewallSettings.setDotHostname(ctx, dotHost)
-            saved = if (dotHost.isNotBlank())
-                "Saved — verified DoT. Re-arm the tunnel to apply."
-            else "Saved — plaintext UDP. Re-arm the tunnel to apply."
+            FirewallSettings.setUpstreamMode(ctx, effectiveMode)
+            FirewallSettings.setDohPath(ctx, dohPath)
+            saved = when (effectiveMode) {
+                "doh" -> "Saved — verified DoH. Re-arm the tunnel to apply."
+                "dot" -> "Saved — verified DoT. Re-arm the tunnel to apply."
+                else -> "Saved — plaintext UDP. Re-arm the tunnel to apply."
+            }
         }) { Text("Save resolver") }
         saved?.let {
             Spacer(Modifier.height(UnderstoryTheme.spacing.sm))

@@ -116,22 +116,36 @@ class DnsFilterTun(
     }
 
     /**
-     * Forward an allowed DNS query to a PLAINTEXT upstream resolver and return
-     * the response payload. Encrypted-resolver routing is a documented STUB —
-     * see [encrypted].
+     * Forward an allowed DNS query to the configured upstream and return the
+     * response payload. Three transports, chosen at construction:
+     *   - [Mode.PLAINTEXT]: UDP :53 (unencrypted; the fallback).
+     *   - [Mode.DOT]:       DNS-over-TLS :853 (RFC 7858) — see [resolveDot].
+     *   - [Mode.DOH]:       DNS-over-HTTPS :443 (RFC 8484) — see [resolveDoh].
+     * The two encrypted transports are the InviZible Pro / RethinkDNS / Fyrypt
+     * core, done natively in-tunnel here rather than by bundling a resolver
+     * daemon (dnscrypt-proxy). Both verify the peer certificate and FAIL CLOSED.
      */
     class UpstreamResolver private constructor(
         private val resolverIp: InetAddress,
-        private val encrypted: Boolean,
-        /** SNI + certificate-verification hostname for DoT. Null on the plaintext path. */
+        private val mode: Mode,
+        /** SNI + certificate-verification hostname for DoT/DoH. Null on the plaintext path. */
         private val tlsHostname: String?,
+        /** Request path for DoH (e.g. "/dns-query"). Ignored for DoT/plaintext. */
+        private val dohPath: String,
     ) {
-        fun describe(): String =
-            if (encrypted) "DNS-over-TLS → $tlsHostname (${resolverIp.hostAddress}:853), verified"
-            else "plaintext UDP ${resolverIp.hostAddress}:53"
+        enum class Mode { PLAINTEXT, DOT, DOH }
 
-        fun resolve(service: VpnService, query: ByteArray): ByteArray? =
-            if (encrypted) resolveDot(service, query) else resolvePlaintext(service, query)
+        fun describe(): String = when (mode) {
+            Mode.DOT -> "DNS-over-TLS → $tlsHostname (${resolverIp.hostAddress}:853), verified"
+            Mode.DOH -> "DNS-over-HTTPS → https://$tlsHostname$dohPath (${resolverIp.hostAddress}:443), verified"
+            Mode.PLAINTEXT -> "plaintext UDP ${resolverIp.hostAddress}:53"
+        }
+
+        fun resolve(service: VpnService, query: ByteArray): ByteArray? = when (mode) {
+            Mode.DOT -> resolveDot(service, query)
+            Mode.DOH -> resolveDoh(service, query)
+            Mode.PLAINTEXT -> resolvePlaintext(service, query)
+        }
 
         private fun resolvePlaintext(service: VpnService, query: ByteArray): ByteArray? {
             val socket = DatagramSocket()
@@ -165,17 +179,8 @@ class DnsFilterTun(
             var raw: java.net.Socket? = null
             var ssl: javax.net.ssl.SSLSocket? = null
             return try {
-                raw = java.net.Socket()
-                if (!service.protect(raw)) return null
-                raw.connect(java.net.InetSocketAddress(resolverIp, 853), DNS_TIMEOUT_MS)
-                val factory = javax.net.ssl.SSLSocketFactory.getDefault() as javax.net.ssl.SSLSocketFactory
-                ssl = factory.createSocket(raw, tlsHostname, 853, true) as javax.net.ssl.SSLSocket
-                ssl.soTimeout = DNS_TIMEOUT_MS
-                ssl.sslParameters = ssl.sslParameters.apply {
-                    if (tlsHostname != null) serverNames = listOf(javax.net.ssl.SNIHostName(tlsHostname))
-                    endpointIdentificationAlgorithm = "HTTPS"   // fail closed on bad cert/hostname
-                }
-                ssl.startHandshake()                            // throws on verification failure
+                val (r, s) = openVerifiedTls(service, 853) ?: return null
+                raw = r; ssl = s
                 val out = ssl.outputStream
                 out.write((query.size ushr 8) and 0xff)
                 out.write(query.size and 0xff)
@@ -186,14 +191,7 @@ class DnsFilterTun(
                 if (hi < 0 || lo < 0) return null
                 val len = (hi shl 8) or lo
                 if (len <= 0 || len > 65_535) return null
-                val resp = ByteArray(len)
-                var off = 0
-                while (off < len) {
-                    val n = ins.read(resp, off, len - off)
-                    if (n < 0) break
-                    off += n
-                }
-                if (off == len) resp else null
+                readFully(ins, len)
             } catch (_: Throwable) {
                 null   // fail closed — never silently downgrade to plaintext
             } finally {
@@ -202,30 +200,173 @@ class DnsFilterTun(
             }
         }
 
+        /**
+         * REAL DNS-over-HTTPS (RFC 8484) — encrypted DNS over :443, the transport Fyrypt,
+         * RethinkDNS and InviZible Pro (via dnscrypt-proxy) all offer, done natively here.
+         * DoH's edge over DoT is that it rides ordinary HTTPS on 443, so a network that
+         * blocks :853 to force plaintext DNS cannot single it out. Same verified-TLS setup
+         * (SNI + HTTPS endpoint identification, fail-closed) as DoT; the DNS wire query is
+         * the body of a minimal HTTP/1.1 POST with Content-Type application/dns-message, and
+         * the wire response is the body. Handles both Content-Length and chunked responses.
+         * Connection: close keeps it single-shot (no keep-alive/HTTP2 state to carry).
+         */
+        private fun resolveDoh(service: VpnService, query: ByteArray): ByteArray? {
+            var raw: java.net.Socket? = null
+            var ssl: javax.net.ssl.SSLSocket? = null
+            return try {
+                val (r, s) = openVerifiedTls(service, 443) ?: return null
+                raw = r; ssl = s
+                val header = buildString {
+                    append("POST ").append(dohPath).append(" HTTP/1.1\r\n")
+                    append("Host: ").append(tlsHostname).append("\r\n")
+                    append("Accept: application/dns-message\r\n")
+                    append("Content-Type: application/dns-message\r\n")
+                    append("Content-Length: ").append(query.size).append("\r\n")
+                    append("Connection: close\r\n\r\n")
+                }
+                val out = ssl.outputStream
+                out.write(header.toByteArray(Charsets.US_ASCII))
+                out.write(query)
+                out.flush()
+                readHttpBody(ssl.inputStream)
+            } catch (_: Throwable) {
+                null   // fail closed
+            } finally {
+                runCatching { ssl?.close() }
+                runCatching { raw?.close() }
+            }
+        }
+
+        /** Protect a fresh TCP socket, connect to [resolverIp]:[port], wrap in a verified TLS layer. */
+        private fun openVerifiedTls(
+            service: VpnService,
+            port: Int,
+        ): Pair<java.net.Socket, javax.net.ssl.SSLSocket>? {
+            val raw = java.net.Socket()
+            if (!service.protect(raw)) { runCatching { raw.close() }; return null }
+            raw.connect(java.net.InetSocketAddress(resolverIp, port), DNS_TIMEOUT_MS)
+            val factory = javax.net.ssl.SSLSocketFactory.getDefault() as javax.net.ssl.SSLSocketFactory
+            val ssl = factory.createSocket(raw, tlsHostname, port, true) as javax.net.ssl.SSLSocket
+            ssl.soTimeout = DNS_TIMEOUT_MS
+            ssl.sslParameters = ssl.sslParameters.apply {
+                if (tlsHostname != null) serverNames = listOf(javax.net.ssl.SNIHostName(tlsHostname))
+                endpointIdentificationAlgorithm = "HTTPS"   // fail closed on bad cert/hostname
+            }
+            ssl.startHandshake()                            // throws on verification failure
+            return raw to ssl
+        }
+
+        /** Read exactly [len] bytes or return null if the stream ends early. */
+        private fun readFully(ins: java.io.InputStream, len: Int): ByteArray? {
+            val resp = ByteArray(len)
+            var off = 0
+            while (off < len) {
+                val n = ins.read(resp, off, len - off)
+                if (n < 0) break
+                off += n
+            }
+            return if (off == len) resp else null
+        }
+
+        /**
+         * Parse a minimal HTTP/1.1 response off [ins] and return the body bytes (the DNS wire
+         * response). Reads the status line + headers as ASCII lines, then the body via
+         * Content-Length or Transfer-Encoding: chunked. Rejects any non-2xx status (fail closed).
+         */
+        private fun readHttpBody(ins: java.io.InputStream): ByteArray? {
+            val status = readLine(ins) ?: return null
+            // "HTTP/1.1 200 OK" — accept only 2xx.
+            val code = status.split(' ').getOrNull(1)?.toIntOrNull() ?: return null
+            if (code < 200 || code >= 300) return null
+            var contentLength = -1
+            var chunked = false
+            while (true) {
+                val line = readLine(ins) ?: return null
+                if (line.isEmpty()) break               // blank line ends headers
+                val idx = line.indexOf(':')
+                if (idx <= 0) continue
+                val name = line.substring(0, idx).trim().lowercase()
+                val value = line.substring(idx + 1).trim()
+                when (name) {
+                    "content-length" -> contentLength = value.toIntOrNull() ?: -1
+                    "transfer-encoding" -> if (value.lowercase().contains("chunked")) chunked = true
+                }
+            }
+            return when {
+                chunked -> readChunked(ins)
+                contentLength in 0..65_535 -> readFully(ins, contentLength)
+                else -> null
+            }
+        }
+
+        /** Read one CRLF-terminated line (ASCII) without over-reading into the body. */
+        private fun readLine(ins: java.io.InputStream): String? {
+            val sb = StringBuilder()
+            while (true) {
+                val c = ins.read()
+                if (c < 0) return if (sb.isEmpty()) null else sb.toString()
+                if (c == '\n'.code) return sb.toString()
+                if (c != '\r'.code) sb.append(c.toChar())
+            }
+        }
+
+        /** Read a Transfer-Encoding: chunked body, bounded by [MAX_DNS] so a hostile server can't grow it. */
+        private fun readChunked(ins: java.io.InputStream): ByteArray? {
+            val acc = java.io.ByteArrayOutputStream()
+            while (true) {
+                val sizeLine = readLine(ins) ?: return null
+                val size = sizeLine.trim().substringBefore(';').toIntOrNull(16) ?: return null
+                if (size == 0) break                    // last chunk
+                if (acc.size() + size > MAX_DNS) return null
+                val chunk = readFully(ins, size) ?: return null
+                acc.write(chunk)
+                readLine(ins)                           // trailing CRLF after the chunk
+            }
+            return acc.toByteArray()
+        }
+
         companion object {
             /** Default resolver if the user's IP is blank/malformed. */
             private const val DEFAULT_IP = "1.1.1.1"
 
-            /** Plaintext UDP resolver at [ip]. A blank/garbage IP falls back to [DEFAULT_IP]. */
-            fun plaintext(ip: String): UpstreamResolver {
-                val addr = runCatching { InetAddress.getByName(ip.trim().ifBlank { DEFAULT_IP }) }
+            private fun addrOf(ip: String): InetAddress =
+                runCatching { InetAddress.getByName(ip.trim().ifBlank { DEFAULT_IP }) }
                     .getOrElse { InetAddress.getByName(DEFAULT_IP) }
-                return UpstreamResolver(addr, encrypted = false, tlsHostname = null)
-            }
+
+            /** Plaintext UDP resolver at [ip]. A blank/garbage IP falls back to [DEFAULT_IP]. */
+            fun plaintext(ip: String): UpstreamResolver =
+                UpstreamResolver(addrOf(ip), Mode.PLAINTEXT, tlsHostname = null, dohPath = "")
 
             /**
              * REAL encrypted upstream: DNS-over-TLS to [ip] on :853, authenticated against
              * [hostname]. [hostname] is required — DoT without a verified hostname is not
              * encryption you can trust. Known-good pairs are in [DOT_PRESETS].
              */
-            fun dot(ip: String, hostname: String): UpstreamResolver {
-                val addr = runCatching { InetAddress.getByName(ip.trim().ifBlank { DEFAULT_IP }) }
-                    .getOrElse { InetAddress.getByName(DEFAULT_IP) }
-                return UpstreamResolver(addr, encrypted = true, tlsHostname = hostname.trim())
-            }
+            fun dot(ip: String, hostname: String): UpstreamResolver =
+                UpstreamResolver(addrOf(ip), Mode.DOT, tlsHostname = hostname.trim(), dohPath = "")
 
-            /** Curated DoT resolvers (ip → SNI/verification hostname). */
+            /**
+             * REAL encrypted upstream: DNS-over-HTTPS to [ip] on :443, authenticated against
+             * [hostname], POSTing to [path] (default "/dns-query"). Rides ordinary HTTPS so a
+             * :853 block can't force it down to plaintext. Known-good triples in [DOH_PRESETS].
+             */
+            fun doh(ip: String, hostname: String, path: String = "/dns-query"): UpstreamResolver =
+                UpstreamResolver(
+                    addrOf(ip), Mode.DOH, tlsHostname = hostname.trim(),
+                    dohPath = path.trim().ifBlank { "/dns-query" }.let { if (it.startsWith("/")) it else "/$it" },
+                )
+
+            /** Curated DoT resolvers (label → ip → SNI/verification hostname). */
             val DOT_PRESETS: List<Triple<String, String, String>> = listOf(
+                Triple("Cloudflare", "1.1.1.1", "cloudflare-dns.com"),
+                Triple("Quad9 (malware-blocking)", "9.9.9.9", "dns.quad9.net"),
+                Triple("Google", "8.8.8.8", "dns.google"),
+                Triple("AdGuard (ad+tracker-blocking)", "94.140.14.14", "dns.adguard-dns.com"),
+                Triple("Mullvad (no-log)", "194.242.2.2", "dns.mullvad.net"),
+            )
+
+            /** Curated DoH resolvers (label → ip → hostname); all serve DoH at /dns-query. */
+            val DOH_PRESETS: List<Triple<String, String, String>> = listOf(
                 Triple("Cloudflare", "1.1.1.1", "cloudflare-dns.com"),
                 Triple("Quad9 (malware-blocking)", "9.9.9.9", "dns.quad9.net"),
                 Triple("Google", "8.8.8.8", "dns.google"),
@@ -239,5 +380,7 @@ class DnsFilterTun(
         private const val TAG = "firewall.tunnel.DnsFilterTun"
         private const val MTU = 1500
         private const val DNS_TIMEOUT_MS = 5_000
+        /** DNS-over-TCP length field is 16-bit, so a well-formed response never exceeds this. */
+        private const val MAX_DNS = 65_535
     }
 }

@@ -271,10 +271,13 @@ class FirewallVpnService : VpnService() {
         // plaintext UDP. The encrypted path is no longer a stub (see DnsFilterTun.UpstreamResolver).
         val dnsIp = FirewallSettings.getUpstreamDnsIp(this)
         val dotHost = FirewallSettings.getDotHostname(this)
-        val upstream = if (dotHost.isNotBlank())
-            DnsFilterTun.UpstreamResolver.dot(dnsIp, dotHost)
-        else
-            DnsFilterTun.UpstreamResolver.plaintext(dnsIp)
+        val mode = FirewallSettings.getUpstreamMode(this)
+        val upstream = when {
+            dotHost.isBlank() -> DnsFilterTun.UpstreamResolver.plaintext(dnsIp)
+            mode == "doh" -> DnsFilterTun.UpstreamResolver.doh(dnsIp, dotHost, FirewallSettings.getDohPath(this))
+            mode == "plaintext" -> DnsFilterTun.UpstreamResolver.plaintext(dnsIp)
+            else -> DnsFilterTun.UpstreamResolver.dot(dnsIp, dotHost)
+        }
         val answerStyle = BlocklistRepository.answerStyle(this)
 
         val filter = DnsFilterTun(

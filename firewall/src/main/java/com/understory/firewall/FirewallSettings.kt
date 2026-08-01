@@ -37,6 +37,8 @@ object FirewallSettings {
     private const val K_TUNNEL_MODE = "tunnel_mode"
     private const val K_UPSTREAM_DNS_IP = "tunnel_upstream_dns_ip"
     private const val K_DOT_HOSTNAME = "tunnel_dot_hostname"
+    private const val K_UPSTREAM_MODE = "tunnel_upstream_mode" // "plaintext" | "dot" | "doh"
+    private const val K_DOH_PATH = "tunnel_doh_path"
 
     // ---- Legacy keys (read once during migration, then deleted) ----
     private const val K_LEGACY_BLOCKLIST = "blocklist"
@@ -188,6 +190,28 @@ object FirewallSettings {
 
     /** True when an in-tunnel DoT hostname is configured. */
     fun isTunnelDotEnabled(ctx: Context): Boolean = getDotHostname(ctx).isNotBlank()
+
+    /**
+     * Which encrypted transport the tunnel uses when a hostname is set: "plaintext", "dot", or
+     * "doh". DoT (:853) and DoH (:443) both verify the peer against [getDotHostname] and fail
+     * closed; DoH additionally rides ordinary HTTPS so a :853 block can't force plaintext. The
+     * mode only takes effect when a hostname is present — a blank hostname is always plaintext.
+     */
+    fun getUpstreamMode(ctx: Context): String =
+        prefs(ctx).getString(K_UPSTREAM_MODE, "dot")?.takeIf { it.isNotBlank() } ?: "dot"
+
+    fun setUpstreamMode(ctx: Context, mode: String) {
+        val v = mode.trim().lowercase().takeIf { it in setOf("plaintext", "dot", "doh") } ?: "dot"
+        prefs(ctx).edit().putString(K_UPSTREAM_MODE, v).apply()
+    }
+
+    /** DoH request path (default "/dns-query"). Only used when the mode is "doh". */
+    fun getDohPath(ctx: Context): String =
+        prefs(ctx).getString(K_DOH_PATH, "/dns-query")?.takeIf { it.isNotBlank() } ?: "/dns-query"
+
+    fun setDohPath(ctx: Context, path: String) {
+        prefs(ctx).edit().putString(K_DOH_PATH, path.trim().ifBlank { "/dns-query" }).apply()
+    }
 
     // ---------------------------------------------------------------
     // DNS provider
