@@ -3993,8 +3993,10 @@ const ScanStutter=(function(){
     // frame; 22ms was two, and stacked with the old duty target it produced visible hangs
     // rather than glitches. 5ms normal / 9ms overdrive still overruns the audio callback's
     // window, which is what actually makes the stutter.
-    const budgetMs = over ? (2 + intensity*intensity*7) : (1 + intensity*intensity*4);
-    const cap = over ? 9 : 5;                   // absolute per-burst ceiling, ms
+    let budgetMs = over ? (2 + intensity*intensity*7) : (1 + intensity*intensity*4);
+    let cap = over ? 9 : 5;                     // absolute per-burst ceiling, ms
+    if(inSpasm){ budgetMs *= 2.2; cap = over ? 20 : 12; }
+    else { budgetMs *= 0.35; cap = 3; }         // calm: present, but not felt
     const bMs = Math.min(budgetMs, cap);
     // 1) The original cause: a few synchronous native bridge round-trips.
     const calls=1+Math.round(intensity*(over?18:12));
@@ -4077,6 +4079,27 @@ const ScanStutter=(function(){
   function rateStr(){ rN++; const now=perfNow();
     if(now-rT>1000){ rLast=rN*1000/(now-rT); rN=0; rT=now; } return rLast.toFixed(0)+'/s'; }
   function setTxt(id,v){ const el=$(id); if(el)el.textContent=v; }
+  /* THE CUSHION — spasm hard, then guarantee recovery.
+     A flat duty cycle forces a bad trade: high enough to feel violent means the app is
+     permanently degraded, and low enough to stay usable means it never really spikes. Reported
+     as "too powerful but working, needs to not stay inoperable so long", which is exactly that
+     trade showing through.
+     So the envelope is now bursty rather than flat. A SPASM window runs well above the steady
+     duty — harder than the flat setting ever was — and is followed by a MANDATORY calm window
+     during which the hammer barely touches the thread. The peak gets worse and the recovery
+     becomes a guarantee with a known upper bound, instead of the app simply being slow all the
+     time. Both windows are randomised so it never becomes a predictable pulse.
+     The audible stutter is unaffected: it runs off the audio clock in audioTick(), so the sound
+     keeps chaos even while the DOM half is in its calm window. */
+  let phaseUntil=0, inSpasm=false;
+  function envelope(){
+    const now=perfNow();
+    if(now<phaseUntil) return inSpasm;
+    inSpasm=!inSpasm;
+    // Spasm short and violent; calm at least as long, so recovery is never far away.
+    phaseUntil = now + (inSpasm ? rnd(450, 1400) : rnd(1600, 3800));
+    return inSpasm;
+  }
   function dutyTarget(){
     /* Target main-thread SHARE — and this had to come down a long way.
 
@@ -4091,10 +4114,13 @@ const ScanStutter=(function(){
        with the audio callback, which is the entire point — while leaving the main thread the
        majority of its time. A disruption effect that takes the app down with it is not a
        feature, it is a hang. */
-    return over ? (0.10 + intensity*0.16) : (0.05 + intensity*0.13);
+    const base = over ? (0.10 + intensity*0.16) : (0.05 + intensity*0.13);
+    // Spasm roughly triples the share; calm drops it to a floor the UI cannot feel.
+    return inSpasm ? Math.min(0.62, base*3.2) : Math.min(base, 0.05);
   }
   function step(){
     if(!on) return;
+    envelope();                      // advances the spasm/calm phase before this burst
     const burstMs = pulse();
     const D = dutyTarget();
     // gap so that burstMs/(burstMs+gap) == D  →  gap = burstMs*(1/D - 1)
@@ -4104,7 +4130,8 @@ const ScanStutter=(function(){
     gap = Math.max(2, rnd(gap*0.45, gap*1.6));
     lastGap = gap;                            // fed back into the NEXT burst's glitch length
     setTxt('ssMode', (perfNow()<interactUntil) ? 'yielding'
-      : (over?'overdrive':(intensity>0.66?'heavy':(intensity>0.33?'moderate':'light'))));
+      : inSpasm ? (over?'SPASM · overdrive':'SPASM')
+      : (over?'recover · overdrive':'recover'));
     timer=setTimeout(step, gap);
   }
   return {

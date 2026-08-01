@@ -130,8 +130,22 @@ class EscalationGuard(private val ctx: Context, private val log: SecureLog) {
             "these checks — can be altered by whatever is using it.")
 
         // ---- 3. Is the sandbox even being enforced? ---------------------------------------
+        // /sys/fs/selinux/enforce is not world-readable on many builds, so a bare "unknown"
+        // was the common answer and told the user nothing. Fall back to this process's own
+        // security context, which IS readable: a context like u:r:untrusted_app:s0 proves
+        // SELinux is present and labelling us even when the enforce node is not readable.
+        // "Not readable" and "not enforcing" are very different claims and must not collapse
+        // into one word.
         val se = readText("/sys/fs/selinux/enforce")?.trim()
-        o.put("selinux", when (se) { "1" -> "enforcing"; "0" -> "permissive"; else -> "unknown" })
+        val selfCtx = readText("/proc/self/attr/current")?.trim()?.trim('\u0000')
+        o.put("selinuxContext", selfCtx ?: "")
+        o.put("selinux", when {
+            se == "1" -> "enforcing"
+            se == "0" -> "permissive"
+            !selfCtx.isNullOrBlank() && selfCtx.contains(":r:") ->
+                "labelled (enforce flag not readable)"
+            else -> "not readable"
+        })
         if (se == "0") flag(3, "selinux",
             "SELinux is PERMISSIVE. The kernel is logging policy violations instead of blocking " +
             "them, so the isolation that normally keeps other apps out of this one's data is " +
@@ -159,8 +173,15 @@ class EscalationGuard(private val ctx: Context, private val log: SecureLog) {
         // different filesystem to some processes than to others.
         val sus = readLines("/proc/self/mounts").filter { line ->
             val parts = line.split(' ')
-            parts.size > 2 && (parts[2] == "overlay" || parts[2] == "tmpfs") &&
-                SENSITIVE_MOUNTS.any { parts.getOrNull(1)?.startsWith(it) == true }
+            val fs = parts.getOrNull(2) ?: return@filter false
+            val at = parts.getOrNull(1) ?: return@filter false
+            if (fs != "overlay" && fs != "tmpfs") return@filter false
+            if (!SENSITIVE_MOUNTS.any { at.startsWith(it) }) return@filter false
+            // EXCLUDE THE UNIVERSAL ONES. /apex is tmpfs on every modern Android device by
+            // design — that is how APEX modules are mounted — so flagging it means flagging
+            // stock Android. A detector that fires on an unmodified phone teaches the user to
+            // ignore the panel, which costs more than the check was ever worth.
+            !BENIGN_MOUNTS.any { at == it || at.startsWith("$it/") }
         }
         o.put("suspiciousMounts", sus.size)
         if (sus.isNotEmpty()) flag(2, "mount",
@@ -224,6 +245,8 @@ class EscalationGuard(private val ctx: Context, private val log: SecureLog) {
             "edxposed", "dobby", "shadowhook", "whale"
         )
         private val SENSITIVE_MOUNTS = listOf("/system", "/vendor", "/apex", "/product")
+        /** Mount points that are tmpfs/overlay on stock Android and therefore say nothing. */
+        private val BENIGN_MOUNTS = listOf("/apex", "/system/apex")
     }
 }
 

@@ -26,12 +26,28 @@ import org.json.JSONObject
  * planted in a bag is followed for hours with the phone in a pocket and the screen off, which
  * is exactly the window the page-driven version could not see.
  *
- * SCAN MODE, chosen deliberately. LOW_POWER, and legacy advertisements only. Android does not
- * expose a passive/active toggle — a normal LE scan does emit SCAN_REQ, which is the one
- * transmit this app performs and is documented as such elsewhere in the project. LOW_POWER
- * keeps the duty cycle (and therefore that emission) at the minimum the platform offers while
- * still seeing advertisements, which matters here because this runs continuously in the
- * background rather than in bursts a user initiated.
+ * ONE SCANNER FOR THE WHOLE APP, and that is not a detail. When this class was added it ran
+ * alongside the page's own scan registration — two concurrent scans in one process, exactly
+ * the mistake that had already been made with the Wi-Fi budget. It costs three ways:
+ *
+ *   - Android limits SCAN STARTS (about five per thirty seconds per app) and answers the rest
+ *     with SCAN_FAILED_APPLICATION_REGISTRATION_FAILED, which looks identical to an empty room
+ *     if it is not reported.
+ *   - Two registrations with different modes do not average. The radio runs at the most
+ *     aggressive one requested, so the page's LOW_LATENCY scan silently overrode the LOW_POWER
+ *     setting here — meaning the comment that used to sit in this spot, claiming the emission
+ *     was held at the platform minimum, was simply false whenever the page was scanning.
+ *   - Battery, continuously, for duplicate data.
+ *
+ * So this is now the only component in the app that registers a scan. Results fan out from
+ * here to both consumers: TrackerWatch for analysis, and the page for display via the callback
+ * it already had. The page asks this to deliver rather than starting its own.
+ *
+ * SCAN MODE. LOW_POWER, legacy advertisements only. Android exposes no passive/active toggle —
+ * a normal LE scan does emit SCAN_REQ, the one transmit this app performs and documented as
+ * such elsewhere. With the second registration gone, LOW_POWER now genuinely is what the radio
+ * runs at, which matters because this runs continuously in the background rather than in
+ * bursts a user initiated.
  *
  * THE PLATFORM'S OWN LIMITER IS RESPECTED RATHER THAN FOUGHT. Android allows roughly five scan
  * starts per thirty seconds per app and silently ignores the rest — an over-eager scanner does
@@ -62,6 +78,21 @@ class BleWatcher(
     private var lastError: String? = null
 
     private val FLUSH_MS = 20_000L
+
+    /** Set by EmiBridge so page-visible results still arrive without a second registration. */
+    @Volatile var onDevice: ((JSONObject) -> Unit)? = null
+
+    /**
+     * Hand the page everything currently buffered, without touching the radio. This is what
+     * `bleScan()` calls now: the page used to start its own scan, which is the duplicate
+     * registration described above. Delivering from the shared buffer gives it the same data
+     * with no extra scan start and no mode escalation.
+     */
+    @Synchronized
+    fun deliverBufferedTo(sink: (JSONObject) -> Unit): Int {
+        buffer.values.forEach { sink(it) }
+        return buffer.size
+    }
 
     private val cb = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
@@ -110,6 +141,9 @@ class BleWatcher(
         }
         buffer[addr] = o
         seenTotal++
+        // Fan out live to the page as well, so display is as immediate as it was when the page
+        // ran its own scan — the registration is shared, the responsiveness is not sacrificed.
+        try { onDevice?.invoke(o) } catch (_: Throwable) {}
     }
 
     fun start(): String {

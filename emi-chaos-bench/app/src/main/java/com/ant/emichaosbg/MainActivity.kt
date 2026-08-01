@@ -15,6 +15,7 @@ import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import com.ant.emichaosbg.ui.ShellView
 
 /**
  * Thin WebView host for the EMI Chaos Bench masker.
@@ -34,6 +35,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var shizuku: ShizukuBridge
     private lateinit var tamperGuard: TamperGuard
     private lateinit var tapjack: TapjackGuard
+    private lateinit var shell: ShellView
     private var pageLoaded = false
     private var wasMicGranted = false
 
@@ -158,6 +160,7 @@ class MainActivity : ComponentActivity() {
         // detection is deliberately gone rather than re-attempted, because no amount of it is
         // worth an app that cannot be touched.
         tapjack = TapjackGuard(this, SecureLog(this))
+        MaskerService.tapjackRef = tapjack
         webView.addJavascriptInterface(tapjack, "EMITapjack")
         // Rootless cellular security posture + IMSI-catcher heuristics (PrivacyCell in full,
         // the parts of AIMSICD/SnoopSnitch that do not need baseband diag).
@@ -171,6 +174,11 @@ class MainActivity : ComponentActivity() {
         // BLE tracker/follower detection — the last counter-surveillance check that was still
         // page JavaScript, and therefore the only one that stopped when the WebView did.
         webView.addJavascriptInterface(MaskerService.ensureTrackerWatch(this), "EMITracker")
+        // Live fan-out from the single shared scanner to the page's existing callback, so
+        // display stays as immediate as it was when the page ran its own registration.
+        MaskerService.bleWatcher?.onDevice = { o ->
+            bridge.deliverBleDevice(o.toString())
+        }
         // Read-only view of the service-owned scanner, so the panel can show whether it is
         // actually observing rather than assuming it because the toggle looks on.
         webView.addJavascriptInterface(object {
@@ -188,7 +196,18 @@ class MainActivity : ComponentActivity() {
         webView.addJavascriptInterface(shizuku, "EMIShizuku")
         webView.addJavascriptInterface(tamperGuard, "EMITamper")
         webView.addJavascriptInterface(PrivilegeBridge(this), "EMIPriv")
-        setContentView(webView)
+        /* THE APP IS NO LONGER THE PAGE. This used to be setContentView(webView) — the
+           WebView was the entire application, and "menus" were tab buttons drawn inside one
+           HTML document. Now a native shell owns navigation and swaps real Views; the page is
+           one destination among several, kept for the two things that genuinely need it (Web
+           Audio until synthesis is ported, and the DOM hammer, which needs a DOM to hammer)
+           plus its role as the instrumented attack surface the injection detection exists to
+           watch.
+
+           The same WebView instance is detached and reattached rather than recreated, so the
+           audio graph and the hammer keep running while you look at other screens. */
+        shell = ShellView(this, webView)
+        setContentView(shell)
         keepScreenFriendly()
 
         wasMicGranted = isGranted(Manifest.permission.RECORD_AUDIO)

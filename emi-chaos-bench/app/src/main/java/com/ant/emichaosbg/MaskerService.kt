@@ -132,6 +132,10 @@ class MaskerService : Service() {
             }
         }
 
+        /** The Activity's TapjackGuard, published so native screens can read it without
+         *  owning a second instance. Null until the Activity has built one. */
+        @Volatile var tapjackRef: TapjackGuard? = null
+
         fun ensureEscalationGuard(ctx: Context): EscalationGuard {
             escalationGuard?.let { return it }
             synchronized(this) {

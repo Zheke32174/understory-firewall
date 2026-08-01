@@ -822,18 +822,44 @@ class EmiBridge(private val ctx: Context, private val web: WebView) : SensorEven
 
     @JavascriptInterface
     fun bleScan() {
+        /* NO LONGER STARTS A SCAN. It used to register its own SCAN_MODE_LOW_LATENCY scan,
+           which — once the service-owned BleWatcher existed — meant two concurrent
+           registrations in one process. That is the same mistake as the Wi-Fi budget, and it
+           cost three ways: Android limits scan STARTS (~5 per 30s per app) and answers the rest
+           with a registration failure indistinguishable from an empty room; two registrations
+           do not average, the radio runs at the most aggressive mode requested, so this call
+           silently escalated the watcher's LOW_POWER scan to LOW_LATENCY; and it burned battery
+           continuously for duplicate data.
+
+           The watcher is the only scanner now. This delivers what it has already collected,
+           and live results arrive through the same callback via its fan-out hook — so the page
+           sees the same devices, just as promptly, without a second registration.
+
+           If the watcher is not up (masking service not started), fall back to starting one
+           here so the page is never left with a dead button. */
+        val w = MaskerService.bleWatcher
+        if (w != null && w.isRunning()) {
+            w.deliverBufferedTo { o -> postJs("window.__emiBleReport(${JSONArray().put(o)})") }
+            return
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED
         ) return
         val bm = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager ?: return
         scanner = bm.adapter?.bluetoothLeScanner ?: return
-        val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
+        // LOW_POWER even on the fallback path: this is a background-style observation, and the
+        // old LOW_LATENCY setting was chosen when this was the app's only, user-initiated scan.
+        val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_POWER).build()
         try { scanner?.startScan(null, settings, scanCb) } catch (_: SecurityException) {}
     }
 
     @JavascriptInterface
     fun bleStop() {
+        // Only ever stops a scan THIS class started. The service-owned watcher is not the
+        // page's to stop — the page closing must not end follower detection, which is the
+        // whole reason that scanner lives in the service.
         try { scanner?.stopScan(scanCb) } catch (_: Exception) {}
+        scanner = null
     }
 
     private fun bytesToHex(b: ByteArray) = b.joinToString("") { "%02x".format(it) }
@@ -986,6 +1012,16 @@ class EmiBridge(private val ctx: Context, private val web: WebView) : SensorEven
     }
 
     private fun postJs(js: String) = main.post { web.evaluateJavascript(js, null) }
+
+    /**
+     * Narrow, non-@JavascriptInterface entry point for the service-owned BLE scanner to deliver
+     * a device into the page's existing callback. Deliberately not a general "run this JS" hook
+     * and deliberately not exposed to the page: it exists so the shared scanner can fan out
+     * without a second scan registration, and widening postJs itself would have handed the
+     * untrusted compartment a way to inject arbitrary script into its own context.
+     */
+    fun deliverBleDevice(deviceJson: String) =
+        postJs("window.__emiBleReport([" + deviceJson + "])")
 
     fun shutdown() {
         stopSensors(); bleStop(); setForeground(false); stopGnss()
