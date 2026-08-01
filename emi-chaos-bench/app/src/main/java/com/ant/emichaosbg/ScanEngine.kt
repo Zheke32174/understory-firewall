@@ -120,7 +120,14 @@ class ScanEngine(private val ctx: Context, private val log: SecureLog) {
             ?: return arr
         if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION)
             != PackageManager.PERMISSION_GRANTED) return arr
-        try { wm.startScan() } catch (_: Exception) { /* throttled; cached results still useful */ }
+        // Through the shared gate. This engine is a BACKGROUND sweep, so it never takes the
+        // slots reserved for wardriving and explicit user scans — that reservation was being
+        // silently consumed before the gate existed.
+        if (WifiScanBudget.tryStart("background", "ScanEngine")) {
+            try { wm.startScan() } catch (_: Exception) { /* platform refused; cache below */ }
+        }
+        // Cached results are read either way: only the START is throttled, so a denial costs
+        // freshness, not data.
         @Suppress("DEPRECATION")
         for (r in wm.scanResults) {
             val o = JSONObject()

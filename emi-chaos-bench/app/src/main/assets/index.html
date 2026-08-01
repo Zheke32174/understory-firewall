@@ -5086,7 +5086,24 @@ const RF=(function(){
     if(priority!=='critical' && wdOn && room<=2){ scanDenied++; return false; }
     scanStamps.push(now); scanGranted++; return true;
   }
+  /* THE REAL BUDGET, not this page's guess at it.
+     The local scanStamps ledger below was accurate right up until a SECOND component started
+     scanning. Once the native ScanEngine was added it called startScan() on its own timer,
+     outside this accounting entirely — roughly 3.75 starts per two minutes, very nearly the
+     whole platform allowance. So this page reported four slots free while the platform had
+     already spent them, wardriving's two reserved slots were being consumed by something that
+     did not know they were reserved, and both sides said "scanning normally" while Android
+     silently dropped most of the requests.
+     The gate now lives in native (WifiScanBudget), below every caller, and this reads it.
+     The local counters are kept only as the browser-preview fallback, where there is no
+     native side and nothing else is scanning. */
   function budgetState(){
+    try{
+      if(window.EMIBridge&&EMIBridge.getScanBudget){
+        const b=JSON.parse(EMIBridge.getScanBudget());
+        if(b&&b.max) return b;
+      }
+    }catch(e){}
     const now=Date.now();
     while(scanStamps.length && now-scanStamps[0]>SCAN_WINDOW) scanStamps.shift();
     return {used:scanStamps.length, max:SCAN_MAX, denied:scanDenied, granted:scanGranted};

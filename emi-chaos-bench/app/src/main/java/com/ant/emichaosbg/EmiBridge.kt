@@ -570,6 +570,14 @@ class EmiBridge(private val ctx: Context, private val web: WebView) : SensorEven
      * list. Also reports Bluetooth adapter state, which is what makes the BLE cadence behave
      * so differently on/off.
      */
+    /**
+     * The REAL scan budget, shared by every caller in the process. The page used to keep its
+     * own count, which stopped being true the moment a second component started scanning: it
+     * reported four slots free while the platform had already spent them.
+     */
+    @JavascriptInterface
+    fun getScanBudget(): String = WifiScanBudget.state()
+
     @JavascriptInterface
     fun getWifiDiag(): String {
         val o = JSONObject()
@@ -768,7 +776,12 @@ class EmiBridge(private val ctx: Context, private val web: WebView) : SensorEven
             val wm = ctx.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return arr.toString()
             if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED)
                 return arr.toString()
-            try { wm.startScan() } catch (_: Exception) { /* throttled — cached results below still useful */ }
+            // Same gate as the native ScanEngine. Page-initiated scans are 'critical' because
+            // they are either an explicit press or wardriving, which is exactly what the
+            // reserved slots exist for.
+            if (WifiScanBudget.tryStart("critical", "page")) {
+                try { wm.startScan() } catch (_: Exception) { /* platform refused */ }
+            }
             @Suppress("DEPRECATION")
             for (r in wm.scanResults) {
                 val o = JSONObject()
