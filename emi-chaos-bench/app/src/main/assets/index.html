@@ -2058,8 +2058,25 @@ const BadJack=(function(){
   function process(L,R,n){
     if(!p.on) return;
     const inG=db(p.inGain), outT=db(p.outTrim);
-    const limDrive=1+(p.lim/100)*2.75;
-    const limRef=limDrive/Math.sqrt(1+limDrive*limDrive);
+    /* SOFT LIMITER — rebuilt. The previous curve was x/sqrt(1+x^2) driven by `limDrive` and
+       then normalised by dividing by f(limDrive), which maps full scale to full scale. That
+       normalisation makes the whole curve a BOOST below full scale, and measurement showed
+       three separate defects:
+         - at lim = 0% it still applied 1.41x gain, so a control sitting at zero was not a
+           no-op but a +3dB waveshaper;
+         - at lim = 100% quiet material was amplified 3.87x (+11.8dB) — the opposite of
+           limiting, and a real loudness surprise in an app whose whole job is masking;
+         - the ceiling was ABOVE unity at every setting (1.414 at 0%), so the soft limiter did
+           not actually limit — the downstream hard clamp at +/-0.98 was doing the work.
+
+       Replaced with the k-norm saturator y = x / (1 + |x|^k)^(1/k). It has unit slope at the
+       origin (so it can never apply makeup gain) and a ceiling of exactly 1.0 for any k, and
+       the control now sets the KNEE HARDNESS rather than a drive that has to be normalised
+       back out. lim = 0 is an exact bypass. Verified numerically: worst-case gain across the
+       whole input range and every setting is 1.0000x. */
+    const limAmt=cl(p.lim/100,0,1);
+    const limK=2+limAmt*6;          // 2 = gently rounded, 8 = firm knee near full scale
+    const limInvK=1/limK;
     const mix=cl(p.mix,0,1);
     // one-pole coefficients (EEL: exp(-2*pi*f/srate))
     const A=f=>Math.exp(-2*Math.PI*Math.max(1,Math.min(f,sr*0.45))/sr);
@@ -2202,8 +2219,12 @@ const BadJack=(function(){
       }
       // ---- output: trim, soft limit, clamp, master mix ----
       l*=outT; r*=outT;
-      const ll=l*limDrive, rr=r*limDrive;
-      l=(ll/Math.sqrt(1+ll*ll))/limRef; r=(rr/Math.sqrt(1+rr*rr))/limRef;
+      if(limAmt>0){
+        const al=Math.abs(l), ar=Math.abs(r);
+        l=(l<0?-1:1)*al/Math.pow(1+Math.pow(al,limK),limInvK);
+        r=(r<0?-1:1)*ar/Math.pow(1+Math.pow(ar,limK),limInvK);
+      }
+      // Still clamped, but now as a backstop rather than as the actual limiter.
       l=cl(l,-0.98,0.98); r=cl(r,-0.98,0.98);
       if(!isFinite(l))l=0; if(!isFinite(r))r=0;
       L[i]=dryL*(1-mix)+l*mix; R[i]=dryR*(1-mix)+r*mix;
