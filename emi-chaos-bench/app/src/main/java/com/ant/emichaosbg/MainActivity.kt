@@ -171,6 +171,14 @@ class MainActivity : ComponentActivity() {
         // BLE tracker/follower detection — the last counter-surveillance check that was still
         // page JavaScript, and therefore the only one that stopped when the WebView did.
         webView.addJavascriptInterface(MaskerService.ensureTrackerWatch(this), "EMITracker")
+        // Read-only view of the service-owned scanner, so the panel can show whether it is
+        // actually observing rather than assuming it because the toggle looks on.
+        webView.addJavascriptInterface(object {
+            @android.webkit.JavascriptInterface
+            fun status(): String = MaskerService.bleWatcher?.status()
+                ?: org.json.JSONObject().put("running", false)
+                    .put("note", "scanner starts with the masking service").toString()
+        }, "EMIBleWatch")
         // Read-only view onto the SERVICE-owned native scan/detection engine. The page can
         // start it, stop it and look at it; it has no way to raise, edit, suppress or delete a
         // finding, because detection and recording happen on the far side of this boundary.

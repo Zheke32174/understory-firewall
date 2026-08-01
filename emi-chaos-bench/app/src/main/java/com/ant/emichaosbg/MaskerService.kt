@@ -117,6 +117,21 @@ class MaskerService : Service() {
             }
         }
 
+        /** Service-owned BLE scanner feeding TrackerWatch. This is what completes the move:
+         *  follower detection now observes with no WebView alive, which is the only state in
+         *  which a planted tracker is actually followed for hours. */
+        @Volatile var bleWatcher: BleWatcher? = null
+            private set
+
+        fun ensureBleWatcher(ctx: Context): BleWatcher {
+            bleWatcher?.let { return it }
+            synchronized(this) {
+                bleWatcher?.let { return it }
+                val b = BleWatcher(ctx.applicationContext, ensureTrackerWatch(ctx))
+                bleWatcher = b; return b
+            }
+        }
+
         fun ensureEscalationGuard(ctx: Context): EscalationGuard {
             escalationGuard?.let { return it }
             synchronized(this) {
@@ -142,6 +157,7 @@ class MaskerService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        try { bleWatcher?.stop() } catch (_: Exception) {}
         try { escalationTimer?.cancel() } catch (_: Exception) {}
         escalationTimer = null
         try { towerTimer?.cancel() } catch (_: Exception) {}
@@ -248,6 +264,10 @@ class MaskerService : Service() {
         // survive the WebView: findings continue to be detected and committed to the encrypted
         // log while the app is backgrounded or swiped away.
         try { ensureScanEngine(this).start() } catch (_: Throwable) {}
+        // Follower detection now observes independently of the page. Failure here is reported
+        // through status() rather than thrown: Bluetooth being off is an ordinary state, not
+        // an error, and it must not take the masking service down with it.
+        try { ensureBleWatcher(this).start() } catch (_: Throwable) {}
 
         // Escalation checks run on their own slow timer, independent of the WebView. A tracer
         // attaching or a library being injected while the app sits in the background is exactly

@@ -1349,6 +1349,9 @@
             <div class="stat"><small>Tracked identities</small><b id="tkCount">—</b></div>
             <div class="stat"><small>Scan sessions</small><b id="tkSess">—</b></div>
             <div class="stat"><small>Following</small><b id="tkFollow">—</b></div>
+            <div class="stat"><small>Native scanner</small><b id="tkScan">—</b></div>
+            <div class="stat"><small>Sightings</small><b id="tkSight">—</b></div>
+            <div class="stat"><small>Windows</small><b id="tkWin">—</b></div>
           </div>
           <div class="row"><div class="cell full"><button class="btn" id="tkRefresh">Refresh</button></div></div>
           <div id="tkList"></div>
@@ -1373,9 +1376,17 @@
             follow signature — because they genuinely are following you. The alert says exactly that rather
             than implying malice. Identify it before assuming the worst.
             <br><br>
-            The scan cadence that feeds this is still driven by the page, so it runs while the app is
-            alive rather than fully in the background — the analysis and the record are native, the trigger
-            is not yet.</div>
+            <b>It now observes without this screen.</b> The scan is owned by the foreground service, not
+            by this page, so a tracker planted in a bag is followed with the phone in a pocket and the
+            display off — which is the only state in which a planted tracker actually gets followed for
+            hours. One continuous low-power scan is harvested into 20-second windows rather than restarting
+            on a cadence: Android silently drops scan <i>starts</i> past roughly five per thirty seconds,
+            so one long scan sees more than an eager one, and steady observation is what this particular
+            detection wants anyway.
+            <br><br>
+            <b>Native scanner</b> above says whether it is genuinely observing. A follower panel reading
+            "nothing following" while nothing is scanning would be indistinguishable from an all-clear, so
+            Bluetooth being off — an ordinary state, not an error — is named rather than hidden.</div>
         </div>
       </div>
       <div class="sect">
@@ -6620,6 +6631,20 @@ const Follower=(function(){
     set('tkCount', last.tracked!=null?last.tracked:'—');
     set('tkSess', last.sessions!=null?last.sessions:'—');
     set('tkFollow', following);
+    /* Report whether the SERVICE scanner is actually observing. A follower panel that shows
+       "nothing following" while nothing is scanning is the worst possible readout — it is
+       indistinguishable from an all-clear. Bluetooth off is an ordinary state, not an error,
+       so it is named rather than hidden. */
+    let w=null; try{ if(window.EMIBleWatch) w=JSON.parse(EMIBleWatch.status()); }catch(e){}
+    if(!w){ set('tkScan','—'); set('tkSight','—'); set('tkWin','—'); }
+    else{
+      set('tkScan', w.running?'observing':(w.error?w.error:'not scanning'));
+      set('tkSight', w.sightings!=null?w.sightings:'—');
+      set('tkWin', w.flushes!=null?w.flushes:'—');
+      if(!w.running){
+        set('tkState','scanner idle');
+      }
+    }
     const L=$('tkList'); if(!L) return;
     L.innerHTML='';
     if(!c.length){ const e=document.createElement('div'); e.className='muted';
