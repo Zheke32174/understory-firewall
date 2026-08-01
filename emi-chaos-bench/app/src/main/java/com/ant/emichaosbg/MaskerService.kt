@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
@@ -23,6 +24,30 @@ class MaskerService : Service() {
         @Volatile
         var isRunning: Boolean = false
             private set
+
+        /**
+         * The native scan/detection engine, owned by the SERVICE rather than by the Activity.
+         *
+         * That ownership is the point. Scanning and alerting previously stopped the moment the
+         * WebView went away, because the cadence lived in page JavaScript. Held here it keeps
+         * running — and keeps committing findings to the encrypted log — with the app swiped
+         * off recents and no WebView alive at all. MainActivity attaches a read-only view onto
+         * this same instance instead of owning one of its own.
+         */
+        @Volatile
+        var scanEngine: ScanEngine? = null
+            private set
+
+        /** Created lazily so the log's Keystore work happens off the Activity's critical path. */
+        fun ensureScanEngine(ctx: Context): ScanEngine {
+            scanEngine?.let { return it }
+            synchronized(this) {
+                scanEngine?.let { return it }
+                val e = ScanEngine(ctx.applicationContext, SecureLog(ctx.applicationContext))
+                scanEngine = e
+                return e
+            }
+        }
     }
 
     private var wakeLock: android.os.PowerManager.WakeLock? = null
@@ -128,6 +153,11 @@ class MaskerService : Service() {
             startForeground(1, n)
         }
         isRunning = true
+
+        // Detection starts with the SERVICE, not with the page. This is what makes scanning
+        // survive the WebView: findings continue to be detected and committed to the encrypted
+        // log while the app is backgrounded or swiped away.
+        try { ensureScanEngine(this).start() } catch (_: Throwable) {}
 
         // A partial wake lock keeps the CPU available to the Web Audio graph with the screen
         // off. Without it, aggressive OEM dozing can stall the audio callback even inside a

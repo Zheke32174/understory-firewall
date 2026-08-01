@@ -133,6 +133,11 @@ class MainActivity : ComponentActivity() {
         // EMIBridge so its surface stays visibly four methods wide — append, read, count,
         // verify — with no delete anywhere on it.
         webView.addJavascriptInterface(VaultBridge(this), "EMIVault")
+        // Read-only view onto the SERVICE-owned native scan/detection engine. The page can
+        // start it, stop it and look at it; it has no way to raise, edit, suppress or delete a
+        // finding, because detection and recording happen on the far side of this boundary.
+        webView.addJavascriptInterface(
+            ScanBridge(this, MaskerService.ensureScanEngine(this)), "EMIScan")
         webView.addJavascriptInterface(bridge, "EMIBridge")
         webView.addJavascriptInterface(shizuku, "EMIShizuku")
         webView.addJavascriptInterface(tamperGuard, "EMITamper")

@@ -481,6 +481,42 @@
 
   <div class="page" id="page-detect">
     <div class="sect">
+      <div class="head"><span class="t">Native scan engine</span><span class="tag" id="nsState">—</span></div>
+      <div class="body">
+        <div class="grid">
+          <div class="stat"><small>Engine</small><b id="nsRun">—</b></div>
+          <div class="stat"><small>Scans</small><b id="nsScans">—</b></div>
+          <div class="stat"><small>Networks</small><b id="nsNets">—</b></div>
+          <div class="stat"><small>Findings logged</small><b id="nsFind">—</b></div>
+          <div class="stat"><small>Known BSSIDs</small><b id="nsKnown">—</b></div>
+          <div class="stat"><small>Location</small><b id="nsLoc">—</b></div>
+        </div>
+        <div class="kv"><span>Status</span><b id="nsWhy">—</b></div>
+        <div class="muted">Wi-Fi scanning, the detection heuristics and the alert-raising all run in
+          <b>native Kotlin</b>, owned by the foreground service rather than by this page.
+          <br><br>
+          <b>Why it was moved.</b> This WebView is the untrusted compartment — it is where injected script
+          would land, and it is the first thing the OS destroys. Until now the radio <i>reads</i> were native
+          but the cadence, the heuristics and the alert-raising were page JavaScript, which put the three
+          things that matter most (whether a scan happened, what it concluded, and whether the conclusion was
+          recorded) inside that compartment. They now sit behind this boundary. Three concrete consequences:
+          findings are still detected and committed with <b>no WebView alive at all</b>, so scanning survives
+          the app being swiped off recents; a page compromised badly enough to stop calling the vault cannot
+          suppress a finding, because it was never the thing appending them; and each finding is written to
+          the encrypted log <i>before</i> it is displayed, so a crash between detecting and rendering loses
+          the pixel, not the record.
+          <br><br>
+          The interface this page holds is deliberately read-only — <code>start</code>, <code>stop</code>,
+          <code>snapshot</code>, <code>networks</code>. There is no method on it that raises, edits,
+          suppresses or deletes a finding.
+          <br><br>
+          Still reports and never blocks. Nothing here transmits: Wi-Fi results come from the platform's own
+          scan cache, and the cadence respects Android's ~4-scans-per-2-minutes budget rather than pretending
+          to beat it — asking faster returns the same data plus wasted radio power and a silently dropped
+          request. Heuristics are hints to go look closer, not certified detection.</div>
+      </div>
+    </div>
+    <div class="sect">
       <div class="head"><span class="t">Mic voice detection</span><span class="tag">local, in-process only</span>
         <div class="sw" id="micEn" aria-pressed="false"></div></div>
       <div class="body">
@@ -5266,6 +5302,49 @@ const SatView=(function(){
 })();
 
 /* ============ WARDRIVING (local GPS-tagged track log; export only, no auto-upload) ============ */
+/* ============ NATIVE SCAN ENGINE — VIEWER ONLY ============
+   This module renders the native engine's state. It deliberately holds no detection logic of
+   its own: the scanning, the heuristics and the alert-raising all live in ScanEngine.kt, and
+   findings are committed to the encrypted log natively BEFORE this page is told anything.
+
+   The bridge exposed to us is read-only by construction — start / stop / snapshot / networks.
+   There is no method here that could raise, edit, suppress or delete a finding, which is the
+   entire reason the subsystem moved: the WebView is the compartment that hostile script
+   reaches first and that the OS destroys first, so it is the wrong place for the record.
+
+   snapshot() is a SYNCHRONOUS bridge call, so it is polled on the slow display cadence
+   (~3 frames) and not from the audio path — the same discipline the DOM hammer exists to
+   stress-test. In a browser preview EMIScan is absent and this renders a plain "native build
+   only" rather than pretending. */
+const NativeScan=(function(){
+  let last=null, lastAt=-1e9;
+  function render(){
+    const set=(id,v)=>{const el=$(id); if(el)el.textContent=v;};
+    if(!window.EMIScan||!EMIScan.snapshot){
+      set('nsState','native build only'); set('nsRun','—');
+      set('nsWhy','Runs in the installed app. A browser preview has no native engine.');
+      return;
+    }
+    const now=perfNow();
+    if(now-lastAt<900 && last) { paint(last,set); return; }
+    lastAt=now;
+    try{ last=JSON.parse(EMIScan.snapshot()); }catch(e){ last=null; }
+    if(!last){ set('nsState','error'); return; }
+    paint(last,set);
+  }
+  function paint(s,set){
+    set('nsState', s.running?'native · running':'native · stopped');
+    set('nsRun', s.running?'running':'stopped');
+    set('nsScans', String(s.wifiScans!=null?s.wifiScans:'—'));
+    set('nsNets', String(s.networks!=null?s.networks:'—'));
+    set('nsFind', String(s.findings!=null?s.findings:'—'));
+    set('nsKnown', String(s.knownBssids!=null?s.knownBssids:'—'));
+    set('nsLoc', s.locationEnabled===false?'OFF':(s.fineLocation===false?'no permission':'on'));
+    set('nsWhy', s.error?('error — '+s.error):(s.why||'—'));
+  }
+  return { render, get last(){ return last; } };
+})();
+
 const Wardrive=(function(){
   let on=false, track=[], apsSeen=new Map(), autoIv=null;
   /* getWifiDiag() is a SYNCHRONOUS native bridge call and updUi() runs on every scan result
@@ -5539,6 +5618,7 @@ function draw(now){
       const cell=$('rv_cell');if(cell)cell.textContent=(Sensors.raw.rtt?Math.round((Sensors.raw.rtt+1)/2*100)+'%':'—');
       const gps=$('rv_gps');if(gps)gps.textContent=(Sensors.lat!=null?Sensors.lat.toFixed(3)+','+Sensors.lon.toFixed(3):'—'); }
     Wardrive.tick();
+    NativeScan.render();
     const dgS=$('dgScore'),dgB=$('dgBar'),dgT=$('dgTag');
     if(dgS){ const sc=DemodGuard.score; dgS.textContent=Math.round(sc*100)+'%'; if(dgB)dgB.style.width=(sc*100)+'%';
       if(dgT)dgT.textContent=DemodGuard.enabled?(running?'watching':'idle'):'off'; }
