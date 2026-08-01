@@ -87,10 +87,51 @@ class TamperGuard(private val ctx: Context) {
      *  characteristic thread/library names once injected, and (for frida-server on rooted
      *  devices) a well-known binary path. Any single hint is circumstantial; several
      *  together are a real signal. This never blocks anything — it only informs the UI. */
+    /**
+     * Expanded because a real detection was reported in the field, and the original set was
+     * too coarse to tell a genuine hook from a false positive.
+     *
+     * Each hit now names WHAT matched, so the finding can be judged rather than taken on
+     * faith. That matters: the single most common false positive is an unrelated process
+     * holding 27042, and "possible Frida" with no detail is unactionable either way.
+     *
+     * Still detect-and-report only. Deliberately no anti-debug retaliation, no self-kill, no
+     * crash-on-detect: those are trivially bypassed by the very tooling they target, and they
+     * turn a false positive into a bricked app for an ordinary user.
+     */
     private fun fridaHeuristics(): List<String> {
         val hits = mutableListOf<String>()
+        // Default and commonly-used alternate frida-server ports.
         try {
-            if (portOpen(27042)) hits.add("port 27042")
+            for (p in intArrayOf(27042, 27043, 27047)) if (portOpen(p)) hits.add("listening port $p")
+        } catch (_: Exception) {}
+        // Frida's gadget/agent spawns recognisable threads. Reading our own task list is
+        // cheap and is one of the few signals that survives a renamed binary.
+        try {
+            File("/proc/self/task").listFiles()?.take(400)?.forEach { t ->
+                val nameFile = File(t, "comm")
+                if (nameFile.canRead()) {
+                    val n = nameFile.readText().trim().lowercase()
+                    if (n == "gmain" || n == "gdbus" || n.startsWith("gum-js") || n.contains("frida") || n == "pool-frida") {
+                        hits.add("thread name '$n'")
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        // A hooking engine has to make pages writable+executable to install trampolines.
+        try {
+            File("/proc/self/maps").takeIf { it.canRead() }?.let { f ->
+                var rwx = 0
+                BufferedReader(InputStreamReader(f.inputStream())).use { r ->
+                    var line: String?; var n = 0
+                    while (r.readLine().also { line = it } != null && n < 6000) {
+                        n++
+                        val l = line ?: continue
+                        if (l.contains(" rwxp ")) rwx++
+                    }
+                }
+                if (rwx > 0) hits.add("$rwx writable+executable mapping(s)")
+            }
         } catch (_: Exception) {}
         try {
             File("/proc/self/maps").takeIf { it.canRead() }?.let { f ->
@@ -107,8 +148,12 @@ class TamperGuard(private val ctx: Context) {
             }
         } catch (_: Exception) {}
         try {
-            val knownServerPaths = listOf("/data/local/tmp/frida-server", "/data/local/tmp/re.frida.server")
-            if (knownServerPaths.any { File(it).exists() }) hits.add("frida-server binary present")
+            val knownServerPaths = listOf(
+                "/data/local/tmp/frida-server", "/data/local/tmp/re.frida.server",
+                "/data/local/tmp/frida-agent.so", "/data/local/tmp/frida-gadget.so",
+                "/sdcard/frida-server", "/data/local/tmp/re.frida.server.so"
+            )
+            knownServerPaths.filter { File(it).exists() }.forEach { hits.add("binary present: $it") }
         } catch (_: Exception) {}
         return hits
     }

@@ -11,8 +11,8 @@ android {
         applicationId = "com.ant.emichaosbg"
         minSdk = 26
         targetSdk = 34
-        versionCode = 10
-        versionName = "3.6.1-badjack"
+        versionCode = 11
+        versionName = "3.7-pulse"
     }
 
     buildTypes {
@@ -44,4 +44,10 @@ dependencies {
     // this only enables the read-only diagnostics panel when the user has set it up themselves.
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
+    // Dhizuku client API. This MUST be a real dependency — the earlier reflection-only
+    // approach could never work: com.rosan.dhizuku.api.Dhizuku lives in the CLIENT library,
+    // not inside the Dhizuku app, so Class.forName() in our process always failed and the
+    // tier could never activate. 2.5.3 is pinned deliberately: 2.6.0 requires compileSdk 37
+    // (this app targets 34) and 2.5.4+ ship Java 21 bytecode.
+    implementation("io.github.iamr0s:Dhizuku-API:2.5.3")
 }

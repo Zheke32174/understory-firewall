@@ -459,6 +459,110 @@ class EmiBridge(private val ctx: Context, private val web: WebView) : SensorEven
         }
     }
 
+    /**
+     * Ground truth for "why won't the mic start". WebView only ever reports
+     * NotReadableError / "Could not start audio source", which conflates several very
+     * different causes. This opens an AudioRecord natively and reports what actually
+     * happened, plus who else is currently recording.
+     */
+    @JavascriptInterface
+    fun probeMic(): String {
+        val o = JSONObject()
+        try {
+            o.put("recordAudioGranted", ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+            val am = ctx.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
+            o.put("audioMode", am?.mode ?: -1)
+            o.put("micMuted", try { am?.isMicrophoneMute ?: false } catch (_: Exception) { false })
+            // Anything else holding a capture stream right now is the classic cause.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && am != null) {
+                val cfgs = try { am.activeRecordingConfigurations } catch (_: Exception) { emptyList() }
+                o.put("activeRecorders", cfgs.size)
+                val arr = JSONArray()
+                for (c in cfgs) {
+                    val e = JSONObject()
+                    e.put("source", c.clientAudioSource)
+                    try { e.put("sampleRate", c.format.sampleRate) } catch (_: Exception) {}
+                    arr.put(e)
+                }
+                o.put("recorders", arr)
+            }
+            o.put("foregroundServiceRunning", MaskerService.isRunning)
+
+            // The decisive test: can WE open a capture stream at all?
+            var rec: android.media.AudioRecord? = null
+            try {
+                val minBuf = android.media.AudioRecord.getMinBufferSize(
+                    44100,
+                    android.media.AudioFormat.CHANNEL_IN_MONO,
+                    android.media.AudioFormat.ENCODING_PCM_16BIT
+                )
+                o.put("minBufferSize", minBuf)
+                if (minBuf > 0) {
+                    rec = android.media.AudioRecord(
+                        android.media.MediaRecorder.AudioSource.MIC,
+                        44100,
+                        android.media.AudioFormat.CHANNEL_IN_MONO,
+                        android.media.AudioFormat.ENCODING_PCM_16BIT,
+                        minBuf
+                    )
+                    o.put("initState", rec.state) // 1 == STATE_INITIALIZED
+                    if (rec.state == android.media.AudioRecord.STATE_INITIALIZED) {
+                        rec.startRecording()
+                        val rs = rec.recordingState  // 3 == RECORDSTATE_RECORDING
+                        o.put("recordingState", rs)
+                        o.put("nativeCaptureOk", rs == android.media.AudioRecord.RECORDSTATE_RECORDING)
+                        rec.stop()
+                    } else {
+                        o.put("nativeCaptureOk", false)
+                    }
+                }
+            } catch (e: SecurityException) {
+                o.put("nativeCaptureOk", false); o.put("nativeError", "SecurityException: ${e.message}")
+            } catch (e: Exception) {
+                o.put("nativeCaptureOk", false); o.put("nativeError", "${e.javaClass.simpleName}: ${e.message}")
+            } finally {
+                try { rec?.release() } catch (_: Exception) {}
+            }
+        } catch (e: Exception) {
+            o.put("error", e.message)
+        }
+        return o.toString()
+    }
+
+    /**
+     * Why Wi-Fi scanning may be returning nothing. The big one users hit is that Android
+     * withholds ALL scan results when device location services are off — even with
+     * ACCESS_FINE_LOCATION granted to the app — and the API gives no error, just an empty
+     * list. Also reports Bluetooth adapter state, which is what makes the BLE cadence behave
+     * so differently on/off.
+     */
+    @JavascriptInterface
+    fun getWifiDiag(): String {
+        val o = JSONObject()
+        try {
+            o.put("fineLocation", ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED)
+            o.put("coarseLocation", ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED)
+            val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            o.put("locationEnabled", try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) lm?.isLocationEnabled ?: false
+                else @Suppress("DEPRECATION") (lm?.isProviderEnabled(LocationManager.GPS_PROVIDER) == true ||
+                        lm?.isProviderEnabled(LocationManager.NETWORK_PROVIDER) == true)
+            } catch (_: Exception) { false })
+            o.put("gpsProvider", try { lm?.isProviderEnabled(LocationManager.GPS_PROVIDER) ?: false } catch (_: Exception) { false })
+            val wm = ctx.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            o.put("wifiEnabled", try { wm?.isWifiEnabled ?: false } catch (_: Exception) { false })
+            o.put("scanThrottleHint", "Android allows ~4 startScan() per 2 min for foreground apps; excess returns cached results with no error.")
+            // Bluetooth adapter state — the reason the BLE chaotic cadence runs unthrottled
+            // when Bluetooth is off (null LE scanner => instant return, no platform limiter).
+            val bm = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            val ad = bm?.adapter
+            o.put("bluetoothPresent", ad != null)
+            o.put("bluetoothEnabled", try { ad?.isEnabled ?: false } catch (_: Exception) { false })
+            o.put("leScannerAvailable", try { ad?.bluetoothLeScanner != null } catch (_: Exception) { false })
+        } catch (e: Exception) { o.put("error", e.message) }
+        return o.toString()
+    }
+
     // ---- Bundled asset access ----------------------------------------------------------
     // The page is loaded from file:///android_asset/, and WebView's
     // `allowFileAccessFromFileURLs` defaults to FALSE — so a fetch() from that page to a

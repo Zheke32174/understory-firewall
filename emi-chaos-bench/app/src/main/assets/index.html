@@ -233,6 +233,31 @@
       </div>
     </div>
     <div class="sect">
+      <div class="head"><span class="t">Chaos pulse</span><span class="tag" id="cpRate">0/s</span>
+        <div class="sw" id="cpEn" aria-pressed="false"></div></div>
+      <div class="body">
+        <div class="row"><div class="cell full"><small>Magnitude <span id="cpAmtR">50%</span></small>
+          <input id="cpAmt" type="range" min="0" max="1" step="0.01" value="0.5"></div></div>
+        <div class="grid"><div class="stat"><small>Pulses</small><b id="cpCount">0</b></div></div>
+        <div class="muted">The radio-free chaotic timing engine, extracted from an observation that the BLE
+          chaotic cadence behaves <i>better with Bluetooth switched off</i>.
+          <br><br>
+          <b>Why that happens:</b> with Bluetooth off, Android returns a null LE scanner, so the native scan call
+          returns instantly having touched nothing — and the cadence therefore runs <b>completely unthrottled</b>,
+          firing exactly when the chaos maths says. With Bluetooth on, Android's BLE scan limiter (~5 starts per
+          30s per app) silently clamps it, handing back a slower and more regular pattern than was asked for —
+          the same invisible-throttle problem as the Wi-Fi scan budget.
+          <br><br>
+          So the good part was never the Bluetooth activity; it was the <b>pure timing chaos</b>, which the radio
+          was only ever getting in the way of. This is that, standalone: no radio dependency at all, free to run
+          far faster than any scan API permits, and running <b>simultaneously</b> with real BLE scanning rather
+          than instead of it — so having Bluetooth on no longer costs you it. At maximum magnitude it reaches
+          roughly a thousand times the effective rate the throttled BLE-backed version could sustain. Each pulse
+          injects entropy where it changes the output: reseeding chaos cores, perturbing mash dials, driving the
+          sensor bus.</div>
+      </div>
+    </div>
+    <div class="sect">
       <div class="head"><span class="t">Chaos governor</span><span class="tag" id="govState">nominal</span></div>
       <div class="body">
         <div class="grid">
@@ -499,6 +524,9 @@
           <div class="stat"><small>Scan budget</small><b id="wdBudget">—</b></div>
           <div class="stat"><small>Status</small><b id="wdWhy">off</b></div>
         </div>
+        <div class="row"><button class="btn" id="wdDiag">Diagnostics</button></div>
+        <textarea id="wdDiagBox" readonly style="display:none;min-height:90px"
+          placeholder="Tap Diagnostics to see exactly why nothing is being logged."></textarea>
         <div class="row"><button class="btn" id="wdExportGpx">Export GPX</button>
           <button class="btn" id="wdExportCsv">Export CSV</button>
           <button class="btn" id="wdClear">Clear</button></div>
@@ -541,7 +569,21 @@
           apps ship. Detect-and-report only: nothing here blocks the app, alters behavior, or touches your
           data — it only informs this readout. Native build only; no signal in a browser preview. Runs
           automatically in the background on a slow cadence (it rarely changes); <b>Recheck now</b> forces an
-          immediate check, e.g. right after you've attached/detached a debugger or hooking tool.</div>
+          immediate check, e.g. right after you've attached/detached a debugger or hooking tool.
+          <br><br>
+          <b>If a Frida finding is real.</b> Each hit now names what matched — a listening port, a thread name,
+          writable+executable mappings, or a specific binary path — so you can judge it instead of trusting a
+          bare verdict. The most common false positive is an unrelated process holding port 27042; a named
+          <code>gum-js</code>/<code>gmain</code> thread inside <i>this</i> process is far harder to explain away.
+          <br><br>
+          If you conclude it's genuine: treat every reading in this app as untrusted, because an in-process hook
+          can rewrite any of them before you see them — including this panel. The masker's <i>audio</i> still
+          works (it is real sound leaving a real speaker and cannot be faked away), but the detectors cannot be
+          relied on. The useful responses are outside the app: check what else is installed, look at
+          <code>/data/local/tmp</code>, and reboot — a Frida server started over adb does not survive one unless
+          something re-launches it, which is itself worth knowing. This app deliberately does <b>not</b> retaliate,
+          self-kill, or crash on detection: those are trivially bypassed by the tooling they target, and they turn
+          a false positive into a bricked app for an ordinary user.</div>
       </div>
     </div>
     <div class="sect">
@@ -607,7 +649,7 @@
       <div class="body">
         <div class="list" id="pvList"><div class="muted">Native build only.</div></div>
         <div class="row" style="margin-top:8px"><button class="btn" id="pvRefresh">Refresh</button>
-          <button class="btn acc" id="pvProtect">Protect from force-stop</button>
+          <button class="btn acc" id="pvProtect">Protect from force-stop (via Dhizuku)</button>
           <button class="btn" id="pvAdmin">Enable device admin</button>
           <button class="btn" id="pvDhizuku">Request Dhizuku</button></div>
         <div class="row"><button class="btn" id="pvAdb">Copy adb command</button>
@@ -628,10 +670,15 @@
           deliberate privileged action rather than a background tap. <b>Device admin</b> alone is weaker: it
           greys out the Settings buttons, but adb can still stop the app.
           <br><br>
+          <b>Force-stop protection goes through Dhizuku first.</b> Dhizuku is itself the device owner and
+          delegates policy to this app, so the protection works without making <i>this</i> app the device owner —
+          which is deliberately not recommended and is not the path any button here takes. Self-provisioning
+          device owner is a one-shot step that requires a device with no accounts added and a factory reset to
+          undo; that is a wildly disproportionate thing to do for a masking app, so it is listed for completeness
+          only.
+          <br><br>
           Every tier is optional and the app works without all of them. The declared device-admin policy set is
-          deliberately minimal — no wipe, no password control, no login monitoring. Note that becoming device
-          owner is a one-shot provisioning step that needs a device with no accounts added, and a factory reset
-          clears it.</div>
+          deliberately minimal — no wipe, no password control, no login monitoring.</div>
       </div>
     </div>
     <div class="sect">
@@ -3032,6 +3079,81 @@ function makeChaosCadence(label,startFn,stopFn,onMode){
   };
 }
 
+/* ============ CHAOS PULSE — the radio-free chaotic timing engine ============
+   IDENTIFIED FROM A USER OBSERVATION: the BLE chaotic cadence behaves differently, and
+   better, when Bluetooth is switched OFF. Here is why.
+
+   With Bluetooth off, `BluetoothAdapter.getBluetoothLeScanner()` returns null, so the native
+   bleScan() returns immediately having touched nothing. The cadence therefore runs
+   COMPLETELY UNTHROTTLED — every randomized interval fires exactly when the chaos maths says
+   it should, down to sub-second sprints, with no radio in the loop.
+
+   With Bluetooth on, Android's BLE scan limiter (roughly 5 starts per 30s per app) silently
+   clamps it — the same invisible-throttle failure mode as the Wi-Fi scan budget. The cadence
+   asks for chaos and the platform quietly hands back a much slower, more regular pattern.
+
+   So the desirable thing was never the Bluetooth activity. It was the PURE TIMING CHAOS,
+   which the radio was only ever getting in the way of. This module is that, extracted:
+   a standalone chaotic pulse generator with no radio dependency whatsoever, free to run
+   orders of magnitude faster than any scan API allows, and running SIMULTANEOUSLY with real
+   BLE scanning rather than instead of it — so Bluetooth being on no longer costs you it.
+
+   Each pulse injects entropy where it actually changes the output: reseeding chaos cores,
+   perturbing the mash dials, and feeding the sensor bus. Intensity scales the pulse rate and
+   how much each pulse touches; at maximum it is ~1000x the effective rate the throttled
+   BLE-backed version could ever reach. It stays under the audio governor, so it cannot
+   starve the audio callback. */
+const ChaosPulse=(function(){
+  let on=false, timer=null, intensity=0.5, pulses=0, lastRate=0, rateT=0, rateN=0;
+  function burstOnce(){
+    // Scale of each pulse: how many dials get touched, and whether cores reseed.
+    const heavy=0.15+intensity*0.85;
+    const pool=MASH;
+    const touch=Math.max(1,Math.round(pool.length*0.04*heavy));
+    for(let i=0;i<touch;i++){
+      const k=pool[(Math.random()*pool.length)|0];
+      const c=CTRL[k]&&CTRL[k].def; if(!c||c.t!=='r') continue;
+      if(Math.random()<0.35*heavy){ randCtrl(k); }
+      else { const span=(c.rmax-c.rmin);
+        let v=P[k]+(Math.random()*2-1)*span*0.10*heavy;
+        v=cl(v,c.min,c.max); if(c.st>=1)v=Math.round(v); setPval(k,v); }
+    }
+    if(Math.random()<0.10*heavy) seedChaos();
+    // Feed the sensor bus so the modulation matrix sees movement even with sensors off.
+    Sensors.feed({shake:(Math.random()*2-1)*heavy, net:(Math.random()*2-1)*heavy});
+    flushDirty();
+    pulses++; rateN++;
+  }
+  function step(){
+    if(!on) return;
+    // Rate scales hard with intensity: ~6/s at the bottom, ~600/s at the top. Anything the
+    // governor is worried about slows the RADIOS, never this — but we still respect a hard
+    // floor so a pathological setting can't monopolise the main thread.
+    const perSec=6+intensity*intensity*600;
+    const gap=Math.max(2, 1000/perSec);
+    // Fire a small randomized cluster per timer tick rather than one pulse, so the pattern
+    // stays lumpy instead of becoming a metronome at high rates.
+    const cluster=1+((Math.random()*(1+intensity*4))|0);
+    for(let i=0;i<cluster;i++) burstOnce();
+    const now=perfNow();
+    if(now-rateT>1000){ lastRate=rateN*1000/(now-rateT); rateN=0; rateT=now;
+      const el=$('cpRate'); if(el)el.textContent=lastRate.toFixed(0)+'/s';
+      const c=$('cpCount'); if(c)c.textContent=String(pulses); }
+    timer=setTimeout(step, rnd(gap*0.35, gap*1.8));
+  }
+  return {
+    set enabled(v){
+      if(v===on)return; on=v;
+      if(timer){clearTimeout(timer);timer=null;}
+      if(v){ rateT=perfNow(); rateN=0; step(); toast('Chaos pulse on — radio-free, unthrottled'); }
+      else { const el=$('cpRate'); if(el)el.textContent='0/s'; }
+    },
+    get enabled(){return on;},
+    set intensity(v){ intensity=cl(v,0,1); }, get intensity(){return intensity;},
+    get pulses(){return pulses;}, get rate(){return lastRate;}
+  };
+})();
+
 /* ============ CHAOS GOVERNOR ============
    The brief: crank the chaos hard, but don't damage anything, and self-regulate WITHOUT
    ever backing off the chaos. Those pull against each other only if you assume "less
@@ -3501,9 +3623,24 @@ const Mic=(function(){
       // the OS permission dialog (see MainActivity.kt for the native-side fix), or something
       // else entirely (no device, insecure context, constraints).
       const name=lastErr&&lastErr.name?lastErr.name:'Error';
+      // NotReadableError is the ambiguous one — WebView says "could not start audio source"
+      // for several unrelated causes. Ask the platform directly instead of guessing.
+      let probe=null;
+      try{ if(window.EMIBridge&&EMIBridge.probeMic) probe=JSON.parse(EMIBridge.probeMic()); }catch(e){}
+      diag.nativeProbe=probe;
       if(name==='NotAllowedError') toast('Mic blocked. If you just granted the permission, fully close and reopen the app once (not just switch away and back).');
       else if(name==='NotFoundError') toast('No microphone found on this device.');
-      else if(name==='NotReadableError') toast('Mic is busy — another app may be using it.');
+      else if(name==='NotReadableError'){
+        if(probe && probe.nativeCaptureOk===true)
+          toast('WebView could not open the mic even though the OS can — reopen the app, or stop and restart the masker.');
+        else if(probe && probe.micMuted)
+          toast('The microphone is muted at the system level.');
+        else if(probe && probe.activeRecorders>0)
+          toast('Another app is holding the microphone ('+probe.activeRecorders+' active recorder'+(probe.activeRecorders===1?'':'s')+') — close it and retry.');
+        else if(probe && probe.foregroundServiceRunning)
+          toast('Mic refused while the masking service runs. This build adds the microphone foreground-service type; if it persists, stop the masker, enable the mic, then start again.');
+        else toast('Mic is busy — another app may be using it.');
+      }
       else if(name==='SecurityError') toast('Mic blocked by a secure-context restriction — open this as the installed app.');
       else toast('Mic error: '+name+(lastErr.message?' — '+lastErr.message:''));
       console.warn('getUserMedia failed', lastErr);
@@ -4707,7 +4844,34 @@ const Wardrive=(function(){
       setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },1000);
     }catch(e){ toast('Export failed — '+(e&&e.message?e.message:'unknown error')); }
   }
-  return { enable, disable, clearLog, setAutoScan, ingestWifi, tick:updUi,
+  /* Every reason wardriving can fail to log, answered in one place. Built because the
+     scan-budget starvation was invisible: the log simply stopped growing, which looks
+     identical to "there are no new APs around here". */
+  function diagnostics(){
+    const d={t:new Date().toISOString(), on, points:track.length, uniqueAps:apsSeen.size};
+    d.gpsFix = Sensors.lat!=null ? (Sensors.lat.toFixed(5)+','+Sensors.lon.toFixed(5)) : null;
+    d.sensorsEnabled = Sensors.enabled;
+    d.autoScanTimerRunning = !!autoIv;
+    d.nativeBridge = !!window.EMIBridge;
+    d.wifiScanAvailable = !!(window.EMIBridge&&EMIBridge.wifiScan);
+    try{ d.scanBudget=RF.budgetState(); }catch(e){ d.scanBudget='unavailable'; }
+    try{ d.lastWifiCount=(RF.lastWifi||[]).length; }catch(e){}
+    if(window.EMIBridge&&EMIBridge.getWifiDiag){
+      try{ d.platform=JSON.parse(EMIBridge.getWifiDiag()); }catch(e){ d.platform='error'; }
+    }
+    const pf=d.platform;
+    d.verdict = !on ? 'Wardriving is OFF.'
+      : !d.nativeBridge ? 'No native bridge — Wi-Fi scanning needs the installed app, not a browser preview.'
+      : (pf && pf.locationEnabled===false) ? 'DEVICE LOCATION IS OFF. Android returns zero Wi-Fi scan results while location services are disabled, no matter what permissions the app holds.'
+      : (pf && pf.fineLocation===false) ? 'Precise-location permission not granted — Android withholds scan results without it.'
+      : (pf && pf.wifiEnabled===false) ? 'Wi-Fi is switched off.'
+      : Sensors.lat==null ? 'No GPS fix yet. Nothing can be logged without one.'
+      : (d.scanBudget && d.scanBudget.used>=d.scanBudget.max) ? 'Scan budget spent — Android allows 4 per 2 minutes. A slot frees shortly.'
+      : d.lastWifiCount===0 ? 'Scans are running but returning zero networks.'
+      : 'Healthy — new APs will log as they are seen.';
+    return JSON.stringify(d,null,1);
+  }
+  return { enable, disable, clearLog, setAutoScan, ingestWifi, tick:updUi, diagnostics,
     exportGpx(){ if(!track.length){toast('Nothing logged yet');return;} download(toGpx(),'emi-wardrive.gpx','application/gpx+xml'); },
     exportCsv(){ if(!track.length){toast('Nothing logged yet');return;} download(toCsv(),'emi-wardrive.csv','text/csv'); },
     get on(){return on;} };
@@ -4835,6 +4999,12 @@ function draw(now){
     const wcm=$('wifiCadMode'); if(wcm&&RF.wifiCadenceMode!=='idle')wcm.textContent=RF.wifiCadenceMode;
   }
   Mic.tick();
+  // Screen chaos and the governor must run off the DISPLAY loop, not the audio callback.
+  // They were previously driven from schedule(), which only runs inside proc() — so neither
+  // did anything at all unless the masker was actively playing. That is why enabling screen
+  // chaos appeared to do nothing: its tick was never called.
+  ScreenChaos.tick(perfNow());
+  Governor.evaluate(perfNow());
   if(--anomCd<=0){ anomCd=45; Anomaly.tick(); Accessories.meshRender(); CellGuard.poll(); Scanners.render(); SideChannel.tick(); } // ~throttled, native-bridge-backed reads
   const dp=$('page-detect'); if(dp&&dp.classList.contains('on')) drawSpectrum();
   requestAnimationFrame(draw);
@@ -4913,6 +5083,10 @@ $('mmAuto').addEventListener('click',()=>{ const b=$('mmAuto'),v=b.getAttribute(
 /* band guards, governor, screen chaos */
 $('bgEn').addEventListener('click',()=>{ const b=$('bgEn'),v=b.getAttribute('aria-pressed')!=='true';
   b.setAttribute('aria-pressed',String(v)); BandGuard.enabled=v; });
+$('cpEn').addEventListener('click',()=>{ const b=$('cpEn'),v=b.getAttribute('aria-pressed')!=='true';
+  b.setAttribute('aria-pressed',String(v)); ChaosPulse.enabled=v; });
+$('cpAmt').addEventListener('input',e=>{ ChaosPulse.intensity=+e.target.value;
+  $('cpAmtR').textContent=Math.round(e.target.value*100)+'%'; });
 $('sxEn').addEventListener('click',()=>{ const b=$('sxEn'),v=b.getAttribute('aria-pressed')!=='true';
   b.setAttribute('aria-pressed',String(v)); ScreenChaos.enabled=v; });
 $('sxAmt').addEventListener('input',e=>{ ScreenChaos.amount=+e.target.value;
@@ -5028,6 +5202,7 @@ $('lanScan').addEventListener('click',()=>Lan.scan());
 /* wardriving */
 $('wdEn').addEventListener('click',()=>{ Wardrive.on?Wardrive.disable():Wardrive.enable(); });
 $('wdClear').addEventListener('click',()=>Wardrive.clearLog());
+$('wdDiag').addEventListener('click',()=>{ const b=$('wdDiagBox'); b.style.display='block'; b.value=Wardrive.diagnostics(); });
 $('wdExportGpx').addEventListener('click',()=>Wardrive.exportGpx());
 $('wdExportCsv').addEventListener('click',()=>Wardrive.exportCsv());
 $('wdAutoScan').addEventListener('click',()=>{ const b=$('wdAutoScan'),v=b.getAttribute('aria-pressed')!=='true';

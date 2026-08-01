@@ -63,23 +63,57 @@ class PrivilegeBridge(private val ctx: Context) {
     private fun isAdminActive(): Boolean =
         try { dpm()?.isAdminActive(adminComponent) == true } catch (_: Exception) { false }
 
-    // ---- Dhizuku (reflection; no compile-time dependency) ----------------------------
-    private fun dhizukuClass(): Class<*>? =
-        try { Class.forName("com.rosan.dhizuku.api.Dhizuku") } catch (_: Throwable) { null }
+    // ---- Dhizuku (real client API) ----------------------------------------------------
+    // NOTE: this used to be reflection-only, which could never have worked. The class
+    // com.rosan.dhizuku.api.Dhizuku lives in the CLIENT library that a consuming app bundles
+    // — it is not exported by the Dhizuku app — so Class.forName() in our own process always
+    // returned null and the tier reported "absent" no matter what the user had installed.
+    private var dhizukuInited = false
 
     private fun dhizukuInstalled(): Boolean =
-        try {
-            ctx.packageManager.getPackageInfo("com.rosan.dhizuku", 0); true
-        } catch (_: Exception) { false }
+        try { ctx.packageManager.getPackageInfo("com.rosan.dhizuku", 0); true }
+        catch (_: Exception) { false }
+
+    private fun dhizukuInit(): Boolean {
+        if (dhizukuInited) return true
+        return try {
+            // Always the Context overload: the no-arg one resolves its Context through a
+            // hidden ActivityThread API subject to non-SDK restrictions.
+            dhizukuInited = com.rosan.dhizuku.api.Dhizuku.init(ctx)
+            dhizukuInited
+        } catch (_: Throwable) { false }
+    }
 
     private fun dhizukuPermission(): Boolean {
-        val c = dhizukuClass() ?: return false
+        if (!dhizukuInstalled()) return false
+        if (!dhizukuInit()) return false
+        return try { com.rosan.dhizuku.api.Dhizuku.isPermissionGranted() }
+        catch (_: Throwable) { false }
+    }
+
+    /**
+     * DevicePolicyManager acting with DHIZUKU's identity, since Dhizuku (not this app) is the
+     * device owner. The admin ComponentName must therefore be Dhizuku's own, and the binder
+     * has to be routed through Dhizuku's process — a plain local DevicePolicyManager would be
+     * rejected because we are not the owner.
+     */
+    private fun dhizukuDpm(): Pair<DevicePolicyManager, ComponentName>? {
+        if (!dhizukuPermission()) return null
         return try {
-            // init(Context) first — the no-arg overload resolves its Context through a
-            // hidden ActivityThread API that is subject to non-SDK restrictions.
-            runCatching { c.getMethod("init", Context::class.java).invoke(null, ctx) }
-            c.getMethod("isPermissionGranted").invoke(null) as? Boolean ?: false
-        } catch (_: Throwable) { false }
+            val owner = com.rosan.dhizuku.api.Dhizuku.getOwnerComponent() ?: return null
+            val smClass = Class.forName("android.os.ServiceManager")
+            val raw = smClass.getMethod("getService", String::class.java)
+                .invoke(null, Context.DEVICE_POLICY_SERVICE) as? android.os.IBinder ?: return null
+            val wrapped = com.rosan.dhizuku.api.Dhizuku.binderWrapper(raw)
+            val stub = Class.forName("android.app.admin.IDevicePolicyManager\$Stub")
+            val iface = stub.getMethod("asInterface", android.os.IBinder::class.java)
+                .invoke(null, wrapped)
+            val ifaceCls = Class.forName("android.app.admin.IDevicePolicyManager")
+            val ctor = DevicePolicyManager::class.java.getDeclaredConstructor(Context::class.java, ifaceCls)
+            ctor.isAccessible = true
+            val dpm = ctor.newInstance(ctx, iface) as DevicePolicyManager
+            Pair(dpm, owner)
+        } catch (_: Throwable) { null }
     }
 
     /** Which tiers exist right now, and what each is actually good for. */
@@ -152,7 +186,9 @@ class PrivilegeBridge(private val ctx: Context) {
     private fun isUserControlDisabled(): Boolean {
         if (Build.VERSION.SDK_INT < 30) return false
         return try {
-            dpm()?.getUserControlDisabledPackages(adminComponent)?.contains(ctx.packageName) == true
+            val via = dhizukuDpm()
+            if (via != null) via.first.getUserControlDisabledPackages(via.second).contains(ctx.packageName)
+            else dpm()?.getUserControlDisabledPackages(adminComponent)?.contains(ctx.packageName) == true
         } catch (_: Exception) { false }
     }
 
@@ -168,14 +204,26 @@ class PrivilegeBridge(private val ctx: Context) {
         if (Build.VERSION.SDK_INT < 30) {
             return o.put("ok", false).put("reason", "Needs Android 11 (API 30) or newer — setUserControlDisabledPackages doesn't exist below that.").toString()
         }
-        if (!isDeviceOwner()) {
-            return o.put("ok", false).put("reason", "This app is not device owner. Either provision it over adb, or install Dhizuku (which is device owner) and grant this app permission there.").toString()
+        // Prefer Dhizuku: it is the tier a normal user can actually get, and it does not
+        // require turning THIS app into the device owner (a one-shot, account-hostile,
+        // factory-reset-to-undo operation most people should not do for a masking app).
+        val viaDhizuku = dhizukuDpm()
+        if (viaDhizuku == null && !isDeviceOwner()) {
+            return o.put("ok", false).put("reason",
+                if (!dhizukuInstalled()) "Install Dhizuku and grant this app permission in it. (Making this app itself the device owner also works but is a far more invasive step — it needs a device with no accounts and a factory reset to undo.)"
+                else if (!dhizukuPermission()) "Dhizuku is installed but hasn't granted this app permission yet — tap 'Request Dhizuku'."
+                else "Dhizuku granted permission but its device-policy channel could not be reached."
+            ).toString()
         }
         return try {
-            val d = dpm() ?: return o.put("ok", false).put("reason", "DevicePolicyManager unavailable").toString()
+            val d: DevicePolicyManager
+            val admin: ComponentName
+            if (viaDhizuku != null) { d = viaDhizuku.first; admin = viaDhizuku.second; o.put("via", "dhizuku") }
+            else { d = dpm() ?: return o.put("ok", false).put("reason", "DevicePolicyManager unavailable").toString()
+                   admin = adminComponent; o.put("via", "device-owner") }
             val list = if (enable) listOf(ctx.packageName) else emptyList()
-            d.setUserControlDisabledPackages(adminComponent, list)
-            runCatching { d.setUninstallBlocked(adminComponent, ctx.packageName, enable) }
+            d.setUserControlDisabledPackages(admin, list)
+            runCatching { d.setUninstallBlocked(admin, ctx.packageName, enable) }
             o.put("ok", true).put("protected", enable)
                 .put("reason", if (enable)
                     "Force-stop and uninstall are now blocked for this package. Undoing it takes a deliberate privileged action, not a background tap."
@@ -203,19 +251,16 @@ class PrivilegeBridge(private val ctx: Context) {
     fun requestDhizuku(): String {
         val o = JSONObject()
         if (!dhizukuInstalled()) return o.put("ok", false).put("reason", "Dhizuku is not installed.").toString()
-        val c = dhizukuClass()
-            ?: return o.put("ok", false).put("reason", "Dhizuku is installed but its API classes aren't reachable from this build.").toString()
+        if (!dhizukuInit()) return o.put("ok", false).put("reason", "Dhizuku is installed but its service isn't running — open Dhizuku once and make sure it is active as device owner.").toString()
         return try {
-            runCatching { c.getMethod("init", Context::class.java).invoke(null, ctx) }
-            if (c.getMethod("isPermissionGranted").invoke(null) as? Boolean == true) {
+            if (com.rosan.dhizuku.api.Dhizuku.isPermissionGranted()) {
                 return o.put("ok", true).put("reason", "Already granted.").toString()
             }
-            // requestPermission takes a listener interface; invoke reflectively with a proxy.
-            val listenerCls = Class.forName("com.rosan.dhizuku.api.DhizukuRequestPermissionListener")
-            val proxy = java.lang.reflect.Proxy.newProxyInstance(
-                listenerCls.classLoader, arrayOf(listenerCls)
-            ) { _, _, _ -> null }
-            c.getMethod("requestPermission", listenerCls).invoke(null, proxy)
+            com.rosan.dhizuku.api.Dhizuku.requestPermission(
+                object : com.rosan.dhizuku.api.DhizukuRequestPermissionListener() {
+                    override fun onRequestPermission(grantResult: Int) { /* polled by refresh */ }
+                }
+            )
             o.put("ok", true).put("reason", "Requested — confirm in the Dhizuku dialog (it auto-denies after ~15s).").toString()
         } catch (e: Throwable) {
             o.put("ok", false).put("reason", "Dhizuku request failed: ${e.message}").toString()

@@ -59,8 +59,21 @@ class MaskerService : Service() {
             .setOngoing(true)
             .build()
 
+        // The service must advertise the MICROPHONE type as well, or mic capture is refused
+        // while it runs — Android 11+ gates the mic on the FGS type, not only on RECORD_AUDIO,
+        // and the refusal surfaces as a bare NotReadableError inside WebView. Declared
+        // defensively: if the mic permission has not been granted, don't claim the type
+        // (claiming a type you lack the permission for throws on Android 14+).
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+            var types = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+            val micOk = androidx.core.content.ContextCompat.checkSelfPermission(
+                this, android.Manifest.permission.RECORD_AUDIO
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (micOk && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            }
+            try { startForeground(1, n, types) }
+            catch (_: Exception) { startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK) }
         } else {
             startForeground(1, n)
         }

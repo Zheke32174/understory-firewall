@@ -5,6 +5,12 @@
     <!-- Audio playback in the background -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- REQUIRED for mic capture while the masking foreground service is running.
+         Android 11+ gates microphone access behind the foreground-service TYPE, not just the
+         RECORD_AUDIO permission: with a mediaPlayback-only FGS alive, getUserMedia fails with
+         NotReadableError ("Could not start audio source") even though RECORD_AUDIO is granted.
+         That is exactly the failure reported on Android 16 / SDK 36. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -103,7 +109,7 @@
         <service
             android:name=".MaskerService"
             android:exported="false"
-            android:foregroundServiceType="mediaPlayback" />
+            android:foregroundServiceType="mediaPlayback|microphone" />
 
         <!-- Device-admin entry point. Inert until a human explicitly activates it (Settings)
              or provisions this app as device owner over adb. Its only purpose is resilience:

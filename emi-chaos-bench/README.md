@@ -30,6 +30,65 @@ BLE/Wi-Fi field tools (accessory pairing, sensor telemetry, profiles,
 geofencing, anomaly detection) and porting those *interaction and detection*
 ideas — never any transmit capability — onto an audio masker.
 
+## 3.7 — Pulse
+
+**Mic: diagnosed from the diagnostic dump, and it was never a permission problem.**
+`NotReadableError` / "Could not start audio source" with `recordAudioGranted: true` on
+Android 16 (SDK 36) is Android's **foreground-service type** rule: from Android 11 the mic is
+gated on the FGS *type*, not only on `RECORD_AUDIO`. `MaskerService` declared
+`mediaPlayback` only, so with the masker running the OS refused capture — and WebView
+surfaces that refusal as a bare NotReadableError with no hint. Now declares
+`mediaPlayback|microphone` with `FOREGROUND_SERVICE_MICROPHONE`, claimed defensively (a type
+you lack the permission for throws on 14+). A new native `probeMic()` opens an `AudioRecord`
+directly and reports the real cause — who else is recording, whether the mic is
+system-muted, whether the OS can capture at all — so the toast now names the actual problem
+instead of guessing.
+
+**Screen chaos did nothing — real bug.** `ScreenChaos.tick()` was driven from `schedule()`,
+which only runs inside the audio callback, so it never fired unless the masker was already
+playing. Moved to the display loop (along with the governor). Verified animating with the
+masker stopped.
+
+**Dhizuku could never have worked.** The tier used `Class.forName("com.rosan.dhizuku.api.Dhizuku")`
+— but that class lives in the **client library a consuming app bundles**, not inside the
+Dhizuku app, so the lookup always failed in our process and the tier reported "absent" no
+matter what was installed. Now a real dependency (`Dhizuku-API:2.5.3`, pinned: 2.6.0 needs
+compileSdk 37, 2.5.4+ ship Java 21 bytecode).
+
+**Force-stop protection no longer wants this app to be device owner.** It now routes through
+Dhizuku's own device-owner identity — wrapping the `device_policy` binder through Dhizuku and
+using *its* admin component — so the protection works without the invasive self-provisioning
+path. Self device-owner is listed for completeness and is not what any button does; it needs a
+device with no accounts and a factory reset to undo, which is disproportionate for a masking
+app.
+
+**Chaos pulse — built from your observation that the BLE cadence behaves better with
+Bluetooth OFF.** Identified: with Bluetooth off, `getBluetoothLeScanner()` returns null, so
+the native scan returns instantly having touched nothing, and the cadence runs **completely
+unthrottled**. With Bluetooth on, Android's BLE scan limiter (~5 starts per 30s) silently
+clamps it — the same invisible-throttle failure as the Wi-Fi budget. So the good part was
+never the Bluetooth activity; it was the **pure timing chaos**, which the radio was only
+getting in the way of.
+
+That is now a standalone engine with no radio dependency, running **simultaneously** with
+real BLE scanning rather than instead of it. Measured **568 pulses/sec** at full magnitude
+against the BLE limiter's 0.167/s — roughly **3400×**. Each pulse reseeds chaos cores,
+perturbs mash dials and drives the sensor bus.
+
+**Wardriving diagnostics.** Since the failure mode is silence, there's now a Diagnostics
+button that names the cause: location services off (Android returns *zero* Wi-Fi results when
+device location is disabled, regardless of app permissions — the most likely remaining cause),
+missing precise-location, Wi-Fi off, no GPS fix, scan budget spent, or healthy.
+
+**Frida detection expanded, and each hit now names what matched** — listening ports
+(27042/27043/27047), Frida thread names in *this* process (`gum-js`, `gmain`, `gdbus`),
+writable+executable mappings, and specific binary paths. A bare "possible Frida" is
+unactionable; an unrelated process on 27042 is the common false positive, while a named
+`gum-js` thread inside our own process is much harder to explain away. The panel now says
+what to do if it's genuine — and the app deliberately still does **not** retaliate, self-kill
+or crash on detection, because those are trivially bypassed by the tooling they target and
+turn a false positive into a bricked app.
+
 ## 3.6.1 — fixes found by adversarial review and a user bug report
 
 **Wardriving stopped logging (reported).** Traced to a resource conflict I introduced across
