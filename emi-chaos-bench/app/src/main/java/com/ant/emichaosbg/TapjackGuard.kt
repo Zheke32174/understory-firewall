@@ -65,8 +65,9 @@ class TapjackGuard(private val ctx: Context, private val log: SecureLog) {
      * COUNTED rather than merely dropped. Without the observer the defence works but is
      * invisible, and an attack that is silently defeated teaches the user nothing.
      */
+    @Deprecated("No longer attached to any view — the guard is out of the input path entirely.")
     fun protect(v: View) {
-        view = v
+        view = null
         // DETECTION ONLY BY DEFAULT. Turning filterTouchesWhenObscured on for everyone made
         // the app completely unusable, and it deserved to: the framework discards EVERY touch
         // while any window overlays this one, and plenty of benign things overlay a window —
@@ -82,8 +83,22 @@ class TapjackGuard(private val ctx: Context, private val log: SecureLog) {
         // "something is drawn over this app right now" is the part that carries the value;
         // discarding input is a hard trade the user should choose knowingly.
         v.filterTouchesWhenObscured = false
-        v.setOnTouchListener { _, ev -> noteTouch(ev); false }
+        // NO setOnTouchListener ON THE WEBVIEW. That is what was still breaking input even with
+        // blocking off: a listener set on a WebView runs inside dispatchTouchEvent BEFORE the
+        // WebView's own onTouchEvent, and WebView's gesture handling (scroll, fling, long-press,
+        // text selection) is documented to misbehave when something intercepts there. Returning
+        // false is not enough to make it safe.
+        //
+        // Detection moved to MainActivity.dispatchTouchEvent instead, which is the supported
+        // place to observe input: it sees the same MotionEvent flags, always delegates to super,
+        // and therefore cannot alter how the WebView receives the gesture. See observe().
     }
+
+    /**
+     * Observe a touch WITHOUT participating in its dispatch. Called from the Activity's
+     * dispatchTouchEvent, which then hands the event on to super unchanged.
+     */
+    fun observe(ev: MotionEvent) = noteTouch(ev)
 
     private var view: View? = null
 
@@ -96,9 +111,12 @@ class TapjackGuard(private val ctx: Context, private val log: SecureLog) {
      */
     @JavascriptInterface
     fun setBlocking(on: Boolean): Boolean {
-        blocking = on
-        view?.post { view?.filterTouchesWhenObscured = on }
-        return blocking
+        // Deliberately inert. The guard no longer holds the view and no longer touches the
+        // input path at all, so there is nothing here to switch on. Kept as a stub rather than
+        // deleted so the page's control degrades to a no-op with an honest answer instead of
+        // throwing, and so a future re-introduction has to be a conscious edit here rather than
+        // a flag flip that silently re-arms the thing that broke the screen twice.
+        return false
     }
 
     @Volatile private var blocking = false
@@ -126,8 +144,18 @@ class TapjackGuard(private val ctx: Context, private val log: SecureLog) {
         val prev = raised[key]
         if (prev != null && now - prev < COALESCE_MS) return
         raised[key] = now
-        try { log.append(sev, what, "tapjack", "native") } catch (_: Throwable) {}
+        // OFF THE UI THREAD. This path is reached from touch dispatch, and SecureLog.append does
+        // AES-GCM through the Keystore plus a file write and an fsync. Doing that inline would
+        // stall the very gesture that triggered it — a security log that makes the app stutter
+        // every time it records something teaches the user to turn it off.
+        logExec.execute {
+            try { log.append(sev, what, "tapjack", "native") } catch (_: Throwable) {}
+        }
     }
+
+    private val logExec: java.util.concurrent.ExecutorService =
+        java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+            Thread(r, "emi-tapjack-log").apply { isDaemon = true } }
 
     /** Apps that can draw over this one, and accessibility services that can read it. */
     @JavascriptInterface

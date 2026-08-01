@@ -143,13 +143,21 @@ class MainActivity : ComponentActivity() {
         // or suppress a finding.
         webView.addJavascriptInterface(
             EscalationBridge(MaskerService.ensureEscalationGuard(this)), "EMIEscalation")
-        // Tapjacking defence. protect() sets filterTouchesWhenObscured, which makes the
-        // FRAMEWORK discard any touch delivered while another window covers this one — the one
-        // place this app blocks rather than reports, because a tap you did not knowingly aim
-        // here should not land. It also counts them, so a defeated attack is visible instead
-        // of silent.
+        // TAPJACK GUARD IS COMPLETELY OUT OF THE INPUT PATH.
+        //
+        // Two attempts to observe touches for this feature broke the screen: first
+        // filterTouchesWhenObscured (which discards every touch while any overlay exists), then
+        // an OnTouchListener on the WebView (which intercepts inside its gesture dispatch). I do
+        // not get a third guess with the user's working app. The guard is now attached to
+        // NOTHING — it neither sets a flag on the view, nor observes dispatch, nor overrides
+        // anything. It is a pure reader of state the OS already holds.
+        //
+        // What survives is the part that carried most of the value and costs nothing: the list
+        // of apps that hold the overlay permission, the list of enabled accessibility services,
+        // and one-tap access to the system screens that revoke either. Live per-touch obscured
+        // detection is deliberately gone rather than re-attempted, because no amount of it is
+        // worth an app that cannot be touched.
         tapjack = TapjackGuard(this, SecureLog(this))
-        tapjack.protect(webView)
         webView.addJavascriptInterface(tapjack, "EMITapjack")
         // Rootless cellular security posture + IMSI-catcher heuristics (PrivacyCell in full,
         // the parts of AIMSICD/SnoopSnitch that do not need baseband diag).

@@ -3739,6 +3739,28 @@ const ScanStutter=(function(){
      hammer's actual work (whole-document relayout, main-thread starvation, the audible
      stutter) does not depend on it, so the default is now: hammer on, screen left alone.
      Turn "Screen jolt" on deliberately if you want the display thrown around too. */
+  /* USER-INTERACTION YIELD. The hammer holds the main thread for 40-50% of wall-clock in
+     7-13ms blocking bursts. Programmatic scrolling survives that — which is exactly why the
+     scroll test passed while real scrolling did not: a finger drag needs the main thread to
+     process each touchmove and run the scroll within the frame, and a synchronous whole-
+     document relayout landing in the middle of that stalls it. The page ended up unusable to
+     touch while measuring perfectly.
+
+     So the DOM half stands down the moment you touch the screen and stays down briefly after
+     you stop. The AUDIBLE half is unaffected: it runs off the audio clock in audioTick(), not
+     this timer, so the stutter continues uninterrupted while you scroll. The effect the user
+     asked for is the sound and the chaos; being unable to operate the app was never part of
+     it, and idle time is where the DOM thrash has the main thread to itself anyway.
+
+     Listeners are PASSIVE, so registering them cannot itself delay a gesture. */
+  let interactUntil=0;
+  const YIELD_MS=420;
+  (function(){
+    const mark=()=>{ interactUntil=perfNow()+YIELD_MS; };
+    const opt={passive:true,capture:true};
+    ['touchstart','touchmove','pointerdown','pointermove','wheel','scroll']
+      .forEach(ev=>{ try{ document.addEventListener(ev,mark,opt); }catch(e){} });
+  })();
   let readSink=0, jolt=false, joltPending=false, joltEnabled=false;
   function reflowOp(host,k){
     const n=cells.length;
@@ -3820,8 +3842,12 @@ const ScanStutter=(function(){
     // Scales with severity; hard-capped so ONE burst can never approach the ANR threshold
     // regardless of severity or overdrive — the sustained load comes from frequency×duty, not
     // from any single burst running long.
-    const budgetMs = over ? (4 + intensity*intensity*18) : (2 + intensity*intensity*10);
-    const cap = over ? 22 : 14;                 // absolute per-burst ceiling, ms
+    // Per-burst ceiling also cut. A burst longer than one frame (~16ms) is already a dropped
+    // frame; 22ms was two, and stacked with the old duty target it produced visible hangs
+    // rather than glitches. 5ms normal / 9ms overdrive still overruns the audio callback's
+    // window, which is what actually makes the stutter.
+    const budgetMs = over ? (2 + intensity*intensity*7) : (1 + intensity*intensity*4);
+    const cap = over ? 9 : 5;                   // absolute per-burst ceiling, ms
     const bMs = Math.min(budgetMs, cap);
     // 1) The original cause: a few synchronous native bridge round-trips.
     const calls=1+Math.round(intensity*(over?18:12));
@@ -3834,8 +3860,10 @@ const ScanStutter=(function(){
     // steal cycles from the audio callback — which in the background is the ONLY half of this
     // effect still doing anything. The audible glitch keeps running via audioTick().
     const hidden = (typeof document.hidden==='boolean') && document.hidden;
+    // Yield the main thread outright while the user is touching or scrolling.
+    const interacting = perfNow() < interactUntil;
     let ops=0; const t0=perfNow(); let now=t0;
-    if(host && !hidden){
+    if(host && !hidden && !interacting){
       // A small floor so even a very tight budget lands at least a few reflows.
       do { reflowOp(host,ops); ops++; now=perfNow(); }
       while(now-t0 < bMs && ops < 6000);
@@ -3903,9 +3931,20 @@ const ScanStutter=(function(){
     if(now-rT>1000){ rLast=rN*1000/(now-rT); rN=0; rT=now; } return rLast.toFixed(0)+'/s'; }
   function setTxt(id,v){ const el=$(id); if(el)el.textContent=v; }
   function dutyTarget(){
-    // Target main-thread SHARE. This — not the interval — is the cap that keeps it safe.
-    // Normal: 12%→52% across severity. Overdrive: 30%→70%.
-    return over ? (0.30 + intensity*0.40) : (0.12 + intensity*0.40);
+    /* Target main-thread SHARE — and this had to come down a long way.
+
+       It was 12-52% normal and 30-70% in overdrive. Those numbers were chosen against an
+       idle page, but the hammer does not run on an idle page: the scanners, the sensor bus,
+       the analyser draw and the audio callback all want the same thread. At 70% the app had
+       no headroom left and simply froze, and even at 52% real touch scrolling could not get
+       a look in.
+
+       5-18% normal, up to 26% in overdrive. That is still a synchronous whole-document
+       relayout several times a second — more than enough to jank the UI visibly and collide
+       with the audio callback, which is the entire point — while leaving the main thread the
+       majority of its time. A disruption effect that takes the app down with it is not a
+       feature, it is a hang. */
+    return over ? (0.10 + intensity*0.16) : (0.05 + intensity*0.13);
   }
   function step(){
     if(!on) return;
@@ -3917,7 +3956,8 @@ const ScanStutter=(function(){
     // Randomise the interval so it never becomes a metronome, while preserving the mean share.
     gap = Math.max(2, rnd(gap*0.45, gap*1.6));
     lastGap = gap;                            // fed back into the NEXT burst's glitch length
-    setTxt('ssMode', over?'overdrive':(intensity>0.66?'heavy':(intensity>0.33?'moderate':'light')));
+    setTxt('ssMode', (perfNow()<interactUntil) ? 'yielding'
+      : (over?'overdrive':(intensity>0.66?'heavy':(intensity>0.33?'moderate':'light'))));
     timer=setTimeout(step, gap);
   }
   return {
@@ -5845,9 +5885,18 @@ const SatView=(function(){
    scan() and cached() — there is deliberately no way from here to disable a check or clear a
    finding, because a detector the compartment under attack can switch off is not a detector. */
 const Escalation=(function(){
-  let last=null;
+  let last=null, lastAt=-1e9, lastSig='';
   const set=(id,v)=>{const el=$(id); if(el)el.textContent=v;};
   function render(force){
+    /* Throttled, and it needs to be. This is called from the display loop, and every call was
+       a synchronous JavascriptInterface round-trip plus a full teardown-and-rebuild of the
+       findings list — about twenty times a second, to redraw content that changes every five
+       minutes. Same shape as the vault-verify freeze, just cheaper per call: work on the UI
+       thread proportional to nothing the user can see. A forced call (the button, or opening
+       the Security sheet) still goes straight through. */
+    const nowT=perfNow();
+    if(!force && nowT-lastAt<4000) return;
+    lastAt=nowT;
     if(!window.EMIEscalation){
       set('egState','native build only'); set('egVerdict','—');
       const l=$('egList'); if(l)l.innerHTML='<div class="muted">Runs in the installed app; a browser preview has no process to inspect.</div>';
@@ -5865,6 +5914,11 @@ const Escalation=(function(){
     set('egSelinux', last.selinux||'—');
     const l=$('egList'); if(!l) return;
     const f=last.findings||[];
+    // Only touch the DOM when the content actually differs. Rebuilding an identical list is
+    // pure layout cost on the thread the audio callback is competing for.
+    const sig=f.map(x=>x.key+':'+x.sev).join('|');
+    if(sig===lastSig) return;
+    lastSig=sig;
     if(!f.length){ l.innerHTML='<div class="muted" style="margin-top:8px">Nothing flagged in this process.</div>'; return; }
     // textContent, never innerHTML, for the finding bodies — they quote paths read from
     // /proc, which is attacker-influenceable content and must never be parsed as markup.
@@ -6211,7 +6265,8 @@ function draw(now){
     Wardrive.tick();
     NativeScan.render();
     Escalation.render(false);
-    if((bursts_vaultTick=(bursts_vaultTick||0)+1)%20===0) vaultRefresh(false);
+    // Count only, and rarely. Never verification — see vaultRefresh.
+    if((bursts_vaultTick=(bursts_vaultTick||0)+1)%200===0) vaultRefresh(false);
     const dgS=$('dgScore'),dgB=$('dgBar'),dgT=$('dgTag');
     if(dgS){ const sc=DemodGuard.score; dgS.textContent=Math.round(sc*100)+'%'; if(dgB)dgB.style.width=(sc*100)+'%';
       if(dgT)dgT.textContent=DemodGuard.enabled?(running?'watching':'idle'):'off'; }
@@ -6330,7 +6385,8 @@ document.querySelectorAll('#logSheets .chip').forEach(c=>c.addEventListener('cli
   document.querySelectorAll('#page-logs .sheet').forEach(x=>
     x.classList.toggle('on', x.id==='sheet-'+want));
   if(want==='security'){ Tapjack.render(true); CellSec.render(true); }
-  if(want==='vault'||want==='data') vaultRefresh(false);
+  if(want==='vault') vaultRefresh(true);
+  else if(want==='data') vaultRefresh(false);
   if(want==='data') CollectedData.render();
 }));
 
@@ -6466,11 +6522,26 @@ $('vaultVerify').addEventListener('click',()=>{ vaultRefresh(true); });
 $('vaultJson2').addEventListener('click',()=>$('vaultJson').click());
 $('vaultCsv2').addEventListener('click',()=>$('vaultCsv').click());
 $('vaultVerify2').addEventListener('click',()=>{ vaultRefresh(true); });
+/* THE FREEZE WAS HERE.
+
+   This ran on the display loop, roughly once a second, and called EMIVault.verify() every
+   time. verify() walks the ENTIRE log and AES-GCM-decrypts every record to re-derive the hash
+   chain, and it is a synchronous JavascriptInterface call — so all of that happened on the UI
+   thread. With a handful of records it is invisible. As alerts accumulate it grows without
+   bound, and the app locks up progressively: "freezes after a moment" is exactly the shape of
+   a per-second O(n) decrypt over a growing n. read(400) on the same tick decrypted up to four
+   hundred more.
+
+   The periodic path now does only count(), which is a single head-file read. The expensive
+   work — chain verification and reading records back — happens ONLY when the user asks for it
+   or opens the Vault sheet, which is also the only time the answer is being looked at. */
 function vaultRefresh(announce){
   const cEl=$('vaultCount'), hEl=$('vaultChain');
   if(!window.EMIVault||!EMIVault.count){ if(cEl)cEl.textContent='—'; if(hEl)hEl.textContent='native only'; return; }
   try{
     const c=JSON.parse(EMIVault.count()); if(cEl)cEl.textContent=String(c.count!=null?c.count:'—');
+    // Cheap path stops here. Verification is O(records) with a decrypt per record.
+    if(!announce){ const m=$('vaultCount2'); if(m)m.textContent=String(c.count!=null?c.count:'—'); return; }
     const v=JSON.parse(EMIVault.verify());
     if(hEl) hEl.textContent = v.ok ? 'intact' : 'BROKEN';
     // mirror onto the Vault sheet
