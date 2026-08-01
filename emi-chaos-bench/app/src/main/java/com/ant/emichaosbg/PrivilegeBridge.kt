@@ -258,8 +258,19 @@ class PrivilegeBridge(private val ctx: Context) {
             val d: DevicePolicyManager
             val admin: ComponentName
             if (viaDhizuku != null) { d = viaDhizuku.first; admin = viaDhizuku.second; o.put("via", "dhizuku") }
-            else { d = dpm() ?: return o.put("ok", false).put("reason", "DevicePolicyManager unavailable").toString()
-                   admin = adminComponent; o.put("via", "device-owner") }
+            else if (isDeviceOwner()) {
+                // Only taken when this app ALREADY is the device owner. It is never pursued:
+                // becoming device owner needs a factory reset to undo and an account-free
+                // device to set up, which is far too invasive to reach for on behalf of a
+                // masking app. Dhizuku is the intended route; if Dhizuku cannot be reached
+                // the answer is to say so, not to escalate.
+                d = dpm() ?: return o.put("ok", false).put("reason", "DevicePolicyManager unavailable").toString()
+                admin = adminComponent; o.put("via", "device-owner (pre-existing)")
+            }
+            else return o.put("ok", false)
+                .put("reason", "Dhizuku could not be reached, and this app will not try to make " +
+                    "itself device owner — that needs a factory reset to undo. Fix Dhizuku and retry.")
+                .toString()
             val list = if (enable) listOf(ctx.packageName) else emptyList()
             d.setUserControlDisabledPackages(admin, list)
             runCatching { d.setUninstallBlocked(admin, ctx.packageName, enable) }

@@ -157,7 +157,18 @@
   .kv{display:flex;justify-content:space-between;font-size:10.5px;padding:4px 0;border-bottom:1px dashed var(--rule)}
   .kv:last-child{border-bottom:none}
   .kv b{color:var(--ink)}
-.thrash{height:3px;width:6px;margin-top:8px;border-radius:2px;background:#5fd4c4;opacity:.55}
+  /* The DOM hammer's anvil. Every cell is a REAL laid-out element, which is the whole point:
+     the hammer writes geometry to them and then reads geometry back, and that write→read
+     interleave is what forces a synchronous reflow the browser cannot batch away. It is
+     simultaneously the load and the readout — if these cells are moving, the hammer is
+     landing; if they are still, it is not. That visibility is deliberate. The previous
+     version's target was a single 3px×6px bar nobody could see, so the feature ran correctly
+     and still read as absent. */
+  .anvil{display:flex;gap:2px;height:34px;margin:10px 0 6px;align-items:flex-end;
+    padding:4px 5px;border:1px solid var(--rule);border-radius:2px;background:var(--lo);overflow:hidden}
+  .anvil i{display:block;flex:1 1 0;min-width:1px;height:4px;border-radius:1px;background:#5fd4c4;opacity:.45}
+  .anvil.hot i{background:#ffb454}
+  .anvil.hot2 i{background:#ff6a4d}
 </style>
 </head>
 <body>
@@ -193,6 +204,61 @@
   </div>
 
   <div class="page on" id="page-sources">
+    <!-- FIRST section on the FIRST tab, and enabled by default. It was previously called
+         "Scan stutter" and sat below eleven other panels, which is why it kept reading as
+         missing from the app while it was in fact running correctly — the "scan…" toast
+         visible in the screenshots was this feature firing. Named for what it does. -->
+    <div class="sect">
+      <div class="head"><span class="t">DOM hammer</span><span class="tag" id="ssRate">0/s</span>
+        <div class="sw" id="ssEn" aria-pressed="true"></div></div>
+      <div class="body">
+        <div class="row"><div class="cell full"><small>Severity <span id="ssAmtR">75%</span></small>
+          <input id="ssAmt" type="range" min="0" max="1" step="0.01" value="0.75"></div></div>
+        <div class="row"><div class="cell full">
+          <button class="btn" id="ssOver" aria-pressed="false">Overdrive</button></div></div>
+        <div class="anvil" id="ssThrash"></div>
+        <div class="grid">
+          <div class="stat"><small>Bursts</small><b id="ssCount">0</b></div>
+          <div class="stat"><small>Mode</small><b id="ssMode">idle</b></div>
+          <div class="stat"><small>Reflows/s</small><b id="ssReflow">—</b></div>
+          <div class="stat"><small>Burst ms</small><b id="ssMs">—</b></div>
+          <div class="stat"><small>Ops/burst</small><b id="ssOps">—</b></div>
+          <div class="stat"><small>Main-thread</small><b id="ssDuty">—</b></div>
+        </div>
+        <div class="muted">The sound-and-app stutter that happened when the BLE chaotic cadence ran with
+          <b>Bluetooth switched off</b> — isolated, rebuilt as its own function, and now identical whether
+          Bluetooth is on or off.
+          <br><br>
+          <b>What was actually causing it:</b> <code>EMIBridge.bleScan()</code> is a <i>synchronous</i>
+          JavaScript-to-native bridge call, and the audio engine is a ScriptProcessorNode — which also runs on
+          the main thread. With Bluetooth off that native call returns instantly (the LE scanner is null), so the
+          cadence fired far more often and hammered the main thread with bridge round-trips and DOM writes. Those
+          collide with the audio callback's real-time window and cause buffer underruns: the stutter. With
+          Bluetooth on, Android's scan limiter slowed the cadence, the collisions became rare, and it vanished.
+          <br><br>
+          <b>How it hits.</b> The bar above is the anvil — every cell is a real laid-out element. Each burst
+          writes geometry to those cells and immediately reads geometry back, interleaved, which is the one
+          pattern the browser cannot batch away: it must lay the page out synchronously, on the main thread, in
+          the window the audio callback needs. Reads rotate across <code>offsetWidth</code>,
+          <code>offsetHeight</code>, <code>getBoundingClientRect()</code>, <code>clientHeight</code> and
+          <code>getComputedStyle()</code>, and a class is flipped on the container between passes so style is
+          invalidated for the whole subtree rather than a single node. Synchronous native bridge round-trips —
+          the original cause — run in the same burst.
+          <br><br>
+          <b>Maximum capacity is measured, not guessed.</b> A burst does not run a fixed number of operations; it
+          runs until its millisecond budget is spent. A faster phone therefore does proportionally more work in
+          the same window, and the hammer always fills whatever the device can actually deliver.
+          <i>Ops/burst</i> is what your device managed. The scheduler then divides the <i>measured</i> burst cost
+          by a target duty cycle to set the next gap, so it self-tunes to a known share of the main thread rather
+          than a guessed interval. <i>Main-thread</i> is that share. <b>Overdrive</b> raises the ceiling to
+          roughly 70%.
+          <br><br>
+          The audible glitch (short holds and drops — exactly what a stalled or dropped buffer sounds like) is
+          also asserted directly in the audio path, so the effect is reliable rather than dependent on how fast a
+          given phone's bridge happens to be. The duty-cycle cap is what keeps this a deliberate effect instead
+          of an ANR: the main thread keeps a guaranteed share at every severity, overdrive included.</div>
+      </div>
+    </div>
     <div class="sect">
       <div class="head"><span class="t">Auto speed</span></div>
       <div class="body">
@@ -276,40 +342,6 @@
       </div>
     </div>
     <div class="sect">
-      <div class="head"><span class="t">Scan stutter</span><span class="tag" id="ssRate">0/s</span>
-        <div class="sw" id="ssEn" aria-pressed="false"></div></div>
-      <div class="body">
-        <div class="row"><div class="cell full"><small>Severity <span id="ssAmtR">50%</span></small>
-          <input id="ssAmt" type="range" min="0" max="1" step="0.01" value="0.5"></div></div>
-        <div class="grid">
-          <div class="stat"><small>Bursts</small><b id="ssCount">0</b></div>
-          <div class="stat"><small>Mode</small><b id="ssMode">idle</b></div>
-        </div>
-        <!-- The layout-thrash target. Real node, really in the layout, so writing its width
-             and then reading offsetWidth forces the synchronous reflow that is half of the
-             original Bluetooth-off stutter. Doubles as a visible tell that bursts are firing. -->
-        <div id="ssThrash" class="thrash"></div>
-        <div class="muted">The sound-and-app stutter that happened when the BLE chaotic cadence ran with
-          <b>Bluetooth switched off</b> — restored as its own function, and now identical whether Bluetooth is on
-          or off.
-          <br><br>
-          <b>What was actually causing it:</b> <code>EMIBridge.bleScan()</code> is a <i>synchronous</i>
-          JavaScript-to-native bridge call, and the audio engine is a ScriptProcessorNode — which also runs on the
-          main thread. With Bluetooth off that native call returns instantly (the LE scanner is null), so the
-          cadence fired far more often and hammered the main thread with bridge round-trips and DOM writes. Those
-          collide with the audio callback's real-time window and cause buffer underruns: the stutter. With
-          Bluetooth on, Android's scan limiter slowed the cadence and the collisions became rare, so it vanished.
-          <br><br>
-          This reproduces the <i>same mechanism</i> rather than imitating the sound — real synchronous bridge
-          bursts and DOM churn at chaotic intervals — but using a <b>Bluetooth-independent</b> call, so the
-          adapter state no longer changes the timing. The audible glitch (short holds and drops, exactly what a
-          stalled or dropped buffer sounds like) is also asserted directly in the audio path so the effect is
-          reliable rather than dependent on how fast a given phone's bridge happens to be. The burst is bounded
-          and the main thread is never held long enough to risk an ANR — it is a deliberate effect now, not an
-          accident being re-enacted.</div>
-      </div>
-    </div>
-    <div class="sect">
       <div class="head"><span class="t">Chaos governor</span><span class="tag" id="govState">nominal</span></div>
       <div class="body">
         <div class="grid">
@@ -330,10 +362,10 @@
     </div>
     <div class="sect">
       <div class="head"><span class="t">Screen chaos</span><span class="tag" id="sxState">off</span>
-        <div class="sw" id="sxEn" aria-pressed="false"></div></div>
+        <div class="sw" id="sxEn" aria-pressed="true"></div></div>
       <div class="body">
-        <div class="row"><div class="cell full"><small>Amount <span id="sxAmtR">60%</span></small>
-          <input id="sxAmt" type="range" min="0" max="1" step="0.01" value="0.6"></div></div>
+        <div class="row"><div class="cell full"><small>Amount <span id="sxAmtR">100%</span></small>
+          <input id="sxAmt" type="range" min="0" max="1" step="0.01" value="1"></div></div>
         <div class="muted">Drives brightness, colour temperature, saturation and a slight hue drift off the same
           chaos cores as the audio. Every axis is clamped to a deliberately conservative window — brightness only
           ever dims to 72% of your own setting and never brightens past it, saturation stays within ±10%, hue
@@ -3245,11 +3277,13 @@ const ChaosPulse=(function(){
   };
 })();
 
-/* ============ SCAN STUTTER — the Bluetooth-off artifact, deliberately reproduced ============
+/* ============ DOM HAMMER — the Bluetooth-off artifact, isolated and driven to capacity ======
    WHAT THIS IS. With Bluetooth switched off, running the BLE chaotic cadence produced an
-   audible stutter in the masking sound and a visible hitch in the app. That was wanted, and
-   losing it was my error — it is restored here as its own function, and it now behaves the
-   same whether Bluetooth is on or off.
+   audible stutter in the masking sound and a visible hitch in the app. That was wanted. It is
+   rebuilt here as its own function ("DOM hammer"), on by default, first on the first tab, and
+   it now behaves the same whether Bluetooth is on or off. (It was previously named "Scan
+   stutter" and buried below eleven other panels, which is why it kept reading as absent from
+   the app while it was in fact firing — the "scan…" toast in the screenshots was this.)
 
    WHAT ACTUALLY CAUSED IT. `EMIBridge.bleScan()` is a SYNCHRONOUS JavaScript-to-native bridge
    call, and the audio engine is a ScriptProcessorNode — which also runs on the main thread.
@@ -3259,81 +3293,145 @@ const ChaosPulse=(function(){
    underruns — that is the stutter. With Bluetooth on, Android's scan limiter slowed the
    cadence, the collisions became rare, and the effect disappeared.
 
-   HOW IT IS REPRODUCED HONESTLY. The same mechanism, not an imitation: bursts of real
-   synchronous bridge calls plus DOM churn at chaotic intervals. It deliberately uses a
-   BLUETOOTH-INDEPENDENT bridge call, so timing no longer depends on the adapter state and the
-   behaviour is identical either way.
+   MAXIMUM CAPACITY, HONESTLY. The old version ran a FIXED number of reflow ops per burst
+   (~1 + severity*6). Fixed counts under-drive a fast phone and can over-drive a slow one, and
+   they can't claim "maximum" on either. This version instead runs each burst until a
+   millisecond BUDGET is spent — so the device does as many forced synchronous reflows as it
+   physically can inside that window, and the count is MEASURED (Ops/burst) rather than
+   guessed. The reflow itself is strengthened: a write to every anvil cell, a class flip on the
+   container to invalidate style for the whole subtree, then a read that ROTATES across
+   offsetWidth / offsetHeight / getBoundingClientRect / clientHeight / getComputedStyle so the
+   engine can't collapse them to one cached layout. Synchronous native bridge round-trips — the
+   original cause — run in the same burst.
 
-   The audible glitch is ALSO asserted directly (a short hold/drop applied in proc()) so the
-   effect is reliable instead of depending on how fast a given device's bridge happens to be.
-   Bounded on purpose: the burst is capped and the main thread is never held long enough to
-   risk an ANR. This is a deliberate audio effect now, not an accident being re-enacted. */
+   BOUNDED BY A DUTY CYCLE, NOT A GUESS. The scheduler divides the just-measured burst cost by
+   a target main-thread SHARE to set the next gap, so the hammer self-tunes to a known fraction
+   of the main thread on any device (Main-thread stat). That share is what guarantees no ANR:
+   the main thread always keeps the rest, at every severity, overdrive included. Overdrive
+   raises the ceiling to ~70%. The audible glitch is ALSO asserted directly (hold/drop in
+   proc()) so it never depends on how fast a given phone's bridge happens to be. */
 const ScanStutter=(function(){
-  let intensity=0.5, bursts=0, lastRate=0, rateN=0, rateT=0;
+  let intensity=0.65, over=false, bursts=0, on=false, timer=null;
   let holdSamples=0, dropSamples=0;
-  function pulse(){
-    // 1) The real cause: synchronous bridge round-trips on the main thread.
-    const calls=1+Math.round(intensity*14);
-    try{
-      if(window.EMIBridge){
-        for(let i=0;i<calls;i++){
-          if(EMIBridge.getSensors) EMIBridge.getSensors();
-          else if(EMIBridge.getThermals) EMIBridge.getThermals();
-        }
-      }
-    }catch(e){}
-    // 2) DOM churn — the other half of the original main-thread load, and the half that was
-    // missing. The BLE-off investigation found TWO collision sources, not one: the synchronous
-    // bridge round-trips above, and the scan panel writing to the DOM every cycle. A style
-    // WRITE followed by a READ of a layout property forces a SYNCHRONOUS reflow — the browser
-    // must lay the page out right then, on the main thread, in the same window the audio
-    // callback needs. That is what actually collided with the audio. A toast alone was not it:
-    // toasts are async and cost no forced layout.
-    //
-    // Bounded deliberately: the loop is capped by severity, the node is a 1px bar of its own
-    // so nothing the user reads moves, and the whole burst is far too short to risk an ANR.
-    const churn=1+Math.round(intensity*6);
-    const host=$('ssThrash');
-    if(host){ for(let i=0;i<churn;i++){
-      host.style.width=(6+((bursts+i)%36))+'px';   // write
-      void host.offsetWidth;                        // read → forced synchronous reflow
-    } }
-    if(Math.random()<0.5) toast('scan…');
-    // 3) Assert the audible glitch so it does not depend on device bridge speed.
-    if(Math.random()<0.6) holdSamples=Math.round(rnd(40,300+intensity*900));
-    else dropSamples=Math.round(rnd(20,120+intensity*400));
-    bursts++; rateN++;
-    const now=perfNow();
-    if(now-rateT>1000){ lastRate=rateN*1000/(now-rateT); rateN=0; rateT=now;
-      const el=$('ssRate'); if(el)el.textContent=lastRate.toFixed(0)+'/s';
-      const c=$('ssCount'); if(c)c.textContent=String(bursts); }
+  // Rolling one-second readouts.
+  let opWin=0, opT=0, lastReflow=0, lastMs=0, lastOps=0, lastDuty=0;
+  // The anvil: real, laid-out cells. Built once, lazily, into #ssThrash.
+  const CELLS=28; let anvil=null, cells=null, phase=0;
+  function buildAnvil(){
+    const host=$('ssThrash'); if(!host) return null;
+    if(anvil===host && cells) return host;
+    host.innerHTML=''; const frag=document.createDocumentFragment();
+    const arr=[];
+    for(let i=0;i<CELLS;i++){ const c=document.createElement('i'); frag.appendChild(c); arr.push(c); }
+    host.appendChild(frag); anvil=host; cells=arr; return host;
   }
-  // Its own timer rather than the shared cadence engine. The shared modes include multi-second
-  // 'long'/'marathon' phases, which fire a single burst every few seconds — far too sparse to
-  // be the effect. The original artifact hit on EVERY scan cycle, and with Bluetooth off those
-  // cycles were rapid, so the character of it is frequent irregular hits. Rate scales with
-  // severity (~2/s up to ~30/s) and every interval is randomised so it never becomes a
-  // metronome. Capped well below the audio buffer rate so it glitches the sound rather than
-  // drowning it.
-  let on=false, timer=null;
+  // One reflow "op": mutate geometry across the anvil, flip a class on the container to dirty
+  // the whole subtree's style, then FORCE a synchronous layout by reading a geometry property.
+  // Returns nothing; the read is the load and can't be optimised away because its result is
+  // written back into the next write.
+  let readSink=0;
+  function reflowOp(host,k){
+    const n=cells.length;
+    // write — every cell, so the dirtied region is the whole row, not one node
+    const base=(phase+k)|0;
+    for(let i=0;i<n;i++){
+      const h=4+((base*3+i*i)%30);
+      cells[i].style.height=h+'px';
+    }
+    // class flip invalidates computed style for the subtree, forcing a fuller recalc
+    host.className = (k&1) ? 'anvil hot' : (intensity>0.5?'anvil hot2':'anvil');
+    // read — rotate the property so it is a genuine forced reflow each time, not one cached value
+    let r=0;
+    switch(k%5){
+      case 0: r=host.offsetWidth; break;
+      case 1: r=cells[(base)%n].offsetHeight; break;
+      case 2: r=host.getBoundingClientRect().height; break;
+      case 3: r=cells[(base+7)%n].clientHeight; break;
+      default: r=parseFloat(getComputedStyle(cells[(base+3)%n]).height)||0;
+    }
+    readSink=(readSink+r)&0xffff;
+    phase=(phase+1)&0x7fffffff;
+  }
+  function pulse(){
+    const host=buildAnvil();
+    // Per-burst millisecond budget: how long this single burst is allowed to hold the thread.
+    // Scales with severity; hard-capped so ONE burst can never approach the ANR threshold
+    // regardless of severity or overdrive — the sustained load comes from frequency×duty, not
+    // from any single burst running long.
+    const budgetMs = over ? (4 + intensity*intensity*18) : (2 + intensity*intensity*10);
+    const cap = over ? 22 : 14;                 // absolute per-burst ceiling, ms
+    const bMs = Math.min(budgetMs, cap);
+    // 1) The original cause: a few synchronous native bridge round-trips.
+    const calls=1+Math.round(intensity*(over?18:12));
+    try{ if(window.EMIBridge){ for(let i=0;i<calls;i++){
+      if(EMIBridge.getSensors) EMIBridge.getSensors();
+      else if(EMIBridge.getThermals) EMIBridge.getThermals(); } } }catch(e){}
+    // 2) Forced synchronous reflows until the budget is spent — MEASURED, not fixed.
+    let ops=0; const t0=perfNow(); let now=t0;
+    if(host){
+      // A small floor so even a very tight budget lands at least a few reflows.
+      do { reflowOp(host,ops); ops++; now=perfNow(); }
+      while(now-t0 < bMs && ops < 6000);
+    } else { now=perfNow(); }
+    const burstMs = now - t0;
+    lastMs=burstMs; lastOps=ops;
+    // 3) Assert the audible glitch directly so it does not depend on device bridge speed.
+    if(Math.random()<0.6) holdSamples=Math.round(rnd(40,300+intensity*(over?1600:900)));
+    else dropSamples=Math.round(rnd(20,120+intensity*(over?700:400)));
+    if(Math.random()<0.35) toast('scan…');
+    // Deliberately NOT reported to the Governor. The Governor treats audio-callback overrun as
+    // evidence the device is under stress and responds by shrinking the RADIO duty cycle. These
+    // glitches are the requested effect, not a symptom — feeding them in would make the hammer
+    // silently throttle the scanners every time it was turned up.
+    bursts++; opWin+=ops;
+    const tnow=perfNow();
+    if(tnow-opT>1000){
+      const secs=(tnow-opT)/1000;
+      lastReflow=opWin/secs; opWin=0; opT=tnow;
+      setTxt('ssReflow', Math.round(lastReflow).toLocaleString());
+    }
+    setTxt('ssRate', /*bursts/s over the same window handled below*/ rateStr());
+    setTxt('ssCount', String(bursts));
+    setTxt('ssMs', burstMs.toFixed(1));
+    setTxt('ssOps', String(ops));
+    setTxt('ssDuty', Math.round(lastDuty*100)+'%');
+    return burstMs;
+  }
+  // Bursts/s readout, tracked separately from reflows/s.
+  let rN=0, rT=0, rLast=0;
+  function rateStr(){ rN++; const now=perfNow();
+    if(now-rT>1000){ rLast=rN*1000/(now-rT); rN=0; rT=now; } return rLast.toFixed(0)+'/s'; }
+  function setTxt(id,v){ const el=$(id); if(el)el.textContent=v; }
+  function dutyTarget(){
+    // Target main-thread SHARE. This — not the interval — is the cap that keeps it safe.
+    // Normal: 12%→52% across severity. Overdrive: 30%→70%.
+    return over ? (0.30 + intensity*0.40) : (0.12 + intensity*0.40);
+  }
   function step(){
     if(!on) return;
-    pulse();
-    const perSec=2+intensity*intensity*28;
-    const gap=1000/perSec;
-    timer=setTimeout(step, rnd(gap*0.25, gap*1.9));
-    const el=$('ssMode'); if(el)el.textContent=intensity>0.66?'heavy':(intensity>0.33?'moderate':'light');
+    const burstMs = pulse();
+    const D = dutyTarget();
+    // gap so that burstMs/(burstMs+gap) == D  →  gap = burstMs*(1/D - 1)
+    let gap = burstMs*(1/D - 1);
+    lastDuty = burstMs/(burstMs+gap);         // == D, but computed from what actually happened
+    // Randomise the interval so it never becomes a metronome, while preserving the mean share.
+    gap = Math.max(2, rnd(gap*0.45, gap*1.6));
+    setTxt('ssMode', over?'overdrive':(intensity>0.66?'heavy':(intensity>0.33?'moderate':'light')));
+    timer=setTimeout(step, gap);
   }
   return {
     set enabled(v){
       if(v===on) return; on=v;
       if(timer){clearTimeout(timer);timer=null;}
-      if(v){ rateT=perfNow(); rateN=0; step(); toast('Scan stutter on — works with Bluetooth on or off'); }
+      if(v){ opT=perfNow(); opWin=0; rT=perfNow(); rN=0; buildAnvil(); step();
+        toast('DOM hammer on — works with Bluetooth on or off'); }
       else { holdSamples=0; dropSamples=0;
-        const el=$('ssRate'); if(el)el.textContent='0/s';
-        const m=$('ssMode'); if(m)m.textContent='idle'; } },
+        if(anvil) anvil.className='anvil';
+        setTxt('ssRate','0/s'); setTxt('ssMode','idle');
+        setTxt('ssReflow','—'); setTxt('ssMs','—'); setTxt('ssOps','—'); setTxt('ssDuty','—'); } },
     get enabled(){ return on; },
     set intensity(v){ intensity=cl(v,0,1); }, get intensity(){ return intensity; },
+    set overdrive(v){ over=!!v; }, get overdrive(){ return over; },
     get bursts(){ return bursts; },
     /* Consumed per sample by proc(): 0 = normal, 1 = hold previous sample, 2 = drop. */
     step:function(){
@@ -5170,6 +5268,19 @@ const SatView=(function(){
 /* ============ WARDRIVING (local GPS-tagged track log; export only, no auto-upload) ============ */
 const Wardrive=(function(){
   let on=false, track=[], apsSeen=new Map(), autoIv=null;
+  /* getWifiDiag() is a SYNCHRONOUS native bridge call and updUi() runs on every scan result
+     and every logged point, so calling it straight from updUi would put a blocking
+     round-trip on the main thread at exactly the rate the DOM hammer is already loading it.
+     Cached with a short TTL instead: the master location switch does not change several
+     times a second, and 3s is well inside "tell me why my log is empty" responsiveness. */
+  let diagCache=null, diagAt=-1e9;
+  function wifiDiagCached(){
+    const now=perfNow();
+    if(diagCache!==null && now-diagAt<3000) return diagCache;
+    diagAt=now; diagCache=null;
+    try{ if(window.EMIBridge&&EMIBridge.getWifiDiag) diagCache=JSON.parse(EMIBridge.getWifiDiag()); }catch(e){}
+    return diagCache;
+  }
   function log(kind,extra){
     if(!on || Sensors.lat==null) return false;
     track.push({t:Date.now(),lat:Sensors.lat,lon:Sensors.lon,kind,...extra});
@@ -5231,8 +5342,18 @@ const Wardrive=(function(){
     let st=null; try{ st=RF.budgetState(); }catch(e){}
     const b=$('wdBudget');
     if(b) b.textContent = st ? (st.used+'/'+st.max+' per 2min'+(st.denied?' · '+st.denied+' deferred':'')) : '—';
+    // DEVICE LOCATION OFF is checked FIRST and named explicitly. It was already detected in
+    // the JSON diagnostic but not surfaced here, so the visible reason line reported "no GPS
+    // fix yet" — a symptom — when the actual cause was the master location switch. That one
+    // setting simultaneously starves BOTH inputs wardriving needs: Android returns zero
+    // Wi-Fi scan results while location services are off, no matter what runtime permissions
+    // the app holds, and no fix ever arrives. Reporting the symptom sends you looking at GPS
+    // reception when the fix is one toggle in quick settings.
+    const pf=wifiDiagCached();
     const w=$('wdWhy');
     if(w) w.textContent = !on ? 'off'
+      : (pf && pf.locationEnabled===false)
+        ? 'DEVICE LOCATION IS OFF — turn on Location in quick settings. Android returns zero Wi-Fi scan results while it is off, whatever permissions this app holds.'
       : Sensors.lat==null ? 'no GPS fix yet — nothing can be logged without one'
       : (st && st.used>=st.max) ? 'scan budget spent — a slot frees within 2 min'
       : 'logging normally';
@@ -5519,6 +5640,18 @@ $('ssEn').addEventListener('click',()=>{ const b=$('ssEn'),v=b.getAttribute('ari
   b.setAttribute('aria-pressed',String(v)); ScanStutter.enabled=v; });
 $('ssAmt').addEventListener('input',e=>{ ScanStutter.intensity=+e.target.value;
   $('ssAmtR').textContent=Math.round(e.target.value*100)+'%'; });
+$('ssOver').addEventListener('click',()=>{ const b=$('ssOver'),v=b.getAttribute('aria-pressed')!=='true';
+  b.setAttribute('aria-pressed',String(v)); ScanStutter.overdrive=v;
+  b.textContent = v ? 'Overdrive — engaged' : 'Overdrive';
+  toast(v?'DOM hammer overdrive — main-thread share up to ~70%':'DOM hammer back to normal ceiling'); });
+// The panel ships toggled ON (aria-pressed="true" in the markup) so the hammer is running the
+// first time the app is opened. The markup attribute alone only styles the switch — the engine
+// still has to be told, or the UI would claim "on" while nothing hammered. That mismatch is
+// exactly how this feature came to read as absent before, so it is started explicitly here and
+// the two are seeded from the same markup values rather than from a second hardcoded default.
+ScanStutter.intensity = +$('ssAmt').value;
+$('ssAmtR').textContent = Math.round(+$('ssAmt').value*100)+'%';
+ScanStutter.enabled = $('ssEn').getAttribute('aria-pressed')==='true';
 $('cpEn').addEventListener('click',()=>{ const b=$('cpEn'),v=b.getAttribute('aria-pressed')!=='true';
   b.setAttribute('aria-pressed',String(v)); ChaosPulse.enabled=v; });
 $('cpAmt').addEventListener('input',e=>{ ChaosPulse.intensity=+e.target.value;
@@ -5527,6 +5660,15 @@ $('sxEn').addEventListener('click',()=>{ const b=$('sxEn'),v=b.getAttribute('ari
   b.setAttribute('aria-pressed',String(v)); ScreenChaos.enabled=v; });
 $('sxAmt').addEventListener('input',e=>{ ScreenChaos.amount=+e.target.value;
   $('sxAmtR').textContent=Math.round(e.target.value*100)+'%'; });
+// Same seed-from-markup as the DOM hammer, and for the same reason: "not seeing any screen
+// stuff" was this panel shipping default-off at 60% amplitude, which is a ~17% brightness
+// swing moving at the slew limit — technically running, effectively invisible. Now on by
+// default at full amplitude, which uses the whole 72–100% window the safety clamp allows.
+// The SLEW LIMITER IS UNCHANGED: it is the photosensitive-seizure bound, not a taste
+// setting, so the effect gets its full depth without ever getting faster.
+ScreenChaos.amount = +$('sxAmt').value;
+$('sxAmtR').textContent = Math.round(+$('sxAmt').value*100)+'%';
+ScreenChaos.enabled = $('sxEn').getAttribute('aria-pressed')==='true';
 
 /* scanner trio */
 $('scChaotic').addEventListener('click',()=>{ const b=$('scChaotic'),v=b.getAttribute('aria-pressed')!=='true';

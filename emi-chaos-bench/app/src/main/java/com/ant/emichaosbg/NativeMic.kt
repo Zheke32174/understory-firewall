@@ -59,33 +59,53 @@ class NativeMic(private val ctx: Context) {
     fun error() = lastError
 
     fun start(): String {
-        if (running) return "already running"
+        // "ok" prefix, not a bare status string. The JS side treats any reply that does not
+        // start with "ok" as a failure and falls through to a "mic is busy" toast — so
+        // reporting an ALREADY-WORKING capture with the words "already running" made a
+        // healthy mic read as a broken one. It is running; that is a success.
+        if (running) return "ok@$rate (already running)"
         if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
             return "RECORD_AUDIO not granted"
+
+        // The retry loop used to vary only the sample rate while pinning the source to
+        // UNPROCESSED. UNPROCESSED is optional — a device that does not implement it fails
+        // to initialise at EVERY rate, so the loop tried twice and gave up with the mic
+        // perfectly available through any other source. Source is now part of the search.
+        //
+        // Order is deliberate. UNPROCESSED first because the platform's AGC and noise
+        // suppression roll off exactly the ultrasonic band the injection heuristic reads;
+        // VOICE_RECOGNITION next because it is the least-processed of the common sources;
+        // MIC last because it always exists.
+        val sources = intArrayOf(
+            MediaRecorder.AudioSource.UNPROCESSED,
+            MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            MediaRecorder.AudioSource.MIC
+        )
         // 48k preferred: the ultrasonic heuristic looks above 18kHz, which 44.1k barely
         // reaches and 16k cannot represent at all.
-        for (r in intArrayOf(48000, 44100)) {
+        val rates = intArrayOf(48000, 44100, 16000)
+        val tried = StringBuilder()
+
+        for (src in sources) for (r in rates) {
             val minBuf = AudioRecord.getMinBufferSize(r, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-            if (minBuf <= 0) continue
+            if (minBuf <= 0) { tried.append("$src@$r:badBufSize "); continue }
             val rec = try {
-                AudioRecord(
-                    MediaRecorder.AudioSource.UNPROCESSED.takeIf { hasUnprocessed() } ?: MediaRecorder.AudioSource.MIC,
-                    r, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
-                    maxOf(minBuf, N * 4)
-                )
-            } catch (e: Exception) { lastError = e.message; null } ?: continue
-            if (rec.state != AudioRecord.STATE_INITIALIZED) { rec.release(); continue }
-            record = rec; rate = r
+                AudioRecord(src, r, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
+                    maxOf(minBuf, N * 4))
+            } catch (e: Exception) { tried.append("$src@$r:${e.javaClass.simpleName} "); null } ?: continue
+            if (rec.state != AudioRecord.STATE_INITIALIZED) {
+                tried.append("$src@$r:notInitialised "); rec.release(); continue
+            }
+            record = rec; rate = r; source = src
             running = true
             thread = Thread { loop(rec) }.also { it.isDaemon = true; it.start() }
-            return "ok@$r"
+            return "ok@$r/src$src"
         }
-        return lastError ?: "could not open any capture configuration"
+        lastError = "no capture configuration opened — tried: $tried"
+        return lastError!!
     }
 
-    /** UNPROCESSED avoids the platform's AGC/NS colouring the ultrasonic band. */
-    private fun hasUnprocessed(): Boolean =
-        android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N
+    @Volatile private var source = -1
 
     fun stop() {
         running = false
@@ -188,6 +208,7 @@ class NativeMic(private val ctx: Context) {
         val o = JSONObject()
         o.put("running", running)
         o.put("sampleRate", rate)
+        o.put("source", source)
         o.put("speech", speechLevel)
         o.put("ultra", ultraLevel)
         lastError?.let { o.put("error", it) }
