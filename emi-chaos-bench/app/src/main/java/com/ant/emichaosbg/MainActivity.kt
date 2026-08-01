@@ -10,6 +10,7 @@ import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
+import android.webkit.WebResourceResponse
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
@@ -68,6 +69,13 @@ class MainActivity : ComponentActivity() {
             allowFileAccess = true
             allowContentAccess = false
             cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
+            // Stated rather than inherited. Both default to false on current API levels, but
+            // they are the two settings that turn "a page that can be injected" into "a page
+            // that can read every file this app can reach", so they are worth being explicit
+            // and permanent about. The page gets its bundled assets through the native
+            // reader (EmiBridge.readAssetText), which is why it does not need these.
+            allowFileAccessFromFileURLs = false
+            allowUniversalAccessFromFileURLs = false
         }
 
         // Only ever serve the bundled asset. Any http(s) navigation is refused.
@@ -75,6 +83,18 @@ class MainActivity : ComponentActivity() {
             override fun shouldOverrideUrlLoading(v: WebView, req: WebResourceRequest): Boolean {
                 val url = req.url.toString()
                 return !url.startsWith("file:///android_asset/")
+            }
+            /**
+             * shouldOverrideUrlLoading only sees NAVIGATIONS. Subresource loads — an <img>,
+             * a stylesheet, a script tag injected by something that got into the page — never
+             * reach it. This closes that: any resource request that is not a bundled asset is
+             * answered with an empty 403 instead of being fetched.
+             */
+            override fun shouldInterceptRequest(v: WebView, req: WebResourceRequest): WebResourceResponse? {
+                val url = req.url.toString()
+                if (url.startsWith("file:///android_asset/")) return null   // allow, load normally
+                return WebResourceResponse("text/plain", "utf-8", 403, "blocked",
+                    emptyMap(), java.io.ByteArrayInputStream(ByteArray(0)))
             }
         }
 
@@ -109,6 +129,10 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // The evidence store. Registered as its own interface rather than folded into
+        // EMIBridge so its surface stays visibly four methods wide — append, read, count,
+        // verify — with no delete anywhere on it.
+        webView.addJavascriptInterface(VaultBridge(this), "EMIVault")
         webView.addJavascriptInterface(bridge, "EMIBridge")
         webView.addJavascriptInterface(shizuku, "EMIShizuku")
         webView.addJavascriptInterface(tamperGuard, "EMITamper")

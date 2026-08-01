@@ -1,6 +1,23 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<!-- The WebView is the compartment that parses hostile input: SSIDs, BLE device names, cell
+     identifiers, mesh traffic. This CSP is what it is allowed to do if something ever lands
+     in it. default-src 'none' means nothing loads unless named below. Note what is absent:
+     no object-src, no frame-src, no base-uri, no form-action — so an injected payload cannot
+     pull in a plugin, frame something, rewrite relative URLs, or POST anywhere.
+     script-src is 'unsafe-inline' because the app's own script is inline; it still blocks
+     loading external script, and the absence of 'unsafe-eval' blocks eval/new Function.
+     connect-src carries ws:/wss: because the accessory mesh is a real feature — that is the
+     one deliberate hole, and it is why the mesh is opt-in and off by default. -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'none';
+  script-src 'unsafe-inline';
+  style-src 'unsafe-inline';
+  img-src 'self' data: blob:;
+  media-src 'self' data: blob:;
+  connect-src 'self' ws: wss:;
+  base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#1c1e21">
@@ -3749,7 +3766,17 @@ const Alerts=(function(){
       if(i>0){ log.splice(i,1); log.unshift(e); }
       render(); if(sev>=2) haptic('clip'); return; }
     log.unshift({t:now,sev,msg,badge,n:1}); if(log.length>MAXLOG)log.length=MAXLOG;
+    // Mirror into the native vault. This array is a VIEW — it dies with the page and anything
+    // running in the page can edit it. The vault is the record: sealed under a Keystore key,
+    // hash-chained, and with no delete on its interface. A first occurrence is what gets
+    // stored; recurrences are counted here rather than appended there, so the chain stays a
+    // list of distinct findings instead of filling with repeats of one.
+    vaultAppend(sev,msg,badge);
     render(); if(sev>=2) haptic('clip');
+  }
+  /** Never let a vault problem take the alert with it — the in-page log still shows it. */
+  function vaultAppend(sev,msg,badge){
+    try{ if(window.EMIVault&&EMIVault.append) EMIVault.append(sev,msg,badge||''); }catch(e){}
   }
   function render(){
     const el=$('alertLog'); if(!el)return;
