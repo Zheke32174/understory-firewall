@@ -123,11 +123,25 @@ class MaskerService : Service() {
         @Volatile var bleWatcher: BleWatcher? = null
             private set
 
+        /**
+         * Where live sightings should be delivered for display, set by whoever is showing them.
+         *
+         * It lives here rather than being assigned onto the watcher because the Activity starts
+         * before the service does: `MaskerService.bleWatcher?.onDevice = ...` at onCreate was a
+         * safe-call on a null field, so it silently did nothing and no sighting ever reached the
+         * page — the BLE scan log stayed empty for the whole session and its export wrote a
+         * header with no rows. Holding the sink here and applying it at construction removes the
+         * ordering requirement entirely.
+         */
+        @Volatile var bleDeviceSink: ((org.json.JSONObject) -> Unit)? = null
+
         fun ensureBleWatcher(ctx: Context): BleWatcher {
             bleWatcher?.let { return it }
             synchronized(this) {
                 bleWatcher?.let { return it }
                 val b = BleWatcher(ctx.applicationContext, ensureTrackerWatch(ctx))
+                // Applied on creation, so the sink is attached whichever came first.
+                b.onDevice = bleDeviceSink
                 bleWatcher = b; return b
             }
         }

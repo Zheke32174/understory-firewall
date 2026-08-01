@@ -92,9 +92,21 @@ class ShellView(
                 maxLines = 1
                 setOnClickListener { show(name) }
             }
-            androidx.core.widget.TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
-                b, 8, 11, 1, android.util.TypedValue.COMPLEX_UNIT_SP
-            )
+            /* ONE SIZE FOR ALL FOUR TABS.
+             *
+             * These were autosized INDIVIDUALLY, and autosize is per-view: each button picks
+             * the largest size that fits ITS OWN label in ITS OWN box. "SECURITY" is eight
+             * characters and "LOGS" is four, so they settled at different sizes and the nav bar
+             * rendered with mismatched type — which reads as a broken screen, and was reported
+             * as one.
+             *
+             * A fixed size is correct here because the constraint is known: four labels of at
+             * most eight characters across a quarter of the width each. 9.5sp with tight
+             * padding fits every one of them on a narrow phone, so nothing needs to shrink and
+             * nothing can disagree. maxLines=1 keeps a large system font from wrapping instead
+             * of overflowing.
+             */
+            b.textSize = 9.5f
             tabs.add(b)
             strip.addView(b, LinearLayout.LayoutParams(0, -2, 1f)
                 .apply { if (i > 0) leftMargin = Nx.dp(ctx, 4) })

@@ -174,11 +174,21 @@ class MainActivity : ComponentActivity() {
         // BLE tracker/follower detection — the last counter-surveillance check that was still
         // page JavaScript, and therefore the only one that stopped when the WebView did.
         webView.addJavascriptInterface(MaskerService.ensureTrackerWatch(this), "EMITracker")
-        // Live fan-out from the single shared scanner to the page's existing callback, so
-        // display stays as immediate as it was when the page ran its own registration.
-        MaskerService.bleWatcher?.onDevice = { o ->
-            bridge.deliverBleDevice(o.toString())
-        }
+        /* LIVE FAN-OUT — REGISTERED WHERE THE SCANNER IS CREATED, NOT WHERE IT MIGHT NOT EXIST.
+         *
+         * This was `MaskerService.bleWatcher?.onDevice = { ... }`. The safe-call is the bug:
+         * at onCreate the masking service has not started, so `bleWatcher` is null and the
+         * assignment does NOTHING — silently, with no warning, because `?.` on a null receiver
+         * is a no-op rather than an error. The hook was therefore never installed on the normal
+         * launch path, no sighting ever reached the page, and the BLE scan log stayed empty
+         * forever: "ble scan never records", exactly as reported. The export then wrote a file
+         * with a header and no rows.
+         *
+         * Registering the sink on MaskerService means it is applied to the watcher whenever one
+         * is created, in either order, so there is no window in which the wiring can be missed.
+         */
+        MaskerService.bleDeviceSink = { o -> bridge.deliverBleDevice(o.toString()) }
+        MaskerService.bleWatcher?.onDevice = MaskerService.bleDeviceSink
         // Read-only view of the service-owned scanner, so the panel can show whether it is
         // actually observing rather than assuming it because the toggle looks on.
         webView.addJavascriptInterface(object {

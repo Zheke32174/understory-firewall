@@ -153,7 +153,30 @@ class TamperGuard(private val ctx: Context) {
                 "/data/local/tmp/frida-agent.so", "/data/local/tmp/frida-gadget.so",
                 "/sdcard/frida-server", "/data/local/tmp/re.frida.server.so"
             )
-            knownServerPaths.filter { File(it).exists() }.forEach { hits.add("binary present: $it") }
+            /* A FILE ON DISK IS NOT AN ATTACHMENT, AND SAYING SO MATTERS.
+             *
+             * This reported "possible Frida/injection: binary present: /data/local/tmp/
+             * frida-server" at the same weight as evidence of actual instrumentation. Those are
+             * different claims by a wide margin: the binary sitting there means someone — very
+             * possibly the device's owner, doing their own research — pushed a tool onto the
+             * device at some point. It does not mean it is running, and it certainly does not
+             * mean it is attached to THIS process.
+             *
+             * Overstating it is expensive in both directions. A user who put it there learns to
+             * dismiss the alert, and then dismisses it on the day it matters. A user who did not
+             * put it there is told they are compromised on evidence that does not support it.
+             *
+             * So the finding now says exactly what was observed, and names the checks that WOULD
+             * indicate attachment — a listening frida port, the maps/thread-name hints, and
+             * EscalationGuard's TracerPid — so the two can be read together instead of confused.
+             */
+            knownServerPaths.filter { File(it).exists() }.forEach {
+                hits.add("instrumentation tool PRESENT ON DISK at $it — this is a file, not an " +
+                    "attachment: it does not by itself mean anything is running or attached to " +
+                    "this app. Check whether you put it there. The findings that would indicate " +
+                    "live instrumentation are a listening Frida port, matching entries in this " +
+                    "process's memory map, and a non-zero TracerPid on the Escalation guard")
+            }
         } catch (_: Exception) {}
         return hits
     }

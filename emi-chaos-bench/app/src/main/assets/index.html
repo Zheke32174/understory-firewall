@@ -240,7 +240,7 @@
         <div class="row"><div class="cell full">
           <button class="btn" id="ssOver" aria-pressed="false">Overdrive</button></div></div>
         <div class="row"><div class="cell full">
-          <button class="btn" id="ssJolt" aria-pressed="false">Screen jolt — OFF</button></div></div>
+          <button class="btn" id="ssJolt" aria-pressed="true">Screen jolt — ON</button></div></div>
         <div class="anvil" id="ssThrash"></div>
         <div class="grid">
           <div class="stat"><small>GLOBAL · scan stutter/s</small><b id="ssGlobal">0/s</b></div>
@@ -4109,7 +4109,21 @@ const ScanStutter=(function(){
     ['touchstart','touchmove','pointerdown','pointermove','wheel','scroll']
       .forEach(ev=>{ try{ document.addEventListener(ev,mark,opt); }catch(e){} });
   })();
-  let readSink=0, jolt=false, joltPending=false, joltEnabled=false;
+  /* SCREEN JOLT IS BACK ON BY DEFAULT — and it is safe now in a way it was not before.
+     It shipped OFF after an early version left the app permanently skewed: the transform was
+     applied on every burst and never cleared, so the screen never returned to rest and the app
+     read as broken rather than disrupted. That bug is fixed at the root — the transform is
+     cleared on a requestAnimationFrame, which guarantees EXACTLY ONE displaced frame per jolt
+     and makes a stuck transform impossible.
+     With that fixed, defaulting to OFF made the LOCAL channel invisible: the hammer was
+     measurably running at full rate (bursts firing, whole-document relayout, the audible
+     stutter going) while the screen showed nothing, so it read as "not working". A disruptor
+     you cannot perceive is indistinguishable from one that is broken.
+     Bounded by everything else in this engine: ~6-18 jolts a second at severity, each snapped
+     back before the next, the 40% LOCAL duty ceiling, the touch yield, and the spasm/recover
+     envelope. Violent, and still legible and tappable in between. Turn it off with the button
+     if you want the disruption without the movement. */
+  let readSink=0, jolt=false, joltPending=false, joltEnabled=true;
   function reflowOp(host,k){
     const n=cells.length;
     const base=(phase+k)|0;
@@ -5649,7 +5663,7 @@ const SensorBlast=(function(){
    someone needs to dial emergency services. The band readout plus a one-tap deep link to
    the OS's own network settings puts that decision where it belongs: with the user. */
 const CellGuard=(function(){
-  let last=null, hist=[], alerts=0, lastPoll=0, smsHint='—';
+  let last=null, hist=[], alerts=0, lastPoll=0, smsHint='not checked', smsPending=false;
   const CHURN_WIN=180000; // 3 min
   function fmtServing(s){
     if(!s) return '—';
@@ -5756,23 +5770,40 @@ const CellGuard=(function(){
     set('cgState',d.emergencyOnly?'limited service':'watching');
   }
   // Silent-SMS heuristic, Shizuku-gated and honest about what it can/can't see.
+  /* THE SMS CHECK COULD NEVER HAVE WORKED, AND ALWAYS SAID "unavailable".
+     EMIShizuku.runDiagnostic() returns VOID — it kicks off a privileged dumpsys and delivers
+     the output asynchronously to window.__emiShizukuResult. This read it as a synchronous
+     string, so `out` was always undefined, `||''` made it empty, and the very next line set
+     "unavailable" every single time. The readout was therefore fixed at "unavailable"
+     regardless of whether Shizuku was connected, granted, or working perfectly — another case
+     of a check that cannot run reporting like one that ran and found nothing.
+     Now it awaits the callback, and every distinct cause gets its own words. */
+  function smsSet(v){ smsHint=v; const el=$('cgSms'); if(el)el.textContent=v; }
   function checkSilentSms(){
-    if(!(window.EMIShizuku&&EMIShizuku.runDiagnostic)){ smsHint='needs Shizuku'; render({},null); return; }
+    if(!(window.EMIShizuku&&EMIShizuku.runDiagnostic)){ smsSet('needs Shizuku'); return; }
     try{
-      const out=EMIShizuku.runDiagnostic('sms_service')||'';
-      if(!out||/^error:/.test(out)){ smsHint='unavailable'; }
-      else{
-        // Look for the framework's own SMS dispatch bookkeeping. This cannot see a Type-0
-        // message itself — nothing at app level can — it can only report that the SMS stack
-        // shows recent activity, which is meaningful only when you received nothing visible.
-        const m=/(\d+)\s+(?:SMS|sms)[^\n]*(?:dispatch|received|delivered)/i.exec(out);
-        smsHint=m?('stack activity: '+m[1]):'no counters exposed';
-        Alerts.push(1,'Silent-SMS check ran. Note: Type-0 (silent) SMS never reach app-level APIs on Android — this only reports whether the SMS stack shows activity you did not see a message for. Treat as a hint, never proof.','sms0');
-      }
-    }catch(e){ smsHint='error'; }
-    const el=$('cgSms'); if(el)el.textContent=smsHint;
+      smsSet('checking…');
+      smsPending=true;
+      // Result arrives at __emiShizukuResult -> CellGuard.smsResult().
+      EMIShizuku.runDiagnostic('sms_service');
+      // If nothing comes back, say so rather than sitting on "checking…" forever.
+      setTimeout(()=>{ if(smsPending){ smsPending=false;
+        smsSet('no reply from Shizuku'); } }, 8000);
+    }catch(e){ smsPending=false; smsSet('bridge error: '+(e&&e.message?e.message:'unknown')); }
   }
-  return { poll, checkSilentSms, get alerts(){return alerts;},
+  /** Called with the ASYNC dumpsys output. */
+  function smsResult(out,err){
+    if(!smsPending) return; smsPending=false;
+    if(err){ smsSet('Shizuku refused: '+String(err).slice(0,40)); return; }
+    if(!out){ smsSet('no output — is Shizuku granted?'); return; }
+    // Look for the framework's own SMS dispatch bookkeeping. This cannot see a Type-0
+    // message itself — nothing at app level can — it can only report that the SMS stack
+    // shows recent activity, which is meaningful only when you received nothing visible.
+    const m=/(\d+)\s+(?:SMS|sms)[^\n]*(?:dispatch|received|delivered)/i.exec(out);
+    smsSet(m?('stack activity: '+m[1]):'no counters exposed');
+    Alerts.push(1,'Silent-SMS check ran. Note: Type-0 (silent) SMS never reach app-level APIs on Android — this only reports whether the SMS stack shows activity you did not see a message for. Treat as a hint, never proof.','sms0');
+  }
+  return { poll, checkSilentSms, smsResult, get alerts(){return alerts;},
     openBandSettings(){
       if(window.EMIBridge&&EMIBridge.openNetworkModeSettings){
         const ok=EMIBridge.openNetworkModeSettings();
@@ -7382,7 +7413,10 @@ function shizPoll(){ try{ if(!window.EMIShizuku){ $('shizStatus').textContent='n
     else { el.textContent=s.granted?'granted':'available, not granted'; el.className='tag'+(s.granted?' pill ok':''); }
   }catch(e){ $('shizStatus').textContent='unavailable'; } }
 window.__emiShizukuResult=function(jsonStr){ try{ const r=JSON.parse(jsonStr);
-    const out=$('shizOut'); if(out)out.value=(r.error?('error: '+r.error):(r.out||'')); }catch(e){} };
+    const out=$('shizOut'); if(out)out.value=(r.error?('error: '+r.error):(r.out||''));
+    // Route the SMS-stack dump back to CellGuard. runDiagnostic() is asynchronous — reading
+    // its return value as a string is what pinned the SMS readout at "unavailable" forever.
+    try{ CellGuard.smsResult(r.out||'', r.error||null); }catch(e){} }catch(e){} };
 window.__emiShizukuPermission=function(granted){ toast('Shizuku permission '+(granted?'granted':'denied')); shizPoll(); };
 $('shizReq').addEventListener('click',()=>{ try{ if(window.EMIShizuku)EMIShizuku.requestPermission(); else toast('Shizuku bridge unavailable'); }catch(e){} });
 $('shizRun').addEventListener('click',()=>{ try{ if(window.EMIShizuku){ $('shizOut').value='running…'; EMIShizuku.runDiagnostic($('shizKey').value); } else toast('Shizuku bridge unavailable'); }catch(e){} });

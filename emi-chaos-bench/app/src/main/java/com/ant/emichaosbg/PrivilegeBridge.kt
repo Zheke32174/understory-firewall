@@ -333,8 +333,21 @@ class PrivilegeBridge(private val ctx: Context) {
             return o.put("ok", false).put("reason",
                 if (!dhizukuInstalled()) "Install Dhizuku and grant this app permission in it. (Making this app itself the device owner also works but is a far more invasive step — it needs a device with no accounts and a factory reset to undo.)"
                 else if (!dhizukuPermission()) "Dhizuku is installed but hasn't granted this app permission yet — tap 'Request Dhizuku'."
-                else "Dhizuku granted permission but its device-policy channel could not be reached — " +
-                     (dhizukuStep ?: "no failing step was recorded, which is itself a bug") + "."
+                /* If the direct-AIDL route was attempted, its error is the REAL reason and
+                 * dhizukuStep is legitimately null — the wrapper being unbuildable is expected
+                 * on modern Android and is no longer treated as the failure. Reporting "no
+                 * failing step was recorded, which is itself a bug" in that case was the
+                 * bookkeeping lagging behind the new fallback, and it is what the device
+                 * showed. */
+                else o.optString("directAidlError").takeIf { it.isNotBlank() }?.let {
+                    "Dhizuku is connected and the delegated device-policy interface was reached, " +
+                    "but the call was refused: $it"
+                }
+                ?: (dhizukuStep?.let {
+                    "Dhizuku granted permission but its device-policy channel could not be reached — $it."
+                } ?: "Dhizuku granted permission and the delegated interface was obtained, but no " +
+                     "owner component was available to act as the admin — Dhizuku is installed " +
+                     "but may not actually be the device owner.")
             ).toString()
         }
         return try {
