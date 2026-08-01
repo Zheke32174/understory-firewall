@@ -191,13 +191,31 @@ private fun FirewallRoot(
     deepLink: androidx.compose.runtime.MutableState<FirewallRoute?> =
         androidx.compose.runtime.mutableStateOf(null),
 ) {
-    var routeName by rememberSaveable { mutableStateOf(FirewallRoute.Main.name) }
+    // A REAL BACK STACK, not a flat route. Every menu used to call backToMain(), so back from a
+    // sub-sub-menu (e.g. Limits → Diagnostics, or TierOverview → AppFirewall → PolicyControls →
+    // Elevation) jumped all the way to the top instead of up one level — reported directly. The
+    // stack pushes on navigate and pops one on back, so back walks the hierarchy the way the user
+    // descended it. rememberSaveable-backed so it survives rotation/process death.
+    val backStack = rememberSaveable(
+        saver = androidx.compose.runtime.saveable.listSaver(
+            save = { it.toList() },
+            restore = { androidx.compose.runtime.mutableStateListOf<String>().apply { addAll(it) } },
+        ),
+    ) { androidx.compose.runtime.mutableStateListOf(FirewallRoute.Main.name) }
+    val routeName = backStack.last()
     val route = remember(routeName) { FirewallRoute.valueOf(routeName) }
     val setRoute: (FirewallRoute) -> Unit = {
-        Diagnostics.log("firewall.Root", "route: $routeName → ${it.name}")
-        routeName = it.name
+        if (backStack.last() != it.name) {
+            Diagnostics.log("firewall.Root", "push: ${backStack.last()} → ${it.name}")
+            backStack.add(it.name)
+        }
     }
-    val backToMain: () -> Unit = { setRoute(FirewallRoute.Main) }
+    // "back" now pops ONE level. Name kept as backToMain across the call sites for a small diff;
+    // from a screen opened directly off Main, popping one IS Main, so those cases are unchanged,
+    // while deeper screens correctly step up one. At the root the KeepAliveBackHandler minimises.
+    val backToMain: () -> Unit = {
+        if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
+    }
 
     // Consume a one-shot deep-link route (e.g. a Posture Watch notification
     // tap). Navigate once, then clear so a recomposition/config-change can't
