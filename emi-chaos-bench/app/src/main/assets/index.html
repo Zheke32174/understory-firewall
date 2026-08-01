@@ -1236,6 +1236,54 @@
       </div>
     </div>
 
+      <div class="sect">
+        <div class="head"><span class="t">Cellular security</span><span class="tag" id="csState">—</span></div>
+        <div class="body">
+          <div class="grid">
+            <div class="stat"><small>Connection</small><b id="csGen">—</b></div>
+            <div class="stat"><small>Encryption</small><b id="csSec">—</b></div>
+            <div class="stat"><small>Neighbours</small><b id="csNb">—</b></div>
+            <div class="stat"><small>Dominance</small><b id="csDom">—</b></div>
+            <div class="stat"><small>Cell ID</small><b id="csCid">—</b></div>
+            <div class="stat"><small>Area code</small><b id="csArea">—</b></div>
+          </div>
+          <div class="row"><div class="cell full"><button class="btn" id="csScan">Check now</button></div></div>
+          <div id="csNote" class="muted"></div>
+          <div class="muted" style="margin-top:10px">Ports the parts of <b>PrivacyCell</b>, <b>AIMSICD</b>
+            and <b>SnoopSnitch</b> that work <b>without root</b>, and is explicit about the parts that do not.
+            <br><br>
+            <b>Connection security</b> (PrivacyCell, ported in full — it needs only READ_PHONE_STATE).
+            2G is the one that matters: GSM encryption is A5/1, broken in practice, or A5/0, which is none
+            at all — and 2G never authenticates the network to the handset, so your phone cannot tell a real
+            tower from a fake one. Being pushed onto 2G is the classic interception setup.
+            <br><br>
+            <b>Rootless catcher heuristics</b> (AIMSICD's cell-list detections):
+            <br>· <b>Generation downgrade</b> — being dropped from 4G/5G to 2G/3G on the same carrier is how
+            an interception device gets a handset onto equipment it controls.
+            <br>· <b>No neighbouring cells</b> — real macro cells advertise neighbours so the phone can hand
+            over; a cell with none may have no network behind it.
+            <br>· <b>Serving cell dominance</b> — handsets pick the loudest tower, so a device trying to
+            capture phones has to out-shout the real network.
+            <br>· <b>Area-code flip</b> — the tracking area changing while the cell identity stays the same
+            is not something a real cell does.
+            <br><br>
+            <b>What root would add, and why this is a lesser form.</b> SnoopSnitch reads the Qualcomm DIAG
+            interface to see the baseband message flow directly — the cipher actually negotiated, silent
+            SMS, IMSI paging. That needs root, a Qualcomm chipset and a diag-capable ROM, and there is
+            <i>no</i> rootless substitute: no public Android API exposes the negotiated cipher. So this
+            reports what the generation <i>can</i> offer, not what your baseband actually agreed to, and
+            says so rather than implying a confidence it cannot have.
+            <br><br>
+            <b>Every check is a heuristic.</b> Rural cells genuinely have no neighbours, tracking-area
+            boundaries genuinely flip while you stand still, femtocells and repeaters genuinely out-signal
+            macro cells, and 2G fallback genuinely happens where there is nothing else. A flag is a reason
+            to look, never a conclusion.
+            <br><br>
+            <b>Nothing is switched automatically.</b> No band forcing, no RAT locking, no radio
+            reconfiguration — dropping a phone off 2G at the wrong moment can cost an emergency call, which
+            is a worse outcome than being surveilled. It reports; you decide.</div>
+        </div>
+      </div>
     <div class="sheet" id="sheet-data">
       <div class="sect">
         <div class="head"><span class="t">Collected data</span><span class="tag" id="cdState">—</span></div>
@@ -6281,7 +6329,7 @@ document.querySelectorAll('#logSheets .chip').forEach(c=>c.addEventListener('cli
     x.setAttribute('aria-pressed', String(x.dataset.sheet===want)));
   document.querySelectorAll('#page-logs .sheet').forEach(x=>
     x.classList.toggle('on', x.id==='sheet-'+want));
-  if(want==='security') Tapjack.render(true);
+  if(want==='security'){ Tapjack.render(true); CellSec.render(true); }
   if(want==='vault'||want==='data') vaultRefresh(false);
   if(want==='data') CollectedData.render();
 }));
@@ -6335,6 +6383,38 @@ $('tjOverlaySet').addEventListener('click',()=>{
 $('tjA11ySet').addEventListener('click',()=>{
   try{ if(window.EMITapjack&&EMITapjack.openAccessibilitySettings){ EMITapjack.openAccessibilitySettings(); return; } }catch(e){}
   toast('Needs the installed app'); });
+
+/* ---- Cellular security (PrivacyCell + rootless AIMSICD heuristics) ---- */
+const CellSec=(function(){
+  let last=null;
+  const set=(id,v)=>{const el=$(id); if(el)el.textContent=v;};
+  function render(force){
+    if(!window.EMICell){ set('csState','native build only');
+      const n=$('csNote'); if(n)n.textContent='Runs in the installed app; a browser preview has no radio.';
+      return; }
+    try{ last=JSON.parse(force?EMICell.scan():EMICell.cached()); }catch(e){ last=null; }
+    if(!last){ set('csState','error'); return; }
+    if(last.ok===false){ set('csState','unavailable');
+      const n=$('csNote'); if(n)n.textContent=last.reason||'unavailable'; return; }
+    const r=last.registered||{};
+    const sec=last.security||'unknown';
+    set('csState', sec==='insecure'?'INSECURE':(sec==='weak'?'weak':sec));
+    set('csGen', r.gen?(r.gen+'G · '+(r.kind||'')):'none');
+    set('csSec', sec);
+    set('csNb', String(last.neighbourCount!=null?last.neighbourCount:'—'));
+    set('csDom', last.dominanceDb!=null?(last.dominanceDb+' dB'):'—');
+    set('csCid', r.cid!=null&&r.cid>=0?String(r.cid):'—');
+    set('csArea', r.area!=null&&r.area>=0?String(r.area):'—');
+    const n=$('csNote');
+    // textContent: this quotes operator-supplied identifiers, so it must never be parsed as markup.
+    if(n) n.textContent=last.securityNote||'';
+  }
+  return { render, get last(){ return last; } };
+})();
+$('csScan').addEventListener('click',()=>{ CellSec.render(true);
+  const l=CellSec.last;
+  toast(l&&l.security ? ('Cellular: '+l.security+(l.registered&&l.registered.gen?(' · '+l.registered.gen+'G'):''))
+                      : 'Cellular check unavailable'); });
 
 /* ---- Collected-data summary: one answer to "what does this app actually hold" ---- */
 const CollectedData=(function(){

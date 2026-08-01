@@ -151,6 +151,10 @@ class MainActivity : ComponentActivity() {
         tapjack = TapjackGuard(this, SecureLog(this))
         tapjack.protect(webView)
         webView.addJavascriptInterface(tapjack, "EMITapjack")
+        // Rootless cellular security posture + IMSI-catcher heuristics (PrivacyCell in full,
+        // the parts of AIMSICD/SnoopSnitch that do not need baseband diag).
+        webView.addJavascriptInterface(
+            CellSecurityBridge(MaskerService.ensureCellSecurity(this)), "EMICell")
         // Read-only view onto the SERVICE-owned native scan/detection engine. The page can
         // start it, stop it and look at it; it has no way to raise, edit, suppress or delete a
         // finding, because detection and recording happen on the far side of this boundary.

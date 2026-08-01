@@ -22,20 +22,28 @@ import org.json.JSONObject
  * subverted on Android, and it needs no root — only the overlay permission, which plenty of
  * ordinary-looking apps ask for.
  *
- * THE DEFENCE, which is real and not advisory. Android tags every MotionEvent that was
- * delivered while another window was on top: FLAG_WINDOW_IS_OBSCURED (fully) and
- * FLAG_WINDOW_IS_PARTIALLY_OBSCURED (partially, API 29+). Setting
- * `filterTouchesWhenObscured = true` makes the framework DISCARD those touches before they
- * reach the view at all. That is the one place in this app where something is genuinely
- * blocked rather than reported, and it is the correct trade: a touch you did not knowingly aim
- * at this app should not land, and the cost of dropping it is that you tap again.
+ * WHAT IS DETECTED. Android tags every MotionEvent delivered while another window was on top:
+ * FLAG_WINDOW_IS_OBSCURED (fully) and FLAG_WINDOW_IS_PARTIALLY_OBSCURED (partially, API 29+).
+ * Those flags are read on every touch and reported. That is on by default and costs nothing.
  *
- * WHAT IS STILL REPORT-ONLY. Everything else here — which apps hold the overlay permission,
- * which accessibility services are enabled, how many obscured touches were filtered — is
- * observation. Holding the overlay permission is not evidence of wrongdoing; screen recorders,
- * chat heads, colour filters, and accessibility tools all legitimately use it. The count of
- * FILTERED touches is the signal that matters, because that is an overlay actually sitting
- * over this app while you were using it.
+ * WHY BLOCKING IS OPT-IN, AND NOT THE DEFAULT. `filterTouchesWhenObscured = true` makes the
+ * framework discard obscured touches entirely. It is genuine protection and it was briefly the
+ * default here — which made the app completely unusable, because the filter drops EVERY touch
+ * while ANY window overlays this one, and a great many benign things overlay a window:
+ * blue-light filters, screen dimmers, chat bubbles, several accessibility tools, some OEM
+ * system overlays. With one of those running the screen simply stops responding, with no
+ * explanation and no way to reach the control that would turn it back off.
+ *
+ * That was also a violation of this project's own rule — everything reports, nothing blocks; a
+ * false positive should cost a notification, never the session — and it cost exactly that. So
+ * detection runs always, blocking is a switch the user throws knowingly, and it deliberately
+ * does not persist across launches: an unusable app that stays unusable after a restart is a
+ * brick, and restarting is the one recovery a user reliably finds.
+ *
+ * Holding the overlay permission is not evidence of wrongdoing; screen recorders, chat heads,
+ * colour filters and accessibility tools all legitimately use it. The count of OBSCURED touches
+ * is the signal that matters, because that is an overlay actually sitting over this app while
+ * you were using it.
  *
  * ACCESSIBILITY. A11y services can read the content of every screen and inject gestures — the
  * single most powerful thing an app on Android can hold, and the usual home of stalkerware.
@@ -58,13 +66,42 @@ class TapjackGuard(private val ctx: Context, private val log: SecureLog) {
      * invisible, and an attack that is silently defeated teaches the user nothing.
      */
     fun protect(v: View) {
-        v.filterTouchesWhenObscured = true
-        // The framework consumes obscured touches before onTouchEvent, so they cannot be
-        // counted there. A dispatch-level listener still sees the flags on events that DO
-        // arrive, which catches the partially-obscured case the filter lets through on older
-        // API levels and gives an honest count either way.
+        view = v
+        // DETECTION ONLY BY DEFAULT. Turning filterTouchesWhenObscured on for everyone made
+        // the app completely unusable, and it deserved to: the framework discards EVERY touch
+        // while any window overlays this one, and plenty of benign things overlay a window —
+        // blue-light filters, screen dimmers, chat bubbles, some OEM system overlays, several
+        // accessibility tools. With any of those running the app simply stops responding, with
+        // no explanation, and the user cannot even reach the control that would turn it off.
+        //
+        // It also broke this project's own rule. Everything here reports and nothing blocks; a
+        // false positive should cost you a notification, never your session. I made blocking
+        // the default and it cost exactly that.
+        //
+        // So the observer runs always and the FILTER is opt-in (see setBlocking). Reporting
+        // "something is drawn over this app right now" is the part that carries the value;
+        // discarding input is a hard trade the user should choose knowingly.
+        v.filterTouchesWhenObscured = false
         v.setOnTouchListener { _, ev -> noteTouch(ev); false }
     }
+
+    private var view: View? = null
+
+    /**
+     * Opt-in hard blocking. Once on, the framework drops every touch delivered while another
+     * window covers this app — genuine protection, and genuine risk of an unusable screen if
+     * something benign is overlaying. Reversible from the same control, and it does not
+     * persist across launches on purpose: an unusable app that stays unusable after a restart
+     * is a brick, and the restart is the one recovery a user will reliably find.
+     */
+    @JavascriptInterface
+    fun setBlocking(on: Boolean): Boolean {
+        blocking = on
+        view?.post { view?.filterTouchesWhenObscured = on }
+        return blocking
+    }
+
+    @Volatile private var blocking = false
 
     private fun noteTouch(ev: MotionEvent) {
         val obscured = (ev.flags and MotionEvent.FLAG_WINDOW_IS_OBSCURED) != 0
@@ -76,9 +113,12 @@ class TapjackGuard(private val ctx: Context, private val log: SecureLog) {
         lastFilteredAt = System.currentTimeMillis()
         flag(3, "tapjack",
             "A touch arrived while another window was drawn over this app " +
-            "(${if (obscured) "fully" else "partially"} obscured). Touches in that state are " +
-            "discarded rather than acted on, because an overlay can make you tap a control you " +
-            "cannot see. If this keeps happening, something is sitting on top of this app.")
+            "(${if (obscured) "fully" else "partially"} obscured). An overlay can make you tap a " +
+            "control you cannot see. " +
+            (if (blocking) "Blocking is on, so this touch was discarded rather than acted on. "
+             else "Blocking is off, so the touch was delivered normally and this is a report only. ") +
+            "If it keeps happening, something is sitting on top of this app — check the overlay " +
+            "list on the Security sheet.")
     }
 
     private fun flag(sev: Int, key: String, what: String) {
@@ -93,7 +133,8 @@ class TapjackGuard(private val ctx: Context, private val log: SecureLog) {
     @JavascriptInterface
     fun status(): String {
         val o = JSONObject()
-        o.put("filterActive", true)
+        o.put("filterActive", blocking)
+        o.put("blocking", blocking)
         o.put("filteredTouches", filteredTouches)
         o.put("lastFilteredAt", lastFilteredAt)
 
@@ -151,8 +192,10 @@ class TapjackGuard(private val ctx: Context, private val log: SecureLog) {
         o.put("a11yServices", a11y)
         o.put("a11yCount", a11y.length())
 
-        o.put("note", "Touches delivered while another window covers this app are DISCARDED, " +
-            "not acted on — that is the one thing this app blocks rather than reports. " +
+        o.put("note", "Obscured touches are DETECTED and reported by default, not blocked. " +
+            "Hard blocking is available but off unless you turn it on, because discarding every " +
+            "touch while any window overlays this one makes the app unusable when something " +
+            "benign is doing the overlaying. " +
             "Holding the overlay permission is not itself wrongdoing; screen recorders, chat " +
             "bubbles and colour filters all use it legitimately. The filtered-touch count is " +
             "the signal, because that is an overlay actually over this app while you used it.")

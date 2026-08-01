@@ -58,6 +58,22 @@ class MaskerService : Service() {
         var escalationGuard: EscalationGuard? = null
             private set
 
+        /** Cell monitoring is service-owned so a downgrade or area flip that happens while the
+         *  app is backgrounded is still caught and logged. */
+        @Volatile
+        var cellSecurity: CellSecurity? = null
+            private set
+
+        fun ensureCellSecurity(ctx: Context): CellSecurity {
+            cellSecurity?.let { return it }
+            synchronized(this) {
+                cellSecurity?.let { return it }
+                val c = CellSecurity(ctx.applicationContext, SecureLog(ctx.applicationContext))
+                cellSecurity = c
+                return c
+            }
+        }
+
         fun ensureEscalationGuard(ctx: Context): EscalationGuard {
             escalationGuard?.let { return it }
             synchronized(this) {
@@ -191,6 +207,10 @@ class MaskerService : Service() {
                 t.scheduleAtFixedRate(object : java.util.TimerTask() {
                     override fun run() {
                         try { ensureEscalationGuard(this@MaskerService).scan() } catch (_: Throwable) {}
+                        // Cell checks run here too: a forced 4G->2G downgrade or a tracking-area
+                        // flip is most useful to catch while the phone is sitting in a pocket,
+                        // which is exactly when no UI is polling.
+                        try { ensureCellSecurity(this@MaskerService).scan() } catch (_: Throwable) {}
                     }
                 }, 8_000L, 5 * 60_000L)
             }
