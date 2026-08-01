@@ -220,6 +220,16 @@ class MainActivity : ComponentActivity() {
         setContentView(shell)
         keepScreenFriendly()
 
+        // BACK MINIMISES, IT DOES NOT CLOSE. Without this the default back at the root finishes
+        // the Activity — which for a counter-surveillance masker is the worst possible default:
+        // pressing back kills the masking session and the background detection. Back now behaves
+        // like Home (moveTaskToBack), so the app keeps running in the background and the service
+        // lives on. The user stops it deliberately from the transport, never by navigating away.
+        onBackPressedDispatcher.addCallback(this, object :
+            androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() { moveTaskToBack(true) }
+        })
+
         wasMicGranted = isGranted(Manifest.permission.RECORD_AUDIO)
         requestRuntimePermissions() // loads the page itself once this round-trip completes
     }
