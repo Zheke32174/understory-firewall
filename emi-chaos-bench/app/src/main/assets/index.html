@@ -116,6 +116,30 @@
     font-size:11px;padding:9px 14px;border-radius:4px;border:1px solid #2c6f68;opacity:0;transition:opacity .2s;
     pointer-events:none;z-index:99;max-width:90%}
   .toast.on{opacity:.97}
+  .gauge{position:relative;width:100%;max-width:180px;margin:6px auto;aspect-ratio:1/1;border-radius:50%;
+    background:conic-gradient(from 180deg,#2c6f68 0deg,var(--am) calc(var(--gv,0)*1.8deg),var(--lo) calc(var(--gv,0)*1.8deg));
+    display:flex;align-items:center;justify-content:center}
+  .gauge::after{content:"";position:absolute;inset:14%;border-radius:50%;background:linear-gradient(180deg,var(--edge),var(--well));
+    border:1px solid #2c2f2e}
+  .gauge b{position:relative;z-index:1;font-family:var(--disp);font-size:26px;color:var(--ph)}
+  .gauge small{position:absolute;bottom:22%;left:0;right:0;text-align:center;font-size:8px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--soft);z-index:1}
+  #micspec{height:90px;background:#050b0b;border:1px solid #2c2f2e;border-radius:3px}
+  .alertlog{display:flex;flex-direction:column;gap:4px;max-height:220px;overflow-y:auto}
+  .alert{display:flex;gap:7px;align-items:center;padding:6px 8px;border-radius:2px;font-size:10.5px;
+    background:rgba(255,255,255,.4);border:1px solid var(--rule);border-left:3px solid var(--rule)}
+  .alert .t{color:var(--soft);font-size:9px;flex:0 0 auto}
+  .alert .m{flex:1}
+  .alert.sev-1{border-left-color:#c8b23c}
+  .alert.sev-2{border-left-color:var(--am)}
+  .alert.sev-3{border-left-color:var(--go)}
+  .badge{font-size:8px;letter-spacing:.05em;text-transform:uppercase;padding:1px 5px;border-radius:8px;
+    background:var(--bl);color:#fff;flex:0 0 auto}
+  .badge.warn{background:var(--am)}
+  .badge.crit{background:var(--go)}
+  .kv{display:flex;justify-content:space-between;font-size:10.5px;padding:4px 0;border-bottom:1px dashed var(--rule)}
+  .kv:last-child{border-bottom:none}
+  .kv b{color:var(--ink)}
 </style>
 </head>
 <body>
@@ -144,6 +168,7 @@
   <div class="tabs" id="tabs">
     <button class="tab" data-p="sources" aria-selected="true">Sources</button>
     <button class="tab" data-p="sensors">Sensors</button>
+    <button class="tab" data-p="detect">Detect</button>
     <button class="tab" data-p="link">Link</button>
     <button class="tab" data-p="profiles">Profiles</button>
   </div>
@@ -203,6 +228,69 @@
     </div>
   </div>
 
+  <div class="page" id="page-detect">
+    <div class="sect">
+      <div class="head"><span class="t">Mic voice detection</span><span class="tag">local, in-process only</span>
+        <div class="sw" id="micEn" aria-pressed="false"></div></div>
+      <div class="body">
+        <div class="grid">
+          <div class="stat"><small>Speech level</small><b id="micLv">—</b><div class="bar"><i id="micBar"></i></div></div>
+          <div class="stat"><small>VAD</small><b id="micVad">idle</b></div>
+          <div class="stat"><small>Ultrasonic</small><b id="micUs">—</b></div>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button class="chip" data-vad="off" aria-pressed="true">Off</button>
+          <button class="chip" data-vad="autoarm">Auto-arm</button>
+          <button class="chip" data-vad="duck">Duck on speech</button>
+          <button class="chip" data-vad="boost">Boost on speech</button>
+        </div>
+        <div class="muted">getUserMedia audio is analysed in-process (speech-band RMS + zero-crossing) purely to
+          detect <b>presence</b> of speech — raw audio is never recorded, stored or sent anywhere. Feeds the
+          modulation matrix as sensor <b>mic</b>.</div>
+      </div>
+    </div>
+    <div class="sect">
+      <div class="head"><span class="t">Broadband analyzer</span><span class="tag" id="specSrc">mic</span></div>
+      <div class="body">
+        <canvas id="micspec"></canvas>
+        <div class="row"><button class="chip" data-specsrc="mic" aria-pressed="true">Mic</button>
+          <button class="chip" data-specsrc="mesh">Mesh node</button></div>
+        <div class="muted">Full-range spectrum of the mic input, or of a <b>spectrum_report</b> streamed in from a
+          passive RF companion (e.g. an RTL-SDR node on the mesh — see Link tab). Receive-only either way.</div>
+      </div>
+    </div>
+    <div class="sect">
+      <div class="head"><span class="t">RF passive scan</span><span class="tag">Wi-Fi + BLE, read-only</span></div>
+      <div class="body">
+        <div class="row"><button class="btn acc" id="rfScan">Scan Wi-Fi</button>
+          <span class="pill" id="rfState">idle</span></div>
+        <div class="list" id="wifiList" style="margin-top:8px"></div>
+        <div class="muted" id="rfNote">Flags duplicate SSIDs on different BSSIDs, sudden strong new APs, and hidden
+          networks. BLE tracker fingerprinting (AirTag / SmartTag / Tile-style) and spam-flood detection run
+          automatically off the existing BLE scan in the Link tab and report here too.</div>
+      </div>
+    </div>
+    <div class="sect">
+      <div class="head"><span class="t">Anomaly score</span><span class="tag">sensor fusion</span></div>
+      <div class="body">
+        <div class="gauge" id="anomGauge" style="--gv:0"><b id="anomVal">0</b><small>0-100</small></div>
+        <div class="grid">
+          <div class="stat"><small>Thermal</small><b id="anomTherm">—</b></div>
+          <div class="stat"><small>Cell gen</small><b id="anomCell">—</b></div>
+          <div class="stat"><small>Mag Δ</small><b id="anomMag">—</b></div>
+          <div class="stat"><small>Motion</small><b id="anomMotion">—</b></div>
+        </div>
+        <div class="muted">Fuses thermal delta, cell-generation downgrade/isolation, magnetometer deviation from
+          its own rolling baseline, gyro/motion variance, BLE tracker/spam flags and the ultrasonic-demodulation
+          check above into one heuristic score. It is a hint to go look closer, not a certified detector.</div>
+      </div>
+    </div>
+    <div class="sect">
+      <div class="head"><span class="t">Alert log</span><span class="tag" id="alertCount">0</span></div>
+      <div class="body"><div class="alertlog" id="alertLog"><div class="muted">No alerts yet.</div></div></div>
+    </div>
+  </div>
+
   <div class="page" id="page-link">
     <div class="sect">
       <div class="head"><span class="t">Bluetooth LE accessories</span><span class="tag" id="blesrc">—</span></div>
@@ -231,6 +319,59 @@
       <div class="body"><div class="grid" id="radioGrid"></div>
         <div class="muted" id="radioNote">Network type and cell signal, where the platform exposes them, become
           another entropy source and can auto-select a profile.</div></div>
+    </div>
+    <div class="sect">
+      <div class="head"><span class="t">Mesh nodes</span><span class="tag" id="meshCount">0 nodes</span></div>
+      <div class="body">
+        <div class="list" id="meshList"><div class="muted">No mesh nodes reporting yet. Connect the Wi-Fi companion
+          above, or run the reference agent (see mesh-node/ in the repo) on a laptop / OpenWRT router so it can
+          contribute Wi-Fi survey, thermal or passive-RF data.</div></div>
+        <div class="muted">Any node that speaks the mesh's small JSON protocol counts: another phone running this
+          app, an OpenWRT router (client list, thermal, Wi-Fi survey via <code>iwinfo</code>), or a laptop running
+          a passive accessory (RTL-SDR spectrum, Flipper BLE read). All receive-only — see accessory kinds below.</div>
+      </div>
+    </div>
+    <div class="sect">
+      <div class="head"><span class="t">Accessory kinds</span><span class="tag">reference</span></div>
+      <div class="body" id="accKindBody">
+        <div class="muted">A companion node identifies what it is via <code>"kind"</code> on its
+          <code>sensor_report</code>/<code>spectrum_report</code> message. Recognised kinds:</div>
+      </div>
+    </div>
+    <div class="sect">
+      <div class="head"><span class="t">Rayhunter relay</span><span class="tag">IMSI-catcher detector</span></div>
+      <div class="body">
+        <div class="row"><div class="cell full"><small>Rayhunter device address</small>
+          <input id="rhUrl" type="text" placeholder="http://192.168.1.1:8080"></div></div>
+        <div class="row"><button class="btn" id="rhOpen">Open Rayhunter UI</button>
+          <span class="pill" id="rhState">no alerts yet</span></div>
+        <div class="muted"><a href="https://github.com/EFForg/rayhunter" style="color:inherit">EFF's Rayhunter</a>
+          is the real, maintained IMSI-catcher detector — this app does not reimplement its detection, and
+          Rayhunter's device-side web UI has no documented JSON API to poll directly. Point the reference relay
+          script (<code>mesh-node/rayhunter-relay.py</code>) at your Rayhunter's address; it forwards Rayhunter's
+          alerts onto this mesh as <code>rayhunter_alert</code> messages, which show up in the alert log
+          (Detect tab) with Rayhunter's own green/yellow/orange/red severity.</div>
+      </div>
+    </div>
+    <div class="sect">
+      <div class="head"><span class="t">Shizuku diagnostics</span><span class="tag" id="shizStatus">checking…</span></div>
+      <div class="body">
+        <div class="row"><button class="btn" id="shizReq">Request permission</button></div>
+        <div class="row">
+          <select id="shizKey" class="cell full">
+            <option value="telephony_registry">Telephony registry (dumpsys)</option>
+            <option value="connectivity">Connectivity (dumpsys)</option>
+            <option value="props">System properties</option>
+            <option value="diag_probe">/dev/diag presence probe</option>
+          </select>
+          <button class="btn" id="shizRun">Run</button>
+        </div>
+        <textarea id="shizOut" placeholder="Diagnostic output appears here." readonly></textarea>
+        <div class="muted">Entirely optional. Only works if you've separately installed and set up
+          <a href="https://shizuku.rikka.app" style="color:inherit">Shizuku</a> (adb-pairing or root) and grant
+          this app permission through it. Every command here is a fixed, read-only allowlist — see
+          <code>ShizukuUserService.kt</code> — no free-form exec, no write path.</div>
+      </div>
     </div>
   </div>
 
@@ -295,6 +436,14 @@ const MOD=[
    R('lv','Output',0,1,.01,'pct',.22,.12,.5), R('en','Entropy',0,1,.01,'pct',.7),
    R('wd','Width',0,1,.01,'pct',.4), R('drive','Drive',.5,7,.05,'x',2.6,1.5,5),
    R('dr','Self-drift',0,8,.1,'/s',.8,0,5), R('dd','Drift depth',0,1,.01,'pct',.3) ]},
+ {id:'boost',title:'Boost + baseband channel',tog:'e_boost',ctrls:[
+   R('boost','Boost',1,1.5,.01,'x',1,1,1.5),
+   R('bbC','Baseband ch.',80,18000,20,'hz',3000,200,12000),
+   R('bbW','Channel width',.3,8,.1,'q',2,1,6), R('bbAmt','Channel amt',0,1,.01,'pct',0,0,.8) ]},
+ {id:'dsp',title:'Output DSP · EQ / comp / space',tog:'e_dsp',ctrls:[
+   R('eqLo','Low shelf',-12,12,.5,'db',0), R('eqMid','Mid peak',-12,12,.5,'db',0),
+   R('eqHi','High shelf',-12,12,.5,'db',0), R('compTh','Comp thresh',-40,0,1,'db',-18),
+   R('compR','Comp ratio',1,20,.5,'x',4,1,12), R('spMix','Space mix',0,1,.01,'pct',0,0,.6) ]},
  {id:'msh',title:'Auto-masher',tog:'e_ms',ctrls:[
    R('mJit','Jitter',0,1,.01,'pct',.30),
    R('mFum','Fumbles',0,.4,.01,'pct',.04), R('mStr','Strength',0,1,.01,'pct',.55) ]},
@@ -402,6 +551,7 @@ function fmt(u,v){
   if(u==='n')return Math.round(v)+'';
   if(u==='q')return 'Q'+Math.round(v);
   if(u==='chz')return Math.round(chz(v))+'/s';
+  if(u==='db')return (v>=0?'+':'')+v.toFixed(1)+'dB';
   return (''+v);
 }
 function chz(x){return Math.pow(10,lerp(0.7,3.6,x));} // rate slider -> Hz
@@ -437,7 +587,7 @@ function build(){
         inp.addEventListener('input',e=>{P[c.k]=+e.target.value;disp.textContent=fmt(c.unit,P[c.k]);});
         cell.appendChild(sm);cell.appendChild(inp);
         CTRL[c.k].el=inp;CTRL[c.k].disp=disp;
-        SECT[m.id].push(c.k); if(m.id!=='msh'&&m.id!=='vf')MASH.push(c.k);
+        SECT[m.id].push(c.k); if(m.id!=='msh'&&m.id!=='vf'&&m.id!=='boost'&&m.id!=='dsp')MASH.push(c.k);
       }else{
         sm.textContent=c.lab; cell.appendChild(sm);
         const sel=document.createElement('select');
@@ -549,11 +699,13 @@ function start(){
   for(let i=0;i<12;i++){spF[i]=rnd(P.spLo,P.spHi);spPan[i]=rnd(-1,1);}
   for(let i=0;i<6;i++){usF[i]=rnd(P.usLo,P.usHi);}
   node=ctx.createScriptProcessor(2048,0,2);
-  node.onaudioprocess=proc; node.connect(ctx.destination);
+  node.onaudioprocess=proc;
+  const dspTail=Dsp.build(ctx,node);
+  dspTail.connect(ctx.destination);
   try{
     if(ctx.createMediaStreamDestination){
       mediaDest=ctx.createMediaStreamDestination(); mediaGain=ctx.createGain();
-      mediaGain.gain.value=0.000001; node.connect(mediaGain); mediaGain.connect(mediaDest);
+      mediaGain.gain.value=0.000001; dspTail.connect(mediaGain); mediaGain.connect(mediaDest);
       if(!mediaEl){mediaEl=document.createElement('audio');mediaEl.setAttribute('playsinline','');mediaEl.preload='auto';}
       mediaEl.srcObject=mediaDest.stream; mediaEl.play().catch(()=>{});
     }
@@ -580,6 +732,58 @@ function stop(){
   Accessories.broadcast({type:'state',running:false});
 }
 function perfNow(){ return (typeof performance!=='undefined'&&performance.now)?performance.now():Date.now(); }
+
+/* ============ OUTPUT DSP RACK (JamesDSP-style EQ/comp/space + boost) ============
+   Real Web Audio nodes downstream of the synthesis engine: 3-band EQ, a movable
+   "baseband channel" peaking filter, a compressor, a short synthetic convolution
+   "space", a boost stage (up to 1.5x) and a fixed brickwall limiter so boost never
+   just clips destructively. Everything stays neutral/bypassed at default param
+   values, so it's always wired rather than dynamically reconnected. */
+const Dsp=(function(){
+  let lo=null,mid=null,hi=null,bb=null,comp=null,dryG=null,wetG=null,conv=null,mixOut=null,boostG=null,lim=null;
+  let builtFor=null;
+  function synthIR(actx,seconds,decay){
+    const len=Math.max(1,Math.round(actx.sampleRate*seconds));
+    const buf=actx.createBuffer(2,len,actx.sampleRate);
+    for(let ch=0;ch<2;ch++){ const d=buf.getChannelData(ch);
+      for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,decay); }
+    return buf;
+  }
+  function build(actx,input){
+    // The chain (filters/compressor/convolver) is built once per AudioContext and
+    // reused across Start/Stop cycles; only the fresh ScriptProcessorNode input
+    // needs reconnecting each time — it's a new node every start().
+    if(builtFor===actx && lo){ try{ input.connect(lo); }catch(e){} return lim; }
+    lo=actx.createBiquadFilter(); lo.type='lowshelf'; lo.frequency.value=250;
+    mid=actx.createBiquadFilter(); mid.type='peaking'; mid.frequency.value=1500; mid.Q.value=0.9;
+    hi=actx.createBiquadFilter(); hi.type='highshelf'; hi.frequency.value=6000;
+    bb=actx.createBiquadFilter(); bb.type='peaking'; bb.frequency.value=3000; bb.Q.value=2; bb.gain.value=0;
+    comp=actx.createDynamicsCompressor(); comp.threshold.value=-18; comp.ratio.value=4; comp.attack.value=0.008; comp.release.value=0.25;
+    dryG=actx.createGain(); wetG=actx.createGain(); wetG.gain.value=0;
+    conv=actx.createConvolver(); try{ conv.normalize=true; conv.buffer=synthIR(actx,0.35,2.2); }catch(e){}
+    mixOut=actx.createGain();
+    boostG=actx.createGain(); boostG.gain.value=1;
+    lim=actx.createDynamicsCompressor(); // fixed brickwall safety limiter, always active
+    lim.threshold.value=-3; lim.knee.value=0; lim.ratio.value=20; lim.attack.value=0.001; lim.release.value=0.05;
+    input.connect(lo); lo.connect(mid); mid.connect(hi); hi.connect(bb); bb.connect(comp);
+    comp.connect(dryG); comp.connect(conv); conv.connect(wetG);
+    dryG.connect(mixOut); wetG.connect(mixOut);
+    mixOut.connect(boostG); boostG.connect(lim);
+    builtFor=actx;
+    return lim;
+  }
+  function update(){
+    if(!lo) return;
+    const dspOn=!!P.e_dsp, boostOn=!!P.e_boost;
+    lo.gain.value=dspOn?P.eqLo:0; mid.gain.value=dspOn?P.eqMid:0; hi.gain.value=dspOn?P.eqHi:0;
+    comp.threshold.value=dspOn?P.compTh:0; comp.ratio.value=dspOn?P.compR:1;
+    const wet=dspOn?cl(P.spMix,0,1):0; wetG.gain.value=wet; dryG.gain.value=1-wet;
+    bb.gain.value=boostOn?cl(P.bbAmt,0,1)*18:0; bb.frequency.value=cl(P.bbC,20,20000); bb.Q.value=cl(P.bbW,0.3,12);
+    boostG.gain.value=boostOn?cl(P.boost,1,1.5):1;
+  }
+  function teardown(){ lo=mid=hi=bb=comp=dryG=wetG=conv=mixOut=boostG=lim=null; builtFor=null; }
+  return { build, update, teardown };
+})();
 
 /* ---- modulation snapshot/restore around a buffer ---- */
 let clipHot=0;
@@ -790,7 +994,7 @@ function schedule(now){
   } else { mNext=now+40; }
   if(P.dr>0 && P.dd>0){ if(now>=dNext){ smoothDrift(); dNext=now+1000/P.dr; } }
   else dNext=now+300;
-  Sensors.tick(now); Scene.tick(now);
+  Sensors.tick(now); Scene.tick(now); Dsp.update();
 }
 function smoothDrift(){ const d=P.dd;
   MASH.forEach(k=>{ if(Math.random()<.4){ const c=CTRL[k].def, span=(c.rmax-c.rmin);
@@ -799,7 +1003,7 @@ function smoothDrift(){ const d=P.dd;
 
 /* ============ SENSORS ============ */
 const Sensors=(function(){
-  const raw={gx:0,gy:0,gz:0,ox:0,oy:0,oz:0,ax:0,ay:0,az:0,mag:0,magS:0,spd:0,hdg:0,alt:0,net:0,rtt:0,shake:0};
+  const raw={gx:0,gy:0,gz:0,ox:0,oy:0,oz:0,ax:0,ay:0,az:0,mag:0,magS:0,spd:0,hdg:0,alt:0,net:0,rtt:0,shake:0,mic:0};
   const norm={};
   let enabled=false, geoW=null, lastA=0;
   function n(v){ return cl(v,-1,1); }
@@ -853,7 +1057,8 @@ const Sensors=(function(){
 
 const SENSRC=[['gx','gyro X'],['gy','gyro Y'],['gz','gyro Z'],['ox','tilt α'],['oy','tilt β'],['oz','tilt γ'],
   ['ax','accel X'],['ay','accel Y'],['az','accel Z'],['mag','heading'],['magS','mag lock'],
-  ['spd','GPS speed'],['hdg','GPS course'],['alt','altitude'],['net','net rate'],['rtt','net RTT'],['shake','shake']];
+  ['spd','GPS speed'],['hdg','GPS course'],['alt','altitude'],['net','net rate'],['rtt','net RTT'],['shake','shake'],
+  ['mic','mic level']];
 
 /* ============ MODULATION MATRIX ============ */
 const MODMATRIX=[];
@@ -895,6 +1100,8 @@ function haptic(k){ Haptics.fire(k); }
 /* ============ ACCESSORIES (BLE + WiFi companion) ============ */
 const Accessories=(function(){
   const devices=[]; let ws=null, wsUrl=''; let bleSrc='—';
+  const roster=new Map(); // mesh node_id -> {kind,lastSeen,lastAnomaly}
+  let lastSpectrum=null; // {node_id, bins:[...], sampleRate}
   function render(){ const list=$('bleList'); if(!devices.length){ list.innerHTML='<div class="muted">No devices yet. Scan to discover companion sensor pucks, remote triggers and beacons.</div>'; $('blamp').classList.remove('on'); return; }
     list.innerHTML=''; let anyLink=false;
     devices.forEach((d,i)=>{ if(d.connected)anyLink=true;
@@ -905,7 +1112,9 @@ const Accessories=(function(){
       role.onclick=()=>{ d.role=d.role==='entropy'?'trigger':d.role==='trigger'?'telemetry':'entropy'; render(); };
       const con=document.createElement('button');con.className='btn';con.style.padding='5px 8px';con.textContent=d.connected?'Drop':'Link';
       con.onclick=()=>{ d.connected=!d.connected; if(d.connected&&d.role==='entropy')linkEntropy(d); render(); toast((d.connected?'Linked ':'Dropped ')+(d.name||'device')); };
-      it.append(nm,rssi,role,con); list.appendChild(it);
+      it.append(nm,rssi,role,con);
+      if(d.tag){ const b=document.createElement('span'); b.className='badge warn'; b.textContent=d.tag; it.appendChild(b); }
+      list.appendChild(it);
     });
     $('blamp').classList.toggle('on',anyLink);
   }
@@ -925,25 +1134,55 @@ const Accessories=(function(){
       push({name:names[(Math.random()*names.length)|0],rssi:-(40+(Math.random()*50|0)),role:'entropy',connected:false,id:'sim'+Math.random()}); added++; },400);
     toast('No BLE stack — simulating discovery');
   }
-  function push(d){ if(devices.find(x=>x.id===d.id))return; devices.push(d); render(); }
-  function nativeReport(json){ try{ const arr=JSON.parse(json); arr.forEach(d=>push({name:d.name,rssi:d.rssi,role:'entropy',connected:false,id:d.id||d.address})); }catch(e){} }
-  // WiFi companion
+  function push(d){ try{ d.tag=RF.classifyBle(d); }catch(e){}
+    if(devices.find(x=>x.id===d.id)) { render(); return; } devices.push(d); render(); }
+  function nativeReport(json){ try{ const arr=JSON.parse(json);
+      arr.forEach(d=>push({name:d.name,rssi:d.rssi,role:'entropy',connected:false,id:d.id||d.address,address:d.address,mfg:d.mfg,svcUuids:d.svcUuids})); }catch(e){} }
+  // WiFi companion / mesh uplink — single WS connection speaking the small mesh protocol:
+  //   {type:'sensor_report', node_id, kind, caps:[...], sensors:{...-1..1...}}
+  //   {type:'anomaly', node_id, sev, msg}
+  //   {type:'rayhunter_alert', node_id, level:'green'|'yellow'|'orange'|'red', msg}
+  //   {type:'spectrum_report', node_id, bins:[0..1,...], sampleRate}
+  //   {cmd:'start'|'stop'}, {profile:'Name'}  — unchanged, back-compat
   function wsConnect(url){ wsUrl=url; setState('connecting…');
     if(!('WebSocket' in window)){ setState('unsupported'); toast('WebSocket unsupported'); return; }
     try{ ws=new WebSocket(url); }catch(e){ setState('bad url'); return; }
     ws.onopen=()=>{ setState('linked'); $('blamp').classList.add('on'); toast('Companion linked'); broadcast({type:'hello',app:'emi'}); };
     ws.onclose=()=>{ setState('closed'); };
     ws.onerror=()=>{ setState('error'); };
-    ws.onmessage=ev=>{ try{ const m=JSON.parse(ev.data);
-      if(m.sensors) Sensors.feed(m.sensors);
-      if(m.cmd==='start'&&!running)start(); if(m.cmd==='stop'&&running)stop();
-      if(m.profile)Profiles.load(m.profile);
-    }catch(e){} }; }
+    ws.onmessage=ev=>{ try{ const m=JSON.parse(ev.data); handleMeshMessage(m); }catch(e){} }; }
+  function handleMeshMessage(m){
+    if(m.sensors) Sensors.feed(m.sensors);
+    if(m.cmd==='start'&&!running)start(); if(m.cmd==='stop'&&running)stop();
+    if(m.profile)Profiles.load(m.profile);
+    if(m.node_id){ const rec=roster.get(m.node_id)||{}; rec.kind=m.kind||rec.kind||'generic_sensor'; rec.lastSeen=Date.now();
+      if(m.type==='anomaly'||m.type==='rayhunter_alert') rec.lastAnomaly=m.msg;
+      roster.set(m.node_id,rec); meshRender(); }
+    if(m.type==='anomaly'){ Alerts.push(cl(m.sev||1,1,3),`[${m.node_id||'mesh'}] ${m.msg||'anomaly reported'}`,'mesh'); }
+    if(m.type==='rayhunter_alert'){
+      const sevMap={green:0,yellow:1,orange:2,red:3}; const sev=sevMap[m.level]!=null?sevMap[m.level]:2;
+      if(sev>0) Alerts.push(Math.max(1,sev),`Rayhunter (${m.node_id||'device'}): ${m.msg||m.level}`,'rayhunter');
+      const rh=$('rhState'); if(rh)rh.textContent=(m.level||'alert')+' · '+new Date().toLocaleTimeString();
+    }
+    if(m.type==='spectrum_report'&&Array.isArray(m.bins)){ lastSpectrum={node_id:m.node_id,bins:m.bins,sampleRate:m.sampleRate||48000}; }
+  }
+  function meshRender(){ const el=$('meshList'); if(!el)return;
+    const cnt=$('meshCount'); if(cnt)cnt.textContent=roster.size+' node'+(roster.size===1?'':'s');
+    if(!roster.size){ el.innerHTML='<div class="muted">No mesh nodes reporting yet. Connect the Wi-Fi companion above, or run the reference agent (see mesh-node/ in the repo) on a laptop / OpenWRT router so it can contribute Wi-Fi survey, thermal or passive-RF data.</div>'; return; }
+    el.innerHTML='';
+    roster.forEach((rec,id)=>{ const it=document.createElement('div'); it.className='item';
+      const nm=document.createElement('div'); nm.className='n'; nm.textContent=id+' · '+rec.kind;
+      const age=document.createElement('span'); age.className='rssi'; age.textContent=Math.round((Date.now()-rec.lastSeen)/1000)+'s ago';
+      it.append(nm,age);
+      if(rec.lastAnomaly){ const b=document.createElement('span'); b.className='badge warn'; b.textContent='alert'; it.appendChild(b); }
+      el.appendChild(it); });
+  }
   function wsDisconnect(){ if(ws){try{ws.close();}catch(e){}} ws=null; setState('idle'); }
   function setState(s){ $('wsState').textContent=s; }
   function broadcast(obj){ if(ws&&ws.readyState===1){try{ws.send(JSON.stringify(obj));}catch(e){}} }
   return { scan, stop(){ if(window.EMIBridge&&EMIBridge.bleStop)try{EMIBridge.bleStop();}catch(e){} },
-    render, nativeReport, wsConnect, wsDisconnect, broadcast,
+    render, nativeReport, wsConnect, wsDisconnect, broadcast, meshRender,
+    get lastSpectrum(){return lastSpectrum;},
     trigger(kind){ devices.filter(d=>d.connected&&d.role==='trigger').forEach(()=>{}); } };
 })();
 window.__emiBleReport=function(json){ Accessories.nativeReport(json); };
@@ -1024,6 +1263,280 @@ const Scene=(function(){
   return { tick, geoCheck, set enabled(v){en=v; next=perfNow()+period;}, get enabled(){return en;}, set period(ms){period=ms;} };
 })();
 
+/* ============ ALERT LOG (shared by RF / Anomaly / mesh ingestion) ============ */
+const Alerts=(function(){
+  const log=[]; const MAXLOG=60;
+  function push(sev,msg,badge){ // sev: 1=info, 2=warn, 3=crit — heuristic, not certified detection
+    log.unshift({t:Date.now(),sev,msg,badge}); if(log.length>MAXLOG)log.length=MAXLOG;
+    render(); if(sev>=2) haptic('clip');
+  }
+  function render(){
+    const el=$('alertLog'); if(!el)return;
+    const cnt=$('alertCount'); if(cnt)cnt.textContent=String(log.length);
+    if(!log.length){ el.innerHTML='<div class="muted">No alerts yet.</div>'; return; }
+    el.innerHTML='';
+    log.slice(0,40).forEach(a=>{
+      const d=document.createElement('div'); d.className='alert sev-'+a.sev;
+      const t=document.createElement('span'); t.className='t';
+      try{ t.textContent=new Date(a.t).toLocaleTimeString(); }catch(e){ t.textContent=''; }
+      const m=document.createElement('span'); m.className='m'; m.textContent=a.msg;
+      d.append(t,m);
+      if(a.badge){ const b=document.createElement('span'); b.className='badge'+(a.sev>=3?' crit':a.sev>=2?' warn':''); b.textContent=a.badge; d.appendChild(b); }
+      el.appendChild(d);
+    });
+  }
+  return { push, render };
+})();
+
+/* ============ MIC VOICE DETECTION (VAD + reactive masking + ultrasonic-demod check) ============
+   getUserMedia -> AnalyserNode, analysed entirely in-process. Raw audio is never recorded,
+   buffered to disk, or sent anywhere — only two derived numbers (speech-band level, an
+   ultrasonic-band level) ever leave this module, as a sensor value and an alert string. */
+const Mic=(function(){
+  let actx=null,stream=null,src=null,an=null,freqBuf=null,enabled=false,mode='off';
+  let vadFloor=0.02, vadHold=0, vadActive=false, ultraFlag=false, ultraHist=[], savedLv=null;
+  const SPEECH_LO=250, SPEECH_HI=3500, ULTRA_LO=18000;
+  async function enable(){
+    if(enabled) return;
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ toast('getUserMedia unavailable'); return; }
+    try{ stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}}); }
+    catch(e){ toast('Mic permission denied'); return; }
+    try{
+      actx=ctx||new (window.AudioContext||window.webkitAudioContext)();
+      src=actx.createMediaStreamSource(stream);
+      an=actx.createAnalyser(); an.fftSize=2048; an.smoothingTimeConstant=0.4;
+      src.connect(an); // analysis tap only — never connected onward to any destination
+      freqBuf=new Uint8Array(an.frequencyBinCount);
+    }catch(e){ toast('Mic analyser failed'); disable(); return; }
+    enabled=true; $('micEn').setAttribute('aria-pressed','true'); toast('Mic VAD on — local analysis only');
+  }
+  function disable(){
+    enabled=false;
+    if(stream){ try{stream.getTracks().forEach(t=>t.stop());}catch(e){} } stream=null;
+    if(src){ try{src.disconnect();}catch(e){} } src=null; an=null;
+    const e1=$('micEn'); if(e1)e1.setAttribute('aria-pressed','false');
+    const lv=$('micLv'); if(lv)lv.textContent='—';
+    const bar=$('micBar'); if(bar)bar.style.width='0%';
+    const vd=$('micVad'); if(vd)vd.textContent='idle';
+    const us=$('micUs'); if(us)us.textContent='—';
+    if(savedLv!=null){ setPval('lv',savedLv); flushDirty(); savedLv=null; }
+  }
+  function tick(){
+    if(!enabled||!an) return;
+    an.getByteFrequencyData(freqBuf);
+    const binHz=actx.sampleRate/an.fftSize;
+    const lo=Math.max(0,Math.floor(SPEECH_LO/binHz)), hi=Math.min(freqBuf.length-1,Math.ceil(SPEECH_HI/binHz));
+    let sum=0,n=0; for(let i=lo;i<=hi;i++){sum+=freqBuf[i];n++;}
+    const level=n?(sum/n)/255:0;
+    vadFloor=vadFloor*0.98+level*0.006;
+    const above=level>vadFloor*1.8+0.04;
+    vadHold=above?Math.min(20,vadHold+2):Math.max(0,vadHold-1);
+    const nowActive=vadHold>4;
+    vadActive=nowActive;
+    Sensors.feed({mic:level});
+    const lvEl=$('micLv'); if(lvEl)lvEl.textContent=(level*100).toFixed(0)+'%';
+    const bar=$('micBar'); if(bar)bar.style.width=(cl(level,0,1)*100)+'%';
+    const vd=$('micVad'); if(vd)vd.textContent=vadActive?'speech':'quiet';
+    // ultrasonic demodulation-attack heuristic (DolphinAttack/SurfingAttack-style): sustained
+    // energy above ~18kHz whose envelope wobbles in the human speech-modulation range is the
+    // giveaway of an inaudible carrier demodulating into audible commands in the mic circuit.
+    const usLoBin=Math.min(freqBuf.length-1,Math.floor(ULTRA_LO/binHz));
+    let usum=0,un=0; for(let i=usLoBin;i<freqBuf.length;i++){usum+=freqBuf[i];un++;}
+    const usLevel=un?(usum/un)/255:0;
+    ultraHist.push(usLevel); if(ultraHist.length>40)ultraHist.shift();
+    if(ultraHist.length>=20){
+      const mean=ultraHist.reduce((a,b)=>a+b,0)/ultraHist.length;
+      let vr=0; ultraHist.forEach(v=>vr+=(v-mean)*(v-mean)); vr/=ultraHist.length;
+      const modulated=mean>0.12 && Math.sqrt(vr)>mean*0.35;
+      const usEl=$('micUs');
+      if(modulated && !ultraFlag){ ultraFlag=true; if(usEl)usEl.textContent='⚠ possible';
+        Alerts.push(2,'Ultrasonic band (≥18kHz) shows sustained, modulated energy — possible inaudible-command injection (DolphinAttack/SurfingAttack-style). Heuristic only, verify manually.','sonic-demod'); }
+      else if(!modulated && ultraFlag){ ultraFlag=false; }
+      if(!ultraFlag && usEl)usEl.textContent=(usLevel*100).toFixed(0)+'%';
+    }
+    reactive(level,vadActive);
+  }
+  function reactive(level,active){
+    if(mode==='off') return;
+    if(mode==='autoarm'){ if(active&&!running){ toast('Speech detected — auto-arming masker'); start(); } return; }
+    if(mode==='duck'){
+      if(active){ if(savedLv==null)savedLv=P.lv; setPval('lv',cl(savedLv*0.6,0,1)); flushDirty(); }
+      else if(savedLv!=null){ setPval('lv',savedLv); flushDirty(); savedLv=null; }
+      return; }
+    if(mode==='boost'){
+      if(active){ if(savedLv==null)savedLv=P.lv; setPval('lv',cl(savedLv*1.3,0,1)); flushDirty(); }
+      else if(savedLv!=null){ setPval('lv',savedLv); flushDirty(); savedLv=null; }
+    }
+  }
+  function setMode(m){ mode=m; }
+  function spectrumData(){ return an?{buf:freqBuf,sampleRate:actx.sampleRate,fftSize:an.fftSize}:null; }
+  return { enable, disable, tick, setMode, get enabled(){return enabled;}, get vadActive(){return vadActive;}, spectrumData };
+})();
+
+/* ============ RF PASSIVE SCAN (Wi-Fi + BLE anomaly heuristics) ============
+   Everything here reads accessory/radio state that Android already exposes (scan results,
+   BLE advertisement bytes) — nothing here actively probes beyond a normal platform scan,
+   and nothing transmits. */
+const RF=(function(){
+  let lastWifi=[], seenBSSID=new Map(); // bssid -> {ssid,firstSeen,lastLevel}
+  const bleAddrWindow=[]; // {addr,t} for spam-flood rate detection
+  const trackerSeen=new Map(); // mfgDataHash -> {firstSeen,addrs:Set}
+  function wifiRender(list){
+    const el=$('wifiList'); if(!el)return;
+    if(!list.length){ el.innerHTML='<div class="muted">No scan yet.</div>'; return; }
+    el.innerHTML='';
+    list.forEach(r=>{
+      const it=document.createElement('div'); it.className='item';
+      const nm=document.createElement('div'); nm.className='n'; nm.textContent=r.ssid||'(hidden)';
+      const lv=document.createElement('span'); lv.className='rssi'; lv.textContent=r.level+'dBm';
+      it.append(nm,lv);
+      if(r.flag){ const b=document.createElement('span'); b.className='badge warn'; b.textContent=r.flag; it.appendChild(b); }
+      el.appendChild(it);
+    });
+  }
+  function wifiHeuristics(list){
+    const bySsid=new Map();
+    list.forEach(r=>{ if(!r.ssid)return; if(!bySsid.has(r.ssid))bySsid.set(r.ssid,[]); bySsid.get(r.ssid).push(r); });
+    let hidden=0;
+    list.forEach(r=>{
+      r.flag=null;
+      if(!r.ssid){ hidden++; return; }
+      const grp=bySsid.get(r.ssid);
+      if(grp.length>1){
+        const prefixes=new Set(grp.map(g=>(g.bssid||'').slice(0,8).toLowerCase()));
+        if(prefixes.size>1){ r.flag='dup-vendor'; }
+      }
+      const prev=seenBSSID.get(r.bssid);
+      if(!prev){ seenBSSID.set(r.bssid,{ssid:r.ssid,first:Date.now(),level:r.level});
+        if(r.level>-50 && seenBSSID.size>3){ r.flag=r.flag||'new-strong'; } }
+      else if(prev.ssid!==r.ssid){ r.flag='ssid-changed'; }
+    });
+    list.forEach(r=>{ if(r.flag==='dup-vendor') Alerts.push(2,`Wi-Fi SSID "${r.ssid}" broadcast from multiple vendor MAC prefixes — possible rogue/evil-twin AP.`,'rogue-ap');
+      if(r.flag==='ssid-changed') Alerts.push(2,`BSSID ${r.bssid} changed which SSID it broadcasts — possible spoofed AP.`,'rogue-ap'); });
+    if(hidden>3) Alerts.push(1,`${hidden} hidden-SSID networks visible nearby.`,'wifi');
+  }
+  async function wifiScanNow(){
+    $('rfState').textContent='scanning…';
+    try{
+      if(window.EMIBridge&&EMIBridge.wifiScan){
+        const arr=JSON.parse(EMIBridge.wifiScan()||'[]');
+        lastWifi=arr.map(r=>({ssid:r.ssid,bssid:r.bssid,level:r.level,freq:r.freq,caps:r.caps}));
+      } else { $('rfState').textContent='no native scan (browser)'; lastWifi=[]; }
+    }catch(e){ lastWifi=[]; }
+    wifiHeuristics(lastWifi); wifiRender(lastWifi);
+    $('rfState').textContent=lastWifi.length?lastWifi.length+' networks':'idle';
+  }
+  // BLE tracker fingerprinting — extends the existing Accessories BLE scan, called from there.
+  const TRACKER_MFG={76:'Apple (Find My?)',117:'Samsung (SmartTag?)'};
+  function classifyBle(d){
+    let tag=null;
+    if(d.mfg){
+      for(const id in d.mfg){
+        const idN=+id, hex=d.mfg[id];
+        if(idN===76 && hex && hex.slice(0,2)==='12'){ tag='AirTag/Find-My'; }
+        else if(idN===117){ tag='SmartTag'; }
+        else if(TRACKER_MFG[idN] && !tag){ tag=TRACKER_MFG[idN]; }
+      }
+      const hash=Object.keys(d.mfg).sort().map(k=>d.mfg[k]).join('|');
+      if(hash){
+        if(!trackerSeen.has(hash)) trackerSeen.set(hash,{first:Date.now(),addrs:new Set()});
+        const rec=trackerSeen.get(hash); rec.addrs.add(d.address);
+        if(rec.addrs.size>=3 && !rec.flagged){ rec.flagged=true; tag=tag||'rotating beacon';
+          Alerts.push(2,`Same BLE advertisement data seen under ${rec.addrs.size} rotating MAC addresses — classic tracker MAC-rotation pattern (AirTag/Find-My-style). Could be following you or could be your own device.`,'tracker'); }
+      }
+    }
+    // spam-flood: many unique addresses per short window
+    const now=Date.now(); bleAddrWindow.push({a:d.address,t:now});
+    while(bleAddrWindow.length && now-bleAddrWindow[0].t>5000) bleAddrWindow.shift();
+    const uniq=new Set(bleAddrWindow.map(x=>x.a)).size;
+    if(uniq>40 && !RF._spamFlagged){ RF._spamFlagged=true; setTimeout(()=>RF._spamFlagged=false,15000);
+      Alerts.push(3,`${uniq} unique BLE addresses seen in 5s — possible BLE spam-flood / advertisement flood attack.`,'ble-spam'); }
+    return tag;
+  }
+  const ACCESSORY_KINDS=[
+    ['generic_sensor','Any node — motion/heading/GPS/network as sensor_report'],
+    ['wifi_survey','OpenWRT/laptop Wi-Fi survey (iwinfo scan) as sensor_report'],
+    ['thermal','OpenWRT/laptop thermal zones as sensor_report'],
+    ['rtl_sdr_spectrum','Passive RTL-SDR broadband receive as spectrum_report'],
+    ['flipper_ble_scan','Flipper Zero in BLE-scan (receive-only) mode as sensor_report'],
+    ['rayhunter_relay','Relay of a Rayhunter device\'s own alerts as rayhunter_alert']
+  ];
+  function renderAccKinds(){
+    const el=$('accKindBody'); if(!el)return;
+    const list=document.createElement('div'); list.className='list'; list.style.marginTop='6px';
+    ACCESSORY_KINDS.forEach(([k,desc])=>{ const it=document.createElement('div'); it.className='kv';
+      const b=document.createElement('b'); b.textContent=k; const s=document.createElement('span'); s.style.color='var(--soft)'; s.style.fontSize='9.5px'; s.textContent=desc;
+      it.append(b,s); list.appendChild(it); });
+    el.appendChild(list);
+  }
+  return { wifiScanNow, classifyBle, renderAccKinds, get ACCESSORY_KINDS(){return ACCESSORY_KINDS;} };
+})();
+
+/* ============ SENSOR-FUSION ANOMALY ENGINE (+ thermal, + cell/IMSI-catcher heuristics) ============
+   A heuristic score, not a certified detector — it's a hint to go look closer. Weighs thermal
+   delta, cell-generation downgrade/isolation, magnetometer deviation from its own rolling
+   baseline, motion/gyro variance, BLE tracker/spam flags and the ultrasonic-demod check. */
+const Anomaly=(function(){
+  let score=0, magBaseline=null, magEma=0, lastBatteryC=null, lastThermalT=0, armed=true;
+  let motionEma=0;
+  function pollThermalCell(){
+    let thermS=0, cellS=0, cellTxt='—', thermTxt='—';
+    try{
+      if(window.EMIBridge&&EMIBridge.getThermals){
+        const t=JSON.parse(EMIBridge.getThermals()||'{}');
+        if(typeof t.batteryC==='number'){
+          thermTxt=t.batteryC.toFixed(1)+'°C';
+          if(lastBatteryC!=null){ const dt=Math.max(1,(perfNow()-lastThermalT)/60000); const rate=(t.batteryC-lastBatteryC)/dt;
+            if(rate>1.5){ thermS=cl(rate/4,0,1); if(rate>3) Alerts.push(1,`Battery temperature rising fast (${rate.toFixed(1)}°C/min) while otherwise idle.`,'thermal'); } }
+          lastBatteryC=t.batteryC; lastThermalT=perfNow();
+        }
+      }
+    }catch(e){}
+    try{
+      if(window.EMIBridge&&EMIBridge.getCellInfo){
+        const c=JSON.parse(EMIBridge.getCellInfo()||'{}');
+        if(typeof c.generation==='number'&&c.generation>0){
+          cellTxt='Gen '+c.generation+(c.isolated?' · isolated':'');
+          if(c.downgrade){ cellS=0.8; Alerts.push(2,'Cellular connection dropped from 3G/4G/5G to 2G this session — one of the classic IMSI-catcher (stingray) tells. Heuristic, not proof.','imsi'); }
+          else if(c.isolated){ cellS=Math.max(cellS,0.3); }
+        } else if(c.error){ cellTxt=c.error==='no_location_permission'?'no permission':'unavailable'; }
+      }
+    }catch(e){}
+    const te=$('anomTherm'); if(te)te.textContent=thermTxt;
+    const ce=$('anomCell'); if(ce)ce.textContent=cellTxt;
+    return {thermS,cellS};
+  }
+  function pollMotionMag(){
+    let magS=0, motionS=0;
+    if(Sensors.enabled){
+      const magV=Math.abs(Sensors.val('magS'));
+      magEma=magEma*0.95+magV*0.05;
+      if(magBaseline==null) magBaseline=magEma;
+      const dev=Math.abs(magEma-magBaseline);
+      magS=cl(dev*3,0,1);
+      magBaseline=magBaseline*0.995+magEma*0.005; // slow drift so real relocations don't stick as "anomalous" forever
+      const gMag=Math.hypot(Sensors.val('gx'),Sensors.val('gy'),Sensors.val('gz'));
+      motionEma=motionEma*0.9+gMag*0.1;
+      motionS=cl(motionEma*1.2,0,1);
+    }
+    const me=$('anomMag'); if(me)me.textContent=Sensors.enabled?(magS*100).toFixed(0)+'%':'—';
+    const mo=$('anomMotion'); if(mo)mo.textContent=Sensors.enabled?(motionS*100).toFixed(0)+'%':'—';
+    return {magS,motionS};
+  }
+  function tick(){
+    const {thermS,cellS}=pollThermalCell();
+    const {magS,motionS}=pollMotionMag();
+    const usS=Mic.enabled&&document.getElementById('micUs')&&document.getElementById('micUs').textContent.includes('⚠')?1:0;
+    const w=thermS*18+cellS*32+magS*16+motionS*10+usS*24;
+    score=cl(w,0,100);
+    const gEl=$('anomGauge'); if(gEl)gEl.style.setProperty('--gv',score.toFixed(0));
+    const vEl=$('anomVal'); if(vEl)vEl.textContent=score.toFixed(0);
+    if(score>65 && armed){ armed=false; setTimeout(()=>armed=true,20000);
+      Alerts.push(3,`Anomaly score ${score.toFixed(0)}/100 — multiple fused signals elevated at once.`,'fusion'); haptic('clip'); }
+  }
+  return { tick, get score(){return score;} };
+})();
+
 /* ============ display ============ */
 const FN=1024, fre=new Float64Array(FN), fim=new Float64Array(FN), win=new Float64Array(FN), mags=new Float64Array(FN/2);
 for(let i=0;i<FN;i++)win[i]=.5-.5*Math.cos(TAU*i/(FN-1));
@@ -1053,7 +1566,20 @@ function buildRadioGrid(){ const g=$('radioGrid'); g.innerHTML=
   '<div class="stat"><small>Downlink</small><b id="rv_dl">—</b></div>'+
   '<div class="stat"><small>Cell/sig</small><b id="rv_cell">—</b></div>'+
   '<div class="stat"><small>GPS fix</small><b id="rv_gps">—</b></div>'; }
-let dispCd=0;
+let dispCd=0, anomCd=45, specSrcMode='mic';
+function drawSpectrum(){
+  const c=$('micspec'); if(!c)return; const o=fitHi(c); const g=o.g,w=o.w,h=o.h;
+  g.clearRect(0,0,w,h);
+  let bins=null,nyq=24000;
+  if(specSrcMode==='mesh' && Accessories.lastSpectrum){ bins=Accessories.lastSpectrum.bins; nyq=(Accessories.lastSpectrum.sampleRate||48000)/2; }
+  else { const sd=Mic.spectrumData(); if(sd){ bins=sd.buf; nyq=sd.sampleRate/2; } }
+  if(!bins||!bins.length){ g.fillStyle='rgba(255,255,255,.3)'; g.font='10px monospace'; g.fillText('no signal',6,h/2); return; }
+  const N=bins.length; g.strokeStyle='#5fd4c4'; g.lineWidth=1; g.beginPath();
+  for(let x=0;x<w;x++){ const bin=Math.min(N-1,Math.floor((x/w)*N));
+    const raw=bins[bin]; const v=raw>1?raw/255:raw; // Uint8 (mic) vs 0..1 (mesh) both accepted
+    const y=h-cl(v,0,1)*h; x?g.lineTo(x,y):g.moveTo(x,y); }
+  g.stroke();
+}
 function draw(now){
   now=now||perfNow();
   if(running){
@@ -1094,6 +1620,9 @@ function draw(now){
       const cell=$('rv_cell');if(cell)cell.textContent=(Sensors.raw.rtt?Math.round((Sensors.raw.rtt+1)/2*100)+'%':'—');
       const gps=$('rv_gps');if(gps)gps.textContent=(Sensors.lat!=null?Sensors.lat.toFixed(3)+','+Sensors.lon.toFixed(3):'—'); }
   }
+  Mic.tick();
+  if(--anomCd<=0){ anomCd=45; Anomaly.tick(); Accessories.meshRender(); } // ~throttled, native-bridge-backed reads
+  const dp=$('page-detect'); if(dp&&dp.classList.contains('on')) drawSpectrum();
   requestAnimationFrame(draw);
 }
 function info(){
@@ -1110,7 +1639,7 @@ function info(){
 }
 
 /* ============ boot ============ */
-build(); buildSensGrid(); buildRadioGrid(); Profiles.init(); updModCount();
+build(); buildSensGrid(); buildRadioGrid(); Profiles.init(); updModCount(); RF.renderAccKinds();
 (function installApp(){
   const ICON="data:image/svg+xml,"+encodeURIComponent(
     "<svg xmlns='http://www.w3.org/2000/svg' width='256' height='256'>"+
@@ -1158,6 +1687,35 @@ $('bleScan').addEventListener('click',()=>Accessories.scan());
 $('bleStop').addEventListener('click',()=>Accessories.stop());
 $('wsConn').addEventListener('click',()=>Accessories.wsConnect($('wsUrl').value.trim()));
 $('wsDisc').addEventListener('click',()=>Accessories.wsDisconnect());
+
+/* mic VAD + reactive masking + ultrasonic-demod check */
+$('micEn').addEventListener('click',()=>{ Mic.enabled?Mic.disable():Mic.enable(); });
+document.querySelectorAll('[data-vad]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-vad]').forEach(x=>x.setAttribute('aria-pressed','false'));
+  b.setAttribute('aria-pressed','true'); Mic.setMode(b.dataset.vad); }));
+document.querySelectorAll('[data-specsrc]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-specsrc]').forEach(x=>x.setAttribute('aria-pressed','false'));
+  b.setAttribute('aria-pressed','true'); specSrcMode=b.dataset.specsrc; $('specSrc').textContent=specSrcMode; }));
+
+/* RF passive scan */
+$('rfScan').addEventListener('click',()=>RF.wifiScanNow());
+
+/* Rayhunter relay (this app only ingests mesh rayhunter_alert messages — see Link tab copy) */
+$('rhOpen').addEventListener('click',()=>{ const u=$('rhUrl').value.trim(); if(!u){toast('Enter a Rayhunter address first');return;}
+  try{ window.open(u,'_blank'); }catch(e){ toast('Could not open — copy the address into a browser tab'); } });
+
+/* Shizuku (optional, best-effort) */
+function shizPoll(){ try{ if(!window.EMIShizuku){ $('shizStatus').textContent='not native'; return; }
+    const s=JSON.parse(EMIShizuku.status()); const el=$('shizStatus');
+    if(!s.available){ el.textContent='not installed'; }
+    else { el.textContent=s.granted?'granted':'available, not granted'; el.className='tag'+(s.granted?' pill ok':''); }
+  }catch(e){ $('shizStatus').textContent='unavailable'; } }
+window.__emiShizukuResult=function(jsonStr){ try{ const r=JSON.parse(jsonStr);
+    const out=$('shizOut'); if(out)out.value=(r.error?('error: '+r.error):(r.out||'')); }catch(e){} };
+window.__emiShizukuPermission=function(granted){ toast('Shizuku permission '+(granted?'granted':'denied')); shizPoll(); };
+$('shizReq').addEventListener('click',()=>{ try{ if(window.EMIShizuku)EMIShizuku.requestPermission(); else toast('Shizuku bridge unavailable'); }catch(e){} });
+$('shizRun').addEventListener('click',()=>{ try{ if(window.EMIShizuku){ $('shizOut').value='running…'; EMIShizuku.runDiagnostic($('shizKey').value); } else toast('Shizuku bridge unavailable'); }catch(e){} });
+shizPoll(); setInterval(shizPoll,4000);
 
 /* profiles */
 $('profSave').addEventListener('click',()=>{Profiles.save($('profName').value.trim());$('profName').value='';});

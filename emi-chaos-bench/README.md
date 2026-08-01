@@ -1,21 +1,41 @@
-# EMI Chaos Bench — Accessories Edition
+# EMI Chaos Bench — Detect Edition
 
-A local, on-device **audio voice-masker**. It synthesises a dense field of
-interference-styled sound sources (30+), driven by chaos attractors and the
-phone's own motion, to defeat the *intelligibility* of speech picked up by a
-nearby microphone.
+A local, on-device **audio voice-masker with a passive counter-surveillance
+detection layer**. It synthesises a dense field of interference-styled sound
+sources (30+), driven by chaos attractors and the phone's own motion, to
+defeat the *intelligibility* of speech picked up by a nearby microphone —
+and it listens back: mic-based voice/ultrasonic-injection detection,
+Wi-Fi/BLE anomaly scanning, thermal and cellular (IMSI-catcher) heuristics,
+fused into one anomaly score, plus an optional link out to EFF's Rayhunter
+and a Shizuku-gated read-only diagnostics panel.
 
-> **Baseband audio model — it does not radiate.** Every "RF", "radar",
-> "TDMA", "spur" or "magnetron" source is an *audio* model of what that
-> interference sounds like. Nothing is transmitted over the air. The app masks
-> what a microphone **near the speaker** hears; it has no effect beyond
-> earshot. See [ETHICS.md](ETHICS.md).
+> **Baseband audio model — it does not radiate, and nothing here transmits.**
+> Every "RF", "radar", "TDMA", "spur" or "magnetron" *source* is an *audio*
+> model of what that interference sounds like — nothing is transmitted over
+> the air. Every *detector* (mic, Wi-Fi/BLE scan, sensors, cell heuristics,
+> Shizuku diagnostics) is **receive-only** — nothing here jams, injects,
+> deauths, or transmits, and that will not change. See [ETHICS.md](ETHICS.md).
 
-This edition expands the original single-source noise maker into a
-sensor-aware, accessory-connected instrument. It grew out of studying the
-feature surface of BLE/Wi-Fi field tools (accessory pairing, sensor telemetry,
-profiles, geofencing) and porting those *interaction* ideas — not any transmit
-capability — onto an audio masker.
+This edition expands the original single-source noise maker first into a
+sensor-aware, accessory-connected instrument (2.0), then into a passive
+detection instrument (3.0). It grew out of studying the feature surface of
+BLE/Wi-Fi field tools (accessory pairing, sensor telemetry, profiles,
+geofencing, anomaly detection) and porting those *interaction and detection*
+ideas — never any transmit capability — onto an audio masker.
+
+## What's new in 3.0 — Detect
+
+| Area | What it does |
+|------|--------------|
+| **Mic voice detection** | `getUserMedia` → in-process speech-band VAD (never recorded/stored/sent). Drives reactive masking (auto-arm / duck / boost on detected speech) and feeds the modulation matrix as sensor `mic`. |
+| **Ultrasonic-injection detector** | Watches the mic's ≥18kHz band for sustained, speech-rate-modulated energy — the signature of DolphinAttack/SurfingAttack-style inaudible-command injection (an ultrasonic carrier demodulating in the mic's own nonlinearities). Heuristic, flags for you to verify. |
+| **Broadband analyzer** | Full-range spectrum view of the mic input, or of a `spectrum_report` streamed in from a passive RF companion (e.g. an RTL-SDR node on the mesh). |
+| **RF passive scan** | Wi-Fi scan heuristics (duplicate-SSID/different-vendor, sudden strong new AP, hidden-network count) plus BLE tracker fingerprinting (AirTag/Find-My, SmartTag-style manufacturer data, MAC-rotation correlation) and BLE spam-flood detection — all off scans Android already exposes. |
+| **Sensor-fusion anomaly score** | Fuses thermal delta, cellular generation downgrade/isolation (IMSI-catcher heuristic), magnetometer deviation from its own rolling baseline, motion variance, and the trackers/ultrasonic flags above into one 0–100 score with haptic alerting. A hint to look closer, not a certified detector. |
+| **Cross-device sensor mesh** | The Wi-Fi companion link now speaks a small JSON protocol (`sensor_report` / `anomaly` / `rayhunter_alert` / `spectrum_report`) so other phones, an OpenWRT router, or a laptop with a passive accessory can all contribute. Reference agents in [`mesh-node/`](mesh-node/). |
+| **Rayhunter ingestion** | Ingests alerts from a real [EFF Rayhunter](https://github.com/EFForg/rayhunter) device via the reference relay script — this app doesn't reimplement IMSI-catcher detection, Rayhunter already does that properly. |
+| **Shizuku diagnostics (optional)** | If you've separately set up [Shizuku](https://shizuku.rikka.app), a fixed allowlist of read-only diagnostics (telephony/connectivity dumpsys, system properties, a `/dev/diag` presence probe) is available. No free-form exec, no write path. |
+| **Output DSP rack + boost** | Real Web Audio EQ/compressor/short convolution "space" on the master output, a movable **baseband channel** peaking filter (the app's own synthesis output — not the phone's cellular modem), and a boost stage up to **150%** gated by a fixed brickwall limiter so boost never just clips destructively. |
 
 ## What's new in 2.0
 
@@ -51,10 +71,15 @@ app/src/main/
   assets/index.html                 the whole app (audio engine + UI + all subsystems)
   java/com/ant/emichaosbg/
     MainActivity.kt                 WebView host + runtime permissions
-    EmiBridge.kt                    window.EMIBridge: sensors, BLE scan, network, haptics, fg-service
+    EmiBridge.kt                    window.EMIBridge: sensors, BLE/Wi-Fi scan, cell/thermal, haptics, fg-service
+    ShizukuBridge.kt                window.EMIShizuku: optional privileged-diagnostics status/permission/run
+    ShizukuUserService.kt           runs under Shizuku's granted privilege — fixed read-only command allowlist
     MaskerService.kt                media-playback foreground service (background mode)
+  aidl/com/ant/emichaosbg/
+    IShizukuDiagService.aidl        binder contract for the Shizuku diagnostics helper
   AndroidManifest.xml               permissions (all input-side) + components
   res/                              icon, theme, strings
+mesh-node/                          reference companion agents (OpenWRT, Rayhunter relay, generic template)
 ```
 
 ## Build
@@ -64,8 +89,9 @@ app/src/main/
 # APK at app/build/outputs/apk/debug/app-debug.apk
 ```
 
-`minSdk 26`, `targetSdk 34`, Kotlin, AndroidX. No third-party runtime deps
-beyond `androidx.core` / `androidx.activity`.
+`minSdk 26`, `targetSdk 34`, Kotlin, AndroidX. One optional third-party
+dependency pair: `dev.rikka.shizuku:api` / `:provider` (Shizuku client
+plumbing — inert unless the user has separately set up Shizuku).
 
 ## Try the app without building
 
@@ -79,10 +105,17 @@ transmit path.
 
 - `FOREGROUND_SERVICE` / `..._MEDIA_PLAYBACK`, `POST_NOTIFICATIONS`, `WAKE_LOCK` — keep the masker audible when backgrounded.
 - `VIBRATE` — haptics.
-- `BLUETOOTH_SCAN` (`neverForLocation`) / `BLUETOOTH_CONNECT` — enumerate/link accessory beacons (read RSSI/sensors).
-- `ACCESS_FINE/COARSE_LOCATION` — GPS as a modulation source and profile geofencing; also required by Android for BLE scan and cell-signal reads.
-- `ACCESS_NETWORK_STATE`, `HIGH_SAMPLING_RATE_SENSORS` — network entropy, high-rate gyro.
-- `INTERNET` — **LAN WebSocket to a companion node only.** No audio or telemetry is sent to the internet.
+- `BLUETOOTH_SCAN` (`neverForLocation`) / `BLUETOOTH_CONNECT` — enumerate/link accessory beacons, fingerprint tracker advertisements (read RSSI/manufacturer bytes only).
+- `ACCESS_FINE/COARSE_LOCATION` — GPS as a modulation source and profile geofencing; also required by Android for BLE scan, Wi-Fi scan, and cell-signal reads.
+- `ACCESS_NETWORK_STATE`, `ACCESS_WIFI_STATE`, `HIGH_SAMPLING_RATE_SENSORS` — network entropy, Wi-Fi anomaly scan, high-rate gyro.
+- `RECORD_AUDIO` — mic voice-activity + ultrasonic-injection detection. Analysed in-process only; never recorded, buffered to disk, or sent anywhere.
+- `READ_PHONE_STATE` — cell generation/neighbor-count read for the IMSI-catcher heuristic panel.
+- `INTERNET` — **LAN WebSocket mesh link to companion nodes only** (another phone, an OpenWRT router, a Rayhunter relay). No audio, mic data, or telemetry is sent to the internet.
+
+Shizuku's own permission (granted through the separate Shizuku app, entirely
+opt-in) gates the read-only diagnostics panel — see
+[`ShizukuUserService.kt`](app/src/main/java/com/ant/emichaosbg/ShizukuUserService.kt)
+for the exact fixed command allowlist.
 
 ## License
 

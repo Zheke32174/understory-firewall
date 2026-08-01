@@ -15,15 +15,33 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
-    <!-- INTERNET is used ONLY for a LAN WebSocket link to a companion accessory. No audio leaves the device. -->
+    <!-- Mic is used ONLY for local voice-activity detection (VAD) to drive reactive masking.
+         Raw audio is analysed in-process and never recorded to disk or sent anywhere. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- INTERNET is used ONLY for a LAN WebSocket mesh link to companion accessories/nodes
+         (phones, OpenWRT routers, a Rayhunter device's own UI). No audio leaves the device. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- READ_PHONE_STATE is used ONLY to read cell-tower generation/neighbor-count for the
+         on-device IMSI-catcher heuristic panel (2G-downgrade / isolated-cell detection). -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
     <uses-feature android:name="android.hardware.audio.output" android:required="true" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <uses-feature android:name="android.hardware.sensor.gyroscope" android:required="false" />
     <uses-feature android:name="android.hardware.sensor.compass" android:required="false" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.wifi" android:required="false" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+
+    <!-- Package-visibility (Android 11+): lets the Shizuku status check see whether the
+         separate Shizuku manager app is installed. Shizuku itself is entirely optional —
+         everything degrades gracefully with it absent. -->
+    <queries>
+        <package android:name="moe.shizuku.privileged.api" />
+    </queries>
 
     <application
         android:allowBackup="true"
@@ -50,5 +68,16 @@
             android:name=".MaskerService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+
+        <!-- Optional Shizuku entry point. No-op unless the user has separately installed and
+             activated Shizuku (ADB-paired or rooted) and explicitly grants this app permission
+             through it. Everything gated behind it stays read-only diagnostics. -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
     </application>
 </manifest>

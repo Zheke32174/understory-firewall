@@ -11,8 +11,8 @@ android {
         applicationId = "com.ant.emichaosbg"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "2.0-accessories"
+        versionCode = 3
+        versionName = "3.0-detect"
     }
 
     buildTypes {
@@ -32,9 +32,16 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+    buildFeatures {
+        aidl = true
+    }
 }
 
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-ktx:1.9.1")
+    // Optional privileged-execution channel. The app works fully without Shizuku installed;
+    // this only enables the read-only diagnostics panel when the user has set it up themselves.
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
 }

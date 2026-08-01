@@ -30,6 +30,7 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var webView: WebView
     private lateinit var bridge: EmiBridge
+    private lateinit var shizuku: ShizukuBridge
 
     private val permLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { /* JS re-queries on tick */ }
@@ -42,6 +43,7 @@ class MainActivity : ComponentActivity() {
 
         webView = WebView(this)
         bridge = EmiBridge(this, webView)
+        shizuku = ShizukuBridge(this, webView)
 
         webView.settings.apply {
             javaScriptEnabled = true
@@ -63,7 +65,11 @@ class MainActivity : ComponentActivity() {
         }
 
         webView.webChromeClient = object : WebChromeClient() {
-            // Grant the Generic Sensor / media permissions the page requests, in-process only.
+            // Grant the Generic Sensor / getUserMedia(audio) permissions the page requests.
+            // Mic capture (RESOURCE_AUDIO_CAPTURE) still requires the native RECORD_AUDIO
+            // runtime permission underneath — requested above — or the browser-level grant
+            // here is a no-op and getUserMedia rejects. Analysis stays fully in-process; VAD
+            // never records to disk or leaves the device.
             override fun onPermissionRequest(request: PermissionRequest) {
                 request.grant(request.resources)
             }
@@ -78,6 +84,7 @@ class MainActivity : ComponentActivity() {
         }
 
         webView.addJavascriptInterface(bridge, "EMIBridge")
+        webView.addJavascriptInterface(shizuku, "EMIShizuku")
         webView.loadUrl("file:///android_asset/index.html")
 
         setContentView(webView)
@@ -87,7 +94,9 @@ class MainActivity : ComponentActivity() {
     private fun requestRuntimePermissions() {
         val wanted = mutableListOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.READ_PHONE_STATE
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             wanted += Manifest.permission.BLUETOOTH_SCAN
@@ -108,6 +117,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         bridge.shutdown()
+        shizuku.shutdown()
         webView.destroy()
         super.onDestroy()
     }
