@@ -3350,46 +3350,87 @@ const ScanStutter=(function(){
   let intensity=0.65, over=false, bursts=0, on=false, timer=null;
   let holdSamples=0, dropSamples=0;
   // Rolling one-second readouts.
-  let opWin=0, opT=0, lastReflow=0, lastMs=0, lastOps=0, lastDuty=0;
+  let opWin=0, opT=0, lastReflow=0, lastMs=0, lastOps=0, lastDuty=0, lastGap=20;
   // The anvil: real, laid-out cells. Built once, lazily, into #ssThrash.
-  const CELLS=28; let anvil=null, cells=null, phase=0;
+  const CELLS=28; let anvil=null, cells=null, phase=0, appEl=null, deepEl=null;
   function buildAnvil(){
     const host=$('ssThrash'); if(!host) return null;
+    appEl=document.querySelector('.app')||document.body;
     if(anvil===host && cells) return host;
     host.innerHTML=''; const frag=document.createDocumentFragment();
     const arr=[];
     for(let i=0;i<CELLS;i++){ const c=document.createElement('i'); frag.appendChild(c); arr.push(c); }
     host.appendChild(frag); anvil=host; cells=arr; return host;
   }
-  // One reflow "op": mutate geometry across the anvil, flip a class on the container to dirty
-  // the whole subtree's style, then FORCE a synchronous layout by reading a geometry property.
-  // Returns nothing; the read is the load and can't be optimised away because its result is
-  // written back into the next write.
+  /* One reflow "op". The first version confined this to the 28 anvil cells, and that was the
+     mistake: the dirtied layout region was one small row inside one panel, so the browser
+     relaid out almost nothing, each op cost microseconds, and the whole screen never visibly
+     stalled. It measured impressively and felt like nothing.
+
+     This writes to the APP ROOT instead, which invalidates layout for EVERY section on the
+     page, and then reads geometry back from a DEEP node so the forced layout has to resolve
+     the entire tree rather than a cached corner of it. That is the write→read interleave the
+     browser cannot batch, applied at document scope.
+
+     Two visible components, deliberately different in kind:
+       - GEOMETRIC: a transform (translate/skew/scale) on the root jolts the whole screen. It
+         is geometric on purpose — a fast LUMINANCE flicker in the ~3-30Hz band is a
+         photosensitive-seizure risk, and this runs far inside that band. Moving the screen is
+         safe at this rate; strobing its brightness would not be, so brightness is left alone
+         here. (Luminance belongs to Screen chaos, which is slew-limited for exactly that
+         reason.)
+       - STRUCTURAL: padding/width writes on the root force real relayout of every panel, which
+         is what actually costs main-thread time and starves the audio callback. */
   let readSink=0;
   function reflowOp(host,k){
     const n=cells.length;
-    // write — every cell, so the dirtied region is the whole row, not one node
     const base=(phase+k)|0;
-    for(let i=0;i<n;i++){
-      const h=4+((base*3+i*i)%30);
-      cells[i].style.height=h+'px';
+    const shake=intensity*(over?1.9:1);
+
+    // --- WHOLE-SCREEN write: jolts the entire app and invalidates the whole document ---
+    if(appEl){
+      // Amplitudes are large on purpose. The first pass used ±4px at full severity, which
+      // measured as "the whole app is moving" and read on a phone as nothing at all. These
+      // reach ±16px of throw, ~3.5deg of skew and ±1.5% of scale at maximum — a jolt you
+      // cannot mistake for a rendering artefact.
+      const dx=(((base*7)%9)-4)*shake*4;
+      const dy=(((base*5)%7)-3)*shake*3.2;
+      const sk=(((base*3)%5)-2)*shake*1.8;
+      const sc=1+((((base*11)%5)-2)*0.008*shake);
+      const rot=(((base*13)%7)-3)*shake*0.25;
+      appEl.style.transform=`translate(${dx.toFixed(2)}px,${dy.toFixed(2)}px) `+
+        `skewX(${sk.toFixed(2)}deg) rotate(${rot.toFixed(2)}deg) scale(${sc.toFixed(4)})`;
+      // Structural writes — relayout of every section, not merely a repaint of the root.
+      appEl.style.paddingLeft=((base*3)%13)+'px';
+      appEl.style.paddingRight=((base*5)%13)+'px';
     }
-    // class flip invalidates computed style for the subtree, forcing a fuller recalc
+
+    // --- anvil write: the local readout, still real geometry ---
+    for(let i=0;i<n;i++) cells[i].style.height=(4+((base*3+i*i)%30))+'px';
     host.className = (k&1) ? 'anvil hot' : (intensity>0.5?'anvil hot2':'anvil');
-    // read — rotate the property so it is a genuine forced reflow each time, not one cached value
+
+    // --- READ from deep in the tree: forces the WHOLE document to lay out, every op ---
     let r=0;
-    switch(k%5){
-      case 0: r=host.offsetWidth; break;
-      case 1: r=cells[(base)%n].offsetHeight; break;
-      case 2: r=host.getBoundingClientRect().height; break;
-      case 3: r=cells[(base+7)%n].clientHeight; break;
-      default: r=parseFloat(getComputedStyle(cells[(base+3)%n]).height)||0;
+    switch(k%6){
+      case 0: r=(appEl||host).offsetHeight; break;
+      case 1: r=cells[base%n].offsetHeight; break;
+      case 2: r=(deepEl||host).getBoundingClientRect().top; break;
+      case 3: r=document.body.scrollHeight; break;
+      case 4: r=cells[(base+7)%n].clientHeight; break;
+      default: r=parseFloat(getComputedStyle(deepEl||cells[(base+3)%n]).height)||0;
     }
     readSink=(readSink+r)&0xffff;
     phase=(phase+1)&0x7fffffff;
   }
+  /* Re-picked periodically so the forced layout keeps having to resolve a DIFFERENT deep
+     subtree rather than one the engine has already warmed. */
+  function pickDeep(){
+    const all=document.querySelectorAll('.sect .body .muted, .sect .grid .stat b, .sect .body small');
+    if(all.length) deepEl=all[(Math.random()*all.length)|0];
+  }
   function pulse(){
     const host=buildAnvil();
+    if(Math.random()<0.25) pickDeep();
     // Per-burst millisecond budget: how long this single burst is allowed to hold the thread.
     // Scales with severity; hard-capped so ONE burst can never approach the ANR threshold
     // regardless of severity or overdrive — the sustained load comes from frequency×duty, not
@@ -3411,9 +3452,27 @@ const ScanStutter=(function(){
     } else { now=perfNow(); }
     const burstMs = now - t0;
     lastMs=burstMs; lastOps=ops;
-    // 3) Assert the audible glitch directly so it does not depend on device bridge speed.
-    if(Math.random()<0.6) holdSamples=Math.round(rnd(40,300+intensity*(over?1600:900)));
-    else dropSamples=Math.round(rnd(20,120+intensity*(over?700:400)));
+    /* 3) The audible glitch. EVERY burst glitches now — it used to be a 60/40 coin flip, so
+       most bursts made no sound at all and the effect was inaudible in practice. Which KIND
+       is still random (a hold smears, a drop gouges — they sound different), but that one of
+       them happens is not.
+
+       Duration is scaled to the MEASURED GAP between bursts, not to a fixed sample count.
+       That matters: at 75% severity bursts land ~18ms apart, so a fixed 80ms hold would still
+       be running when the next three bursts fired and the audio would simply go dead —
+       continuously muted, which is not a stutter. Expressing the glitch as a FRACTION of the
+       gap guarantees the two things a stutter needs: it fires every time, and there is always
+       clean audio in between for it to interrupt. Turning severity up shortens the gap AND
+       raises the fraction, so it thickens toward continuous without ever silently becoming a
+       mute. */
+    const spms=48;                                  // samples per ms, nominal
+    const frac=cl((over?0.42:0.25)+intensity*0.45, 0, 0.88);
+    const span=Math.max(96, lastGap*spms*frac);
+    const g=Math.random();
+    if(g<0.45) holdSamples=Math.round(rnd(span*0.6,span*1.4));
+    else if(g<0.9) dropSamples=Math.round(rnd(span*0.5,span*1.2));
+    else { holdSamples=Math.round(rnd(span*0.3,span*0.7));
+           dropSamples=Math.round(rnd(span*0.3,span*0.7)); }   // both: stutter then gap
     if(Math.random()<0.35) toast('scan…');
     // Deliberately NOT reported to the Governor. The Governor treats audio-callback overrun as
     // evidence the device is under stress and responds by shrinking the RADIO duty cycle. These
@@ -3452,6 +3511,7 @@ const ScanStutter=(function(){
     lastDuty = burstMs/(burstMs+gap);         // == D, but computed from what actually happened
     // Randomise the interval so it never becomes a metronome, while preserving the mean share.
     gap = Math.max(2, rnd(gap*0.45, gap*1.6));
+    lastGap = gap;                            // fed back into the NEXT burst's glitch length
     setTxt('ssMode', over?'overdrive':(intensity>0.66?'heavy':(intensity>0.33?'moderate':'light')));
     timer=setTimeout(step, gap);
   }
@@ -3463,6 +3523,9 @@ const ScanStutter=(function(){
         toast('DOM hammer on — works with Bluetooth on or off'); }
       else { holdSamples=0; dropSamples=0;
         if(anvil) anvil.className='anvil';
+        // Undo the whole-screen writes. Without this the app is left permanently skewed and
+        // offset at whatever the last burst happened to set — off has to mean straight again.
+        if(appEl){ appEl.style.transform=''; appEl.style.paddingLeft=''; appEl.style.paddingRight=''; }
         setTxt('ssRate','0/s'); setTxt('ssMode','idle');
         setTxt('ssReflow','—'); setTxt('ssMs','—'); setTxt('ssOps','—'); setTxt('ssDuty','—'); } },
     get enabled(){ return on; },
