@@ -18,6 +18,8 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.location.GnssStatus
+import android.location.LocationManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
@@ -256,6 +258,69 @@ class EmiBridge(private val ctx: Context, private val web: WebView) : SensorEven
         return o.toString()
     }
 
+    // ---- GNSS satellite status (real satellite telemetry, receive-only) -----------------
+    // Android's GnssStatus API exposes what the Web Geolocation API doesn't: how many
+    // satellites the receiver actually sees, which constellations, and per-satellite signal
+    // strength (CN0). This is genuine satellite-signal data — nothing is transmitted; GNSS
+    // receivers are receive-only by nature (a phone doesn't talk back to GPS satellites).
+
+    private var gnssCb: GnssStatus.Callback? = null
+    @Volatile private var lastGnss: GnssStatus? = null
+
+    @JavascriptInterface
+    fun startGnss() {
+        if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
+        if (gnssCb != null) return
+        val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return
+        val cb = object : GnssStatus.Callback() {
+            override fun onSatelliteStatusChanged(status: GnssStatus) { lastGnss = status }
+        }
+        gnssCb = cb
+        main.post {
+            try { lm.registerGnssStatusCallback(cb, main) } catch (_: SecurityException) {} catch (_: Exception) {}
+        }
+    }
+
+    @JavascriptInterface
+    fun stopGnss() {
+        val cb = gnssCb ?: return
+        val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return
+        try { lm.unregisterGnssStatusCallback(cb) } catch (_: Exception) {}
+        gnssCb = null; lastGnss = null
+    }
+
+    private fun constellationName(c: Int): String = when (c) {
+        GnssStatus.CONSTELLATION_GPS -> "GPS"
+        GnssStatus.CONSTELLATION_GLONASS -> "GLONASS"
+        GnssStatus.CONSTELLATION_GALILEO -> "Galileo"
+        GnssStatus.CONSTELLATION_BEIDOU -> "BeiDou"
+        GnssStatus.CONSTELLATION_QZSS -> "QZSS"
+        GnssStatus.CONSTELLATION_SBAS -> "SBAS"
+        GnssStatus.CONSTELLATION_IRNSS -> "IRNSS"
+        else -> "other"
+    }
+
+    @JavascriptInterface
+    fun getGnssStatus(): String {
+        val o = JSONObject()
+        val st = lastGnss ?: return o.also { it.put("count", 0) }.toString()
+        val n = st.satelliteCount
+        var used = 0; var cn0Sum = 0.0
+        val byConst = HashMap<String, Int>()
+        for (i in 0 until n) {
+            if (st.usedInFix(i)) used++
+            cn0Sum += st.getCn0DbHz(i)
+            val name = constellationName(st.getConstellationType(i))
+            byConst[name] = (byConst[name] ?: 0) + 1
+        }
+        o.put("count", n)
+        o.put("used", used)
+        o.put("avgCn0", if (n > 0) cn0Sum / n else 0.0)
+        val cJson = JSONObject(); byConst.forEach { (k, v) -> cJson.put(k, v) }
+        o.put("constellations", cJson)
+        return o.toString()
+    }
+
     /**
      * On-device compromise indicators — a DIFFERENT class of signal than RF: not "is
      * something nearby listening" but "is something already on this phone doing so."
@@ -480,7 +545,7 @@ class EmiBridge(private val ctx: Context, private val web: WebView) : SensorEven
     private fun postJs(js: String) = main.post { web.evaluateJavascript(js, null) }
 
     fun shutdown() {
-        stopSensors(); bleStop(); setForeground(false)
+        stopSensors(); bleStop(); setForeground(false); stopGnss()
         try { activeGatt?.close() } catch (_: Exception) {}
     }
 }

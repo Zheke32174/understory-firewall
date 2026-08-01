@@ -83,15 +83,22 @@ class MainActivity : ComponentActivity() {
             // and used to leave the JS promise in an ambiguous state; explicitly denying
             // gives it an immediate, clean rejection so the UI can show useful feedback.
             override fun onPermissionRequest(request: PermissionRequest) {
-                val grantable = request.resources.filter { res ->
+                // A PermissionRequest must be resolved with exactly ONE of grant()/deny() —
+                // calling both (which the previous version of this method did whenever a
+                // request asked for more than it could get, e.g. a hypothetical combined
+                // audio+video capture where only one was natively granted) is invalid API
+                // usage. Partial-grant isn't meaningful for getUserMedia anyway — the page
+                // asked for a specific set of resources and needs all of them — so this is
+                // all-or-nothing: grant only if every requested resource is natively held,
+                // otherwise deny outright for a clean, immediate JS-side rejection.
+                val allGranted = request.resources.all { res ->
                     when (res) {
                         PermissionRequest.RESOURCE_AUDIO_CAPTURE -> isGranted(Manifest.permission.RECORD_AUDIO)
                         PermissionRequest.RESOURCE_VIDEO_CAPTURE -> isGranted(Manifest.permission.CAMERA)
                         else -> true
                     }
                 }
-                if (grantable.isNotEmpty()) request.grant(grantable.toTypedArray())
-                if (grantable.size < request.resources.size) request.deny()
+                if (allGranted) request.grant(request.resources) else request.deny()
             }
             override fun onGeolocationPermissionsShowPrompt(
                 origin: String?, callback: android.webkit.GeolocationPermissions.Callback?

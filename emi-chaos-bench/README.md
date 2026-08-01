@@ -23,6 +23,75 @@ BLE/Wi-Fi field tools (accessory pairing, sensor telemetry, profiles,
 geofencing, anomaly detection) and porting those *interaction and detection*
 ideas — never any transmit capability — onto an audio masker.
 
+## What's new in 3.2 — Churn (tune-up round)
+
+**Two real bug fixes, reported after 3.1:**
+- **Some sliders weren't auto-sliding.** The Boost/baseband and Output-DSP sections were
+  deliberately excluded from the auto-masher/drift pool. They're back in — every dial in
+  the app now participates in chaos churn.
+- **Mic error still occurring.** Found a second, independent bug in the native permission
+  handler: `onPermissionRequest` could call both `grant()` and `deny()` on the same
+  request, which is invalid Android API usage. Fixed to be strictly one-or-the-other.
+  `Mic.enable()` also now retries with plain `{audio:true}` if the stricter constraint set
+  is rejected, and gives a clearer, scenario-specific error message (blocked / no device /
+  busy / insecure context) instead of a generic "denied."
+
+**More vectors to pull, more chaos categories, creative additions:**
+- **Four more chaos vectors (C–F)**, on top of the original A/B — six live cores total,
+  each an independently-picked attractor + rate, each routable into one of nine named
+  modulation buses (amp, freq, filter, Doppler, glitch, formant, chorus, tilt, granular
+  smear) at its own weight. New "Chaos vectors C–F" section.
+- **16 new source modules**, each a genuinely different DSP technique, not a parameter
+  clone: **Doppler pass** (a moving-source pitch-bend event), wow & flutter, comb flutter,
+  granular smear, FM bell clangor, a Shepard-tone riser, a PLL lock/unlock simulator, a
+  3-formant vowel morph, chorus swarm, a self-oscillating (internally limited) feedback
+  howl, bit-reversal buffer glitch, spectral tilt sweep, wind gusts, metallic-strike modal
+  resonance, insect-swarm chirps, and static crackle rain.
+- **Demod guard**: watches the masker's own recent output for a strong, sustained
+  autocorrelation peak — a sign it's settling into a too-regular, more easily filtered-out
+  pattern — and responds with an unprompted, aggressive remodulation burst (reseeds every
+  chaos core, hard-rerolls half the dials, spikes the mash rate) to keep it from ever
+  sitting still long enough to be learned. Runs on the main thread off the existing
+  capture buffer, not in the audio callback.
+- **Randomize intensity — a spectrum, not a cap.** "Randomize everything" first shipped this
+  round as flat 70%-odds-per-module, which quietly took away the old "always literally
+  everything" behavior. Restored, and widened into a slider (10–100%) with
+  Conservative/Balanced/Total quick-picks — 100% is exactly the original behavior. Default
+  stays at 70% for the CPU-load reason below, but full control, nothing removed.
+
+**Performance note (read if you're editing defaults):** with every module from every round
+active at once, measured per-buffer audio cost hit ~78% of the real-time budget on average
+and over 300% at peaks — real glitches on real phones. Fix: the 16 new modules plus the
+chaos vector bank default to **off** at boot (the original ~22 keep their existing
+default-on behavior unchanged); "Randomize everything" defaults to 70% odds per module but
+the full 10–100% range — including "always everything," unconditionally — is one slider
+away. Fresh-install performance is back to a healthy ~30% average / ~100% peak of budget.
+
+**Satellite view (real GNSS telemetry, receive-only).** Satellite count, which
+constellations (GPS/GLONASS/Galileo/BeiDou/QZSS/...), and per-satellite signal strength
+(CN0) read straight from the phone's own `GnssStatus` — data the Web Geolocation API
+doesn't expose but the OS already has. A GNSS receiver has no transmit path by design: it
+only ever listens to satellites. **GNSS/GPS spoofing or jamming was explicitly requested
+this round and declined** — beyond being federally illegal, it's genuinely dangerous to
+aviation and marine navigation; framing it as "shenanigans" doesn't change either fact. See
+[ETHICS.md](ETHICS.md).
+
+**Wardriving actually works now.** Found three real bugs chasing a "doesn't work" report:
+(1) the toggle didn't do anything to actually enable GPS or trigger scans, so it silently
+logged nothing with zero feedback; (2) it then called a `Sensors.enable()` method that
+wasn't exposed on the module's public API; (3) a network seen *before* the first GPS fix
+landed got marked "already seen" and was permanently skipped, even after GPS became
+available. All three fixed — flipping the Wardriving toggle now turns on Sensors/GPS and
+Auto-scan itself, shows "waiting for GPS" vs. "logging," and retries anything seen too
+early once a fix lands.
+
+**Declined this round, and why:** "randomized BLE activity" and "randomized RF activity...
+to increase surface area" were both requests to have the app *transmit* — BLE advertising
+and any RF emission use the radio to broadcast, not just listen, regardless of power level
+or how "minimal" the radius. That's the same line this project has held since the first
+"radiate" request: read-only, no exceptions, no matter how the ask is framed. See
+[ETHICS.md](ETHICS.md).
+
 ## What's new in 3.1
 
 - **Fixed a real mic-permission bug**: `MainActivity` used to load the WebView before the

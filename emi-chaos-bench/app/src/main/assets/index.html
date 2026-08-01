@@ -188,7 +188,38 @@
         </div>
       </div>
     </div>
+    <div class="sect">
+      <div class="head"><span class="t">Demod guard</span><span class="tag" id="dgTag">watching</span>
+        <div class="sw" id="dgEn" aria-pressed="true"></div></div>
+      <div class="body">
+        <div class="grid">
+          <div class="stat"><small>Pattern score</small><b id="dgScore">0%</b><div class="bar"><i id="dgBar"></i></div></div>
+        </div>
+        <div class="muted">Watches the masker's own recent output for signs it's settling into a too-regular,
+          more easily filtered-out pattern. If it holds steady for a few checks in a row, this fires an
+          unprompted remodulation burst — reseeds every chaos core, hard-rerolls half the dials, spikes the
+          mash rate briefly — to keep the output from ever sitting still long enough to be learned.</div>
+      </div>
+    </div>
     <div id="panel"></div>
+    <div class="sect">
+      <div class="head"><span class="t">Randomize intensity</span></div>
+      <div class="body">
+        <div class="row"><div class="cell full">
+          <small>Modules enabled <span id="riR">70%</span></small>
+          <input id="riSlide" type="range" min="10" max="100" value="70"></div></div>
+        <div class="row">
+          <button class="chip" data-ri="30">Conservative</button>
+          <button class="chip" data-ri="70" aria-pressed="true">Balanced</button>
+          <button class="chip" data-ri="100">Total</button>
+        </div>
+        <div class="muted">How many toggleable modules "Randomize everything" turns on, at random, each press.
+          100% is the original behaviour — every module, every time. Below 100%, which modules land on varies
+          each press too (its own kind of chaos), and keeps worst-case CPU load in check — with everything
+          from every round on at once, measured audio cost spiked past 300% of the real-time budget on this
+          test rig (real glitches on real phones). Your call — full control, no cap removed.</div>
+      </div>
+    </div>
     <button class="big" id="rand">⚄ Randomize everything</button>
   </div>
 
@@ -200,6 +231,22 @@
         <div class="grid" id="sensGrid"></div>
         <div class="muted">Enable to route motion, heading and location into the noise engine. Gyroscope, magnetometer,
           accelerometer, GPS and network are read as <b>inputs only</b> — nothing is transmitted.</div>
+      </div>
+    </div>
+    <div class="sect">
+      <div class="head"><span class="t">Satellite view</span><span class="tag" id="satSrc">native only</span>
+        <div class="sw" id="satEn" aria-pressed="false"></div></div>
+      <div class="body">
+        <div class="grid">
+          <div class="stat"><small>In view</small><b id="satCount">—</b></div>
+          <div class="stat"><small>Used in fix</small><b id="satUsed">—</b></div>
+          <div class="stat"><small>Avg signal</small><b id="satCn0">—</b></div>
+        </div>
+        <div class="list" id="satConst" style="margin-top:6px"></div>
+        <div class="muted">Real GNSS satellite telemetry read straight from the phone's own receiver — satellite
+          count, which constellations (GPS/GLONASS/Galileo/BeiDou/QZSS/...), and per-satellite signal strength
+          (CN0, dB-Hz). Entirely receive-only: a GPS/GNSS receiver has no transmit path by design — it only ever
+          listens to satellites, never talks back to them. Needs location permission and a native build.</div>
       </div>
     </div>
     <div class="sect">
@@ -310,9 +357,10 @@
         <div class="row"><button class="btn" id="wdExportGpx">Export GPX</button>
           <button class="btn" id="wdExportCsv">Export CSV</button>
           <button class="btn" id="wdClear">Clear</button></div>
-        <div class="muted">GPS-tagged log of every Wi-Fi network and BLE device seen while this is on — local
-          storage only, exported as a file you control. Nothing is uploaded anywhere automatically. Needs
-          Sensors (GPS) and periodic Wi-Fi scans (use the button above, or Auto-scan below) enabled.</div>
+        <div class="muted">GPS-tagged log of every Wi-Fi network seen while this is on — local storage only,
+          exported as a file you control. Nothing is uploaded anywhere automatically. Flipping this on also
+          turns on Sensors (for GPS) and Auto-scan for you — grant location if the OS prompts you, and give it
+          a few seconds for a GPS fix before points start landing.</div>
         <div class="row"><button class="chip" id="wdAutoScan" aria-pressed="false">Auto-scan every 15s</button></div>
       </div>
     </div>
@@ -492,6 +540,13 @@ const MAPS=[['logistic','logistic'],['tent','tent'],['bernoulli','bernoulli'],['
   ['gingerbread','gingerbread'],['tinkerbell','Tinkerbell'],['gauss','Gauss'],['sine','sine map'],
   ['cubic','cubic'],['thomas','Thomas'],['halvorsen','Halvorsen'],['sprott','Sprott']];
 const COLORS=[['brown','brown'],['pink','pink'],['white','white'],['blue','blue'],['violet','violet'],['grey','grey']];
+// Shared destination menu for the four extra chaos vectors (C-F): each vector adds its
+// scalar output, weighted by its own amount, into one of these named modulation buses —
+// read by the new source modules below (Doppler, formant morph, chorus, glitch, etc.) as
+// an additional live modulation input alongside their own local controls.
+const VBUS=[['off','off'],['amp','→ amp'],['freq','→ freq'],['filt','→ filter'],
+  ['doppler','→ Doppler'],['glitch','→ glitch rate'],['formant','→ formant morph'],
+  ['chorus','→ chorus depth'],['tilt','→ spectral tilt'],['grain','→ granular smear']];
 const R=(k,lab,min,max,st,unit,def,rmin,rmax)=>({t:'r',k,lab,min,max,st,unit,def,
   rmin:rmin===undefined?min:rmin, rmax:rmax===undefined?max:rmax});
 const S=(k,lab,opts,def)=>({t:'s',k,lab,opts,def});
@@ -520,6 +575,15 @@ const MOD=[
    S('bMap','Attractor',MAPS,'henon'), R('bRate','Rate',0,1,.01,'chz',.4),
    S('bDest','Routes to',[['ring','ring-mod'],['cross','cross A rate'],['wander','spur wander'],['crush','crush rate']],'ring'),
    R('bAmt','Amount',0,1,.01,'pct',.4) ]},
+ {id:'chCV',title:'Chaos vectors C–F',tog:'e_cv',defOff:true,ctrls:[
+   S('cMap','C attractor',MAPS,'rossler'), R('cRate','C rate',0,1,.01,'chz',.45),
+   S('cDest','C routes to',VBUS,'freq'), R('cAmt','C amount',0,1,.01,'pct',.4),
+   S('dMap','D attractor',MAPS,'chua'), R('dRate','D rate',0,1,.01,'chz',.5),
+   S('dDest','D routes to',VBUS,'doppler'), R('dAmt','D amount',0,1,.01,'pct',.4),
+   S('eMap','E attractor',MAPS,'thomas'), R('eRate','E rate',0,1,.01,'chz',.35),
+   S('eDest','E routes to',VBUS,'formant'), R('eAmt','E amount',0,1,.01,'pct',.35),
+   S('fMap','F attractor',MAPS,'ikeda'), R('fRate','F rate',0,1,.01,'chz',.55),
+   S('fDest','F routes to',VBUS,'glitch'), R('fAmt','F amount',0,1,.01,'pct',.3) ]},
  {id:'vm',title:'Voice mask · babble',tog:'e_vm',ctrls:[
    R('L_vm','Level',0,1,.01,'pct',.6,.35,.95), R('vmLo','Band low',80,1200,10,'hz',250),
    R('vmHi','Band high',1500,8000,50,'hz',3800), R('vmTalk','Talkers',1,12,1,'n',7),
@@ -603,7 +667,58 @@ const MOD=[
    R('gfCh','Chaos sweep',0,1,.01,'pct',.5) ]},
  {id:'mg',title:'Crush / ring',ctrls:[
    R('crBits','Bits',2,16,1,'n',16,4,12), R('crDwn','Downsample',1,32,1,'x',1,1,16),
-   R('rmF','Ring Hz',20,8000,10,'hz',600), R('rmA','Ring amt',0,1,.01,'pct',0,.2,.9) ]}
+   R('rmF','Ring Hz',20,8000,10,'hz',600), R('rmA','Ring amt',0,1,.01,'pct',0,.2,.9) ]},
+ {id:'dp',title:'Doppler pass',tog:'e_dp',defOff:true,ctrls:[
+   R('L_dp','Level',0,1,.01,'pct',.35), R('dpR','Passes',.05,4,.05,'/s',.3),
+   R('dpTone','Tone',80,2000,10,'hz',300), R('dpLen',' Length',.3,4,.05,'s',1.2),
+   R('dpDepth','Depth',0,1,.01,'pct',.5) ]},
+ {id:'wf',title:'Wow & flutter',tog:'e_wf',defOff:true,ctrls:[
+   R('L_wf','Level',0,1,.01,'pct',.3), R('wfTone','Tone',60,2000,10,'hz',220),
+   R('wfWowD','Wow',0,1,.01,'pct',.5), R('wfFlutD','Flutter',0,1,.01,'pct',.4) ]},
+ {id:'cf',title:'Comb flutter',tog:'e_cf',defOff:true,ctrls:[
+   R('L_cf','Mix',0,1,.01,'pct',.35), R('cfRate','Sweep',.02,4,.02,'/s',.4),
+   R('cfDepthMs','Depth',1,9,.1,'ms',5), R('cfFb','Resonance',0,.95,.01,'pct',.5) ]},
+ {id:'gr',title:'Granular smear',tog:'e_gr',defOff:true,ctrls:[
+   R('L_gr','Level',0,1,.01,'pct',.3), R('grRate','Grains',1,40,1,'/s',10),
+   R('grLen','Grain len',.01,.15,.005,'s',.05) ]},
+ {id:'fm',title:'FM bell clangor',tog:'e_fm',defOff:true,ctrls:[
+   R('L_fm','Level',0,1,.01,'pct',.3), R('fmBase','Base',60,2000,10,'hz',280),
+   R('fmRatio','Ratio',.5,6,.05,'x',2.1,1.2,4), R('fmIndex','Index',0,1,.01,'pct',.4) ]},
+ {id:'shp',title:'Shepard riser',tog:'e_shp',defOff:true,ctrls:[
+   R('L_shp','Level',0,1,.01,'pct',.3), R('shpRate','Rise',-4,4,.05,'oct/s',.6,.2,2),
+   R('shpLo','Low',20,400,5,'hz',60), R('shpOct','Span',2,8,.5,'oct',5) ]},
+ {id:'pll',title:'PLL lock/unlock',tog:'e_pll',defOff:true,ctrls:[
+   R('L_pll','Level',0,1,.01,'pct',.3), R('pllRef','Reference',80,3000,20,'hz',440),
+   R('pllJit','Jitter',0,1,.01,'pct',.4), R('pllSlew','Loop speed',.0005,.2,.0005,'x',.02,.005,.08) ]},
+ {id:'ft',title:'Formant morph',tog:'e_ft',defOff:true,ctrls:[
+   R('L_ft','Level',0,1,.01,'pct',.3), R('ftRate','Morph',.02,2,.02,'v/s',.15),
+   R('ftQ','Sharpness',3,20,.5,'q',8,4,14) ]},
+ {id:'chr',title:'Chorus swarm',tog:'e_chr',defOff:true,ctrls:[
+   R('L_chr','Level',0,1,.01,'pct',.3), R('chsTone',' Tone',60,2000,10,'hz',180),
+   R('chsDetune','Detune',0,1,.01,'pct',.4), R('chsVoices','Voices',2,6,1,'n',4) ]},
+ {id:'fb',title:'Feedback howl',tog:'e_fb',defOff:true,ctrls:[
+   R('L_fb','Level',0,1,.01,'pct',.22), R('fbDelayMs','Delay',1,40,.5,'ms',9),
+   R('fbFeedback','Feedback',0,1.05,.01,'x',.85,.5,1.02), R('fbTone','Tone',.02,.9,.01,'pct',.3) ]},
+ {id:'gl',title:'Bit-reversal glitch',tog:'e_gl',defOff:true,ctrls:[
+   R('L_gl','Level',0,1,.01,'pct',.35), R('glRate','Rate',.2,20,.2,'/s',3),
+   R('glLen','Chunk',3,80,1,'ms',18), R('glRev','Reverse chance',0,1,.01,'pct',.5) ]},
+ {id:'tl',title:'Spectral tilt sweep',tog:'e_tl',defOff:true,ctrls:[
+   R('L_tl','Mix',0,1,.01,'pct',.35), R('tlRate','Sweep',.01,2,.01,'/s',.12),
+   R('tlDepth','Depth',0,1,.01,'pct',.6) ]},
+ {id:'wg',title:'Wind gust',tog:'e_wg',defOff:true,ctrls:[
+   R('L_wg','Level',0,1,.01,'pct',.28), R('wgRate','Cycle',.02,.6,.01,'/s',.12),
+   R('wgSwell','Swell',0,1,.01,'pct',.6), R('wgTone','Tone',.005,.3,.005,'pct',.05) ]},
+ {id:'ms',title:'Metallic strike',tog:'e_ms',defOff:true,ctrls:[
+   R('L_ms','Level',0,1,.01,'pct',.3), R('msRate','Strikes',.2,20,.2,'/s',2),
+   R('msRing','Ring',5,200,1,'q',40,15,150), R('msBase','Base',100,2000,20,'hz',500),
+   R('msSpread','Spread',0,1,.01,'pct',.3) ]},
+ {id:'ic',title:'Insect swarm',tog:'e_ic',defOff:true,ctrls:[
+   R('L_ic','Level',0,1,.01,'pct',.28), R('icRate','Density',.5,20,.5,'/s',4),
+   R('icLo','Low',500,4000,50,'hz',1500), R('icHi','High',2000,10000,100,'hz',6000),
+   R('icLen','Chirp len',10,80,2,'ms',30) ]},
+ {id:'cnr',title:'Static crackle rain',tog:'e_cnr',defOff:true,ctrls:[
+   R('L_cnr','Level',0,1,.01,'pct',.3), R('cnrRate','Base rate',1,80,1,'/s',12),
+   R('cnrDensity','Swell',0,1,.01,'pct',.7), R('cnrSharp','Sharp',0,1,.01,'pct',.8) ]}
 ];
 
 /* ============ param state + UI builder ============ */
@@ -617,6 +732,10 @@ function fmt(u,v){
   if(u==='q')return 'Q'+Math.round(v);
   if(u==='chz')return Math.round(chz(v))+'/s';
   if(u==='db')return (v>=0?'+':'')+v.toFixed(1)+'dB';
+  if(u==='ms')return v.toFixed(1)+'ms';
+  if(u==='s')return v.toFixed(2)+'s';
+  if(u==='oct/s')return (v>=0?'+':'')+v.toFixed(2)+' oct/s';
+  if(u==='v/s')return v.toFixed(2)+' v/s';
   return (''+v);
 }
 function chz(x){return Math.pow(10,lerp(0.7,3.6,x));} // rate slider -> Hz
@@ -630,8 +749,14 @@ function build(){
     const sec=document.createElement('div');sec.className='sect';
     const head=document.createElement('div');head.className='head';
     head.innerHTML='<span class="t">'+m.title+'</span>';
-    if(m.tog){ const sw=document.createElement('div');sw.className='sw';sw.setAttribute('aria-pressed','true');
-      P[m.tog]=true; sw.addEventListener('click',()=>{P[m.tog]=!P[m.tog];sw.setAttribute('aria-pressed',String(P[m.tog]));});
+    if(m.tog){ const sw=document.createElement('div');sw.className='sw';
+      // Modules flagged defOff (the tune-up round's 16 new sources + the chaos vector bank)
+      // don't join the default active set — with everything from both rounds on at once,
+      // measured per-buffer cost hit ~78% of the real-time budget on average and over 300%
+      // at times (real audio glitches on real phones). They're one tap, a section dice, or
+      // Randomize-All away — this only changes what a fresh install starts with.
+      const on0=!m.defOff; sw.setAttribute('aria-pressed',String(on0));
+      P[m.tog]=on0; sw.addEventListener('click',()=>{P[m.tog]=!P[m.tog];sw.setAttribute('aria-pressed',String(P[m.tog]));});
       CTRL[m.tog]={el:sw,tog:true}; head.appendChild(sw); }
     const dice=document.createElement('button');dice.className='dice';dice.textContent='⚄';
     dice.addEventListener('click',()=>{diceSection(m.id);info();});
@@ -652,7 +777,7 @@ function build(){
         inp.addEventListener('input',e=>{P[c.k]=+e.target.value;disp.textContent=fmt(c.unit,P[c.k]);});
         cell.appendChild(sm);cell.appendChild(inp);
         CTRL[c.k].el=inp;CTRL[c.k].disp=disp;
-        SECT[m.id].push(c.k); if(m.id!=='msh'&&m.id!=='vf'&&m.id!=='boost'&&m.id!=='dsp')MASH.push(c.k);
+        SECT[m.id].push(c.k); if(m.id!=='msh'&&m.id!=='vf')MASH.push(c.k);
       }else{
         sm.textContent=c.lab; cell.appendChild(sm);
         const sel=document.createElement('select');
@@ -670,15 +795,30 @@ function randCtrl(k){const c=CTRL[k].def; if(!c)return;
   if(c.t==='r'){let v=rnd(c.rmin,c.rmax); if(c.st>=1)v=Math.round(v); setPval(k,v);}
   else{const o=c.opts[(Math.random()*c.opts.length)|0][0]; setPval(k,o);}}
 function diceSection(id){ SECT[id].forEach(randCtrl); if(id==='chA'||id==='chB')seedChaos(); flushDirty(); }
+// A spectrum, not a fixed cap: 0.10..1.00, the odds each toggleable module lands "on" per
+// Randomize-everything press. At 1.00 it's exactly the original behaviour — every module,
+// every time. Defaults to 0.70 (measured a healthier CPU load there — see the Randomize
+// intensity panel) but the full range including "always everything" stays one tap away.
+let randIntensity=0.7;
 function randomizeAll(){ MOD.forEach(m=>SECT[m.id].forEach(randCtrl));
-  MOD.forEach(m=>{if(m.tog){P[m.tog]=true;} });
-  document.querySelectorAll('#panel .sw').forEach(s=>s.setAttribute('aria-pressed','true'));
+  MOD.forEach(m=>{ if(!m.tog)return; P[m.tog]=Math.random()<randIntensity;
+    const c=CTRL[m.tog]; if(c&&c.el)c.el.setAttribute('aria-pressed',String(P[m.tog])); });
   seedChaos(); flushDirty(); info(); haptic('profile'); }
 
 /* ============ chaos ============ */
 function newC(){return{map:'lorenz',x:.5,y:.1,z:.1,w:0,cur:0,tgt:0,cnt:0,step:200};}
 const cA=newC(),cB=newC();
-function seedChaos(){ [cA,cB].forEach(o=>{o.x=rnd(.1,.9);o.y=rnd(-.2,.2);o.z=rnd(0,.3);o.w=rnd(0,TAU);o.cur=o.tgt=0;}); }
+// Four more independent chaos vectors (C-F) beyond the original A/B pair — each one an
+// independently-picked attractor + rate that can be routed into a broad set of modulation
+// buses (see routeVector/mb* below), so there are six live "vectors to pull" total instead
+// of two. Only advanced when the e_cv toggle is on, so idle cost is zero when unused.
+// Named chC/chD/chE/chF (not cC/cD/cE/cF) — proc() below already has its own local `cD`
+// (crush-downsample); a same-named module-level const would get shadowed by that local's
+// `let` hoisting for the whole function, throwing a temporal-dead-zone ReferenceError on
+// every earlier reference. Distinct prefix avoids the collision outright.
+const chC=newC(),chD=newC(),chE=newC(),chF=newC();
+const CV_CORES=[chC,chD,chE,chF];
+function seedChaos(){ [cA,cB,chC,chD,chE,chF].forEach(o=>{o.x=rnd(.1,.9);o.y=rnd(-.2,.2);o.z=rnd(0,.3);o.w=rnd(0,TAU);o.cur=o.tgt=0;}); }
 function iter(o){
   const m=o.map;
   if(m==='logistic'){o.x=3.9*o.x*(1-o.x);return 2*o.x-1;}
@@ -727,6 +867,10 @@ function iter(o){
     o.x+=dx*dt;o.y+=dy*dt;o.w+=om*dt;}
   if(!isFinite(o.x)){o.x=.1;o.y=0;o.w=0;} return cl(o.x/1.6,-1,1);
 }
+// Modulation bus fed by the four extra chaos vectors (C-F) — reset every sample, filled by
+// routeMB() below, read by the newer source modules as additional live modulation.
+const MB={amp:0,freq:0,filt:0,doppler:0,glitch:0,formant:0,chorus:0,tilt:0,grain:0};
+function routeMB(dest,amt,val){ if(dest && dest!=='off' && dest in MB) MB[dest]+=val*amt; }
 function advance(o,rateHz){ o.step=Math.max(1,Math.round(sr/rateHz));
   if(--o.cnt<=0){o.tgt=iter(o);o.cnt=o.step;} o.cur=lerp(o.cur,o.tgt,.25); return o.cur; }
 
@@ -754,6 +898,27 @@ let usPh=new Float64Array(6),usF=new Float64Array(6);
 let sbPh=0,sbWob=0;
 let mrPh=0,mrRp=0;
 let rlSpk=0,rlCd=0,rlBounce=0;
+
+/* ---- 16 additional chaos-churn source modules (tune-up round) ---- */
+let dpPh=0,dpT=-1,dpCd=0;
+let wfPhC=0,wfWowPh=0,wfFlutPh=0;
+const CF_LEN=600; let cfBufL=new Float32Array(CF_LEN),cfBufR=new Float32Array(CF_LEN),cfW=0,cfSweepPh=0;
+const GR_VOICES=3; let grVoice=Array.from({length:GR_VOICES},()=>({pos:0,ph:0,rate:1,age:0,life:0})),grCd=0,grSlot=0;
+let fmPhC=0,fmPhM=0;
+const SHP_N=4; let shpPos=new Float64Array(SHP_N).map((_,k)=>k/SHP_N), shpPh=new Float64Array(SHP_N);
+let pllEst=440, pllPhAcc=0;
+let ftPhBuf=0, ftB1=[0,0,0,0],ftB2=[0,0,0,0],ftB3=[0,0,0,0];
+// Rough vowel formant table (F1,F2,F3 in Hz) that the morph sweeps continuously through.
+const FT_VOWELS=[[700,1220,2600],[400,2200,2800],[300,2300,3000],[450,800,2830],[325,700,2530]];
+const CHS_N=6; let chsPh=new Float64Array(CHS_N);
+const FB_LEN=2000; let fbBuf=new Float32Array(FB_LEN),fbW=0,fbLP=0;
+let glCd=0,glActive=false,glPos=0,glDir=1,glLenSamp=0,glAge=0;
+let tlLpL=0,tlLpR=0,tlSweepPh=0;
+let wgEnvPh=0,wgLpL=0,wgGustCd=0,wgGustAmt=0;
+const MS_N=6, MS_RATIOS=[1,1.62,2.41,3.06,3.99,4.62];
+let msY1=new Float64Array(MS_N),msY2=new Float64Array(MS_N),msC=new Float64Array(MS_N),msR2=new Float64Array(MS_N),msCd=0;
+const IC_N=5; let icV=Array.from({length:IC_N},()=>({active:false,age:0,len:1,f0:800,f1:2000,ph:0,cd:Math.round(rnd(1000,20000))}));
+let cnrSpk=0,cnrDensPh=0;
 
 const CAP=2048, cap=new Float32Array(CAP); let capW=0;
 
@@ -866,17 +1031,37 @@ function proc(e){
   const saved=applyModIn();
   const L=e.outputBuffer.getChannelData(0), Rr=e.outputBuffer.getChannelData(1), n=L.length, E=P.en;
   const aR=chz(P.aRate), bR=chz(P.bRate);
+  const cvOn=!!P.e_cv, cR=chz(P.cRate), dR=chz(P.dRate), eR=chz(P.eRate), fR=chz(P.fRate);
   const spN=P.spN|0, cwN=P.cwS|0, hmH=P.hmH|0, usN=P.usN|0;
   const arP=P.arR*E*(1/300), arSh=lerp(.5,.985,P.arS);
   const vmOn=P.e_vm, vmN=P.vmTalk|0; let vC=null; if(vmOn)vC=bpCoef(P.vmLo,Math.max(P.vmLo+50,P.vmHi));
   const vfOn=P.e_vf&&P.vfAmt>0, vfAmt=P.vfAmt; let fC=null; if(vfOn)fC=bpCoef(P.vfLo,Math.max(P.vfLo+50,P.vfHi));
   const ggP=P.ggR/sr, ggSh=lerp(.4,.97,P.ggS);
+  // Formant morph coefficients recomputed once per buffer (~40ms), not per sample — the
+  // vowel sweep is slow enough that this is inaudible as a step while avoiding 3x bpCoef()
+  // (each a couple of trig calls) on every single sample.
+  let ftC1=null,ftC2=null,ftC3=null;
+  if(P.e_ft){
+    ftPhBuf+=P.ftRate*(n/sr); if(ftPhBuf>=5)ftPhBuf-=5; if(ftPhBuf<0)ftPhBuf+=5;
+    const idx=Math.floor(ftPhBuf), frac=ftPhBuf-idx, v0=FT_VOWELS[idx], v1=FT_VOWELS[(idx+1)%5];
+    const F1=lerp(v0[0],v1[0],frac), F2=lerp(v0[1],v1[1],frac), F3=lerp(v0[2],v1[2],frac), Q=cl(P.ftQ,3,20);
+    ftC1=bpCoef(F1-F1/Q,F1+F1/Q); ftC2=bpCoef(F2-F2/Q,F2+F2/Q); ftC3=bpCoef(F3-F3/Q,F3+F3/Q);
+  }
   let clipCount=0;
   for(let i=0;i<n;i++){
     let a=advance(cA,aR), b=advance(cB,bR);
     const bRing=P.bDest==='ring', bCross=P.bDest==='cross', bWander=P.bDest==='wander', bCrush=P.bDest==='crush';
     if(bCross) a=advance(cA, aR*(1+P.bAmt*b));
-    const fmF=1+P.aFreq*a*0.5;
+
+    // Four extra chaos vectors, each free to pull on any of nine modulation buses at its
+    // own weight — this is the "multiple vectors to pull" layer beyond chaos A/B.
+    MB.amp=0;MB.freq=0;MB.filt=0;MB.doppler=0;MB.glitch=0;MB.formant=0;MB.chorus=0;MB.tilt=0;MB.grain=0;
+    if(cvOn){
+      const cvC=advance(chC,cR), cvD=advance(chD,dR), cvE=advance(chE,eR), cvF=advance(chF,fR);
+      routeMB(P.cDest,P.cAmt,cvC); routeMB(P.dDest,P.dAmt,cvD);
+      routeMB(P.eDest,P.eAmt,cvE); routeMB(P.fDest,P.fAmt,cvF);
+    }
+    const fmF=1+P.aFreq*a*0.5+MB.freq*0.35;
     let mono=0;
 
     if(P.e_sw){ const inc=(P.swF/sr)*fmF*(1+(Math.random()*2-1)*P.swJ*E*.5);
@@ -976,6 +1161,128 @@ function proc(e){
 
     if(P.e_ca){ const src=(P.caS==='A')?a:b; mono+=Math.tanh(src*P.caD)*P.L_ca; }
 
+    // ---- 16 additional chaos-churn sources (tune-up round) ----
+    if(P.e_dp){ // Doppler pass: a moving-source pitch-bend event, timed, not continuous
+      if(dpT<0 && --dpCd<=0){ dpCd=Math.max(1,Math.round(sr/Math.max(.02,P.dpR))); dpT=0; }
+      if(dpT>=0){ const len=Math.max(2,P.dpLen*sr); dpT++;
+        if(dpT>len) dpT=-1;
+        else { const frac=dpT/len, pos=frac*2-1;
+          const ratio=1+P.dpDepth*(1+MB.doppler*0.6)*(-pos)/(1+Math.abs(pos)*2);
+          dpPh+=P.dpTone*ratio*fmF/sr; if(dpPh>=1)dpPh-=(dpPh|0);
+          const env=Math.pow(1-Math.abs(pos),0.6);
+          mono+=Math.sin(TAU*dpPh)*env*P.L_dp; } } }
+
+    if(P.e_wf){ // Wow & flutter: tape-style dual-rate pitch wobble, continuous
+      wfWowPh+=0.7/sr; if(wfWowPh>=1)wfWowPh-=1; wfFlutPh+=9/sr; if(wfFlutPh>=1)wfFlutPh-=1;
+      const wobble=1+P.wfWowD*0.06*Math.sin(TAU*wfWowPh)+P.wfFlutD*0.02*Math.sin(TAU*wfFlutPh);
+      wfPhC+=P.wfTone*wobble*fmF/sr; if(wfPhC>=1)wfPhC-=(wfPhC|0);
+      mono+=Math.sin(TAU*wfPhC)*P.L_wf; }
+
+    if(P.e_gr){ // Granular smear: replays tiny randomized grains from recent output history
+      if(--grCd<=0){ grCd=Math.max(1,Math.round(sr/Math.max(1,P.grRate)));
+        const v=grVoice[grSlot%GR_VOICES]; grSlot++;
+        v.pos=(capW-Math.round(rnd(200,CAP-100))+CAP*4)%CAP; v.ph=0;
+        v.rate=rnd(0.5,1.8)*(1+MB.grain*0.5); v.life=Math.round(rnd(sr*0.01,sr*Math.max(.01,P.grLen))); v.age=0; }
+      let g=0;
+      for(const v of grVoice){ if(v.age<v.life){
+          const idx=(v.pos+(v.ph|0)+CAP*4)%CAP, s=cap[idx];
+          const env=Math.sin(Math.PI*(v.age/Math.max(1,v.life)));
+          g+=s*env; v.ph+=v.rate; v.age++; } }
+      mono+=g*P.L_gr*0.6; }
+
+    if(P.e_fm){ // FM bell clangor: 2-operator FM, inharmonic ratio for a bell/clang character
+      fmPhM+=P.fmBase*P.fmRatio*fmF/sr; if(fmPhM>=1)fmPhM-=(fmPhM|0);
+      const modHz=P.fmIndex*P.fmBase*2*Math.sin(TAU*fmPhM);
+      fmPhC+=(P.fmBase*fmF+modHz)/sr; if(fmPhC>=1)fmPhC-=(fmPhC|0);
+      mono+=Math.sin(TAU*fmPhC)*P.L_fm; }
+
+    if(P.e_shp){ // Shepard riser: stacked octave tones, perpetually rising illusion
+      let g=0;
+      for(let k=0;k<SHP_N;k++){ shpPos[k]+=P.shpRate/Math.max(1,P.shpOct)/sr; if(shpPos[k]>=1)shpPos[k]-=1; if(shpPos[k]<0)shpPos[k]+=1;
+        const freq=P.shpLo*Math.pow(2,shpPos[k]*P.shpOct)*fmF;
+        shpPh[k]+=freq/sr; if(shpPh[k]>=1)shpPh[k]-=(shpPh[k]|0);
+        const amp=1-Math.abs(shpPos[k]*2-1); // cheap triangular fade-in/out at octave edges instead of sin()
+        g+=Math.sin(TAU*shpPh[k])*amp*amp; }
+      mono+=g/SHP_N*P.L_shp*2; }
+
+    if(P.e_pll){ // PLL lock/unlock: a loop chasing a jittery reference, warbles when it can't keep up
+      const ref=P.pllRef*(1+P.pllJit*a*0.5+MB.tilt*0.05);
+      pllEst=lerp(pllEst,ref,cl(P.pllSlew,0.0005,0.2));
+      const err=Math.abs(ref-pllEst)/Math.max(1,ref);
+      pllPhAcc+=pllEst*fmF/sr; if(pllPhAcc>=1)pllPhAcc-=(pllPhAcc|0);
+      const lockNoise=err*3*(Math.random()*2-1);
+      mono+=(Math.sin(TAU*pllPhAcc)*(1-cl(err*2,0,0.6))+lockNoise*0.4)*P.L_pll; }
+
+    if(P.e_ft){ // Formant morph: 3 swept vowel-formant resonances excited by noise
+      const exc=Math.random()*2-1;
+      const s1=bq(ftB1,exc,ftC1[0],ftC1[1],ftC1[2],ftC1[3]);
+      const s2=bq(ftB2,exc,ftC2[0],ftC2[1],ftC2[2],ftC2[3]);
+      const s3=bq(ftB3,exc,ftC3[0],ftC3[1],ftC3[2],ftC3[3]);
+      mono+=(s1*1.0+s2*0.7+s3*0.4)*3*P.L_ft*(1+MB.formant*0.5); }
+
+    if(P.e_chr){ // Chorus swarm: N detuned voices of one tone, thick swarming texture
+      let g=0; const nV=cl(P.chsVoices|0,2,CHS_N);
+      for(let k=0;k<nV;k++){ const det=1+((k-(nV-1)/2)/nV)*P.chsDetune*0.06*(1+MB.chorus*0.5);
+        chsPh[k]+=P.chsTone*det*fmF/sr; if(chsPh[k]>=1)chsPh[k]-=(chsPh[k]|0);
+        g+=Math.sin(TAU*chsPh[k]); }
+      mono+=(g/Math.max(1,nV))*P.L_chr; }
+
+    if(P.e_fb){ // Feedback howl: short delay loop, internally tanh-limited so it can self-oscillate safely
+      const dsamp=cl(P.fbDelayMs*sr/1000,1,FB_LEN-2);
+      fbW=(fbW+1)%FB_LEN; const readPos=(fbW-dsamp+FB_LEN*2)%FB_LEN;
+      const i0=readPos|0, frac=readPos-i0, i1=(i0+1)%FB_LEN;
+      let d=fbBuf[i0]*(1-frac)+fbBuf[i1]*frac;
+      fbLP=lerp(fbLP,d,cl(P.fbTone,0.02,0.9)); d=fbLP;
+      const loopVal=Math.tanh((d*P.fbFeedback+mono*0.15)*1.3);
+      fbBuf[fbW]=loopVal;
+      mono+=loopVal*P.L_fb; }
+
+    if(P.e_gl){ // Bit-reversal glitch: chaos-timed stutter that replays/reverses a chunk of recent output
+      if(!glActive && --glCd<=0){ glCd=Math.max(1,Math.round(sr/Math.max(.1,P.glRate*(1+MB.glitch*0.7))));
+        glActive=true; glAge=0; glLenSamp=Math.max(4,Math.round(P.glLen*sr/1000));
+        glPos=(capW-glLenSamp-10+CAP*4)%CAP; glDir=Math.random()<P.glRev?-1:1; }
+      if(glActive){ const idx=(glPos+(glDir>0?glAge:glLenSamp-glAge)+CAP*4)%CAP;
+        mono=mono*0.15+cap[idx]*0.9*P.L_gl;
+        glAge++; if(glAge>=glLenSamp) glActive=false; } }
+
+    if(P.e_ms){ // Metallic strike: inharmonic modal resonators, struck-metal character
+      if(--msCd<=0){ msCd=Math.max(1,Math.round(sr/Math.max(.1,P.msRate)));
+        for(let s=0;s<MS_N;s++){ const f=P.msBase*MS_RATIOS[s]*(1+rnd(-1,1)*P.msSpread*0.05);
+          const w=TAU*f/sr, rr=cl(1-(Math.PI*f/P.msRing)/sr,.9,.99995);
+          msC[s]=2*rr*Math.cos(w); msR2[s]=rr*rr; msY1[s]=rnd(-1,1)*(1-s*0.12); msY2[s]=0; } }
+      let z=0; for(let s=0;s<MS_N;s++){ const y=msC[s]*msY1[s]-msR2[s]*msY2[s]; msY2[s]=msY1[s]; msY1[s]=y; z+=y; }
+      mono+=z*0.35*P.L_ms; }
+
+    if(P.e_ic){ // Insect swarm: dense overlapping rapid up-chirps, organic-chaotic character
+      let g=0;
+      for(let v=0;v<IC_N;v++){ const V=icV[v];
+        if(!V.active){ if(--V.cd<=0){ V.active=true; V.age=0;
+            V.len=Math.max(2,Math.round((P.icLen*rnd(0.5,1.5))*sr/1000));
+            V.f0=rnd(P.icLo,Math.max(P.icLo+50,P.icHi*0.5)); V.f1=rnd(Math.max(P.icLo+50,P.icHi*0.6),P.icHi); V.ph=0; } }
+        else{ const frac=V.age/Math.max(1,V.len); const f=lerp(V.f0,V.f1,frac);
+          V.ph+=f*fmF/sr; if(V.ph>=1)V.ph-=(V.ph|0);
+          const env=Math.sin(Math.PI*frac);
+          g+=Math.sin(TAU*V.ph)*env; V.age++;
+          if(V.age>=V.len){ V.active=false; V.cd=Math.max(1,Math.round(sr/Math.max(.2,P.icRate)*rnd(.3,1.8))); } } }
+      mono+=g*0.3*P.L_ic; }
+
+    if(P.e_cnr){ // Static crackle rain: Poisson-ish clicks with a slow density swell (light rain -> downpour)
+      cnrDensPh+=0.05/sr; if(cnrDensPh>=1)cnrDensPh-=1;
+      const dens=0.15+0.85*(0.5+0.5*Math.sin(TAU*cnrDensPh))*(1+MB.grain*0.2);
+      const p=(P.cnrRate*dens)/sr;
+      if(Math.random()<p*300){ cnrSpk=(Math.random()<.5?1:-1)*rnd(0.4,1); }
+      cnrSpk*=lerp(.3,.96,P.cnrSharp);
+      mono+=cnrSpk*P.L_cnr*1.2; }
+
+    if(P.e_wg){ // Wind gust: filtered-noise gusts with a slow amplitude swell, organic masking texture
+      wgEnvPh+=P.wgRate/sr; if(wgEnvPh>=1)wgEnvPh-=1;
+      let env=0.5+0.5*Math.sin(TAU*wgEnvPh);
+      if(--wgGustCd<=0){ wgGustCd=Math.round(rnd(sr*1.5,sr*6)); wgGustAmt=rnd(0.3,1); }
+      env=env*(1-P.wgSwell)+env*wgGustAmt*P.wgSwell;
+      const nz=Math.random()*2-1;
+      wgLpL=lerp(wgLpL,nz,cl(P.wgTone,0.005,0.3));
+      mono+=wgLpL*env*P.L_wg; }
+
     if(vmOn){ const nz=Math.random()*2-1, bp=bq(vmB,nz,vC[0],vC[1],vC[2],vC[3]);
       let env=0; for(let k=0;k<vmN;k++){ vmPh[k]+=(P.vmSyl*(0.55+0.9*k/Math.max(1,vmN))*(1+(Math.random()*2-1)*0.03))/sr;
         if(vmPh[k]>=1)vmPh[k]-=(vmPh[k]|0); env+=0.5+0.5*Math.sin(TAU*vmPh[k]); }
@@ -984,10 +1291,29 @@ function proc(e){
 
     let l=mono+spuL, r=mono+spuR;
     if(P.e_nf){ l+=noise(0)*P.L_nf; r+=noise(1)*P.L_nf; }
-    const amp=1-P.aAmp*(0.5+0.5*a); l*=amp; r*=amp;
-    if(P.e_gf){ const cut=cl(P.gfC*(1+P.gfCh*P.aFilt*a),40,sr*0.45);
+    const amp=cl(1-P.aAmp*(0.5+0.5*a)-MB.amp*0.4,0,1.6); l*=amp; r*=amp;
+    if(P.e_gf){ const cut=cl(P.gfC*(1+P.gfCh*P.aFilt*a+MB.filt*0.6),40,sr*0.45);
       const f=2*Math.sin(Math.PI*cut/sr), q=1/cl(P.gfQ,.5,12);
       l=svf(svL,l,f,q,P.gfM); r=svf(svR,r,f,q,P.gfM); }
+
+    if(P.e_cf){ // Comb flutter: swept short-delay comb filter, metallic flanging texture
+      cfSweepPh+=P.cfRate/sr; if(cfSweepPh>=1)cfSweepPh-=1;
+      const depth=(0.5+0.5*Math.sin(TAU*cfSweepPh))*P.cfDepthMs;
+      const dsamp=cl(depth*sr/1000,1,CF_LEN-2);
+      cfW=(cfW+1)%CF_LEN; const readPos=(cfW-dsamp+CF_LEN*2)%CF_LEN;
+      const i0=readPos|0, frac=readPos-i0, i1=(i0+1)%CF_LEN;
+      const dL=cfBufL[i0]*(1-frac)+cfBufL[i1]*frac, dR=cfBufR[i0]*(1-frac)+cfBufR[i1]*frac;
+      cfBufL[cfW]=l+dL*P.cfFb; cfBufR[cfW]=r+dR*P.cfFb;
+      l=lerp(l,l+dL,P.L_cf); r=lerp(r,r+dR,P.L_cf); }
+
+    if(P.e_tl){ // Spectral tilt sweep: slow bright<->dark tilt-EQ, distinct from the static global filter
+      tlSweepPh+=P.tlRate/sr; if(tlSweepPh>=1)tlSweepPh-=1;
+      const t=cl(Math.sin(TAU*tlSweepPh)*P.tlDepth+MB.tilt*P.tlDepth*0.6,-1,1);
+      tlLpL=lerp(tlLpL,l,0.04); tlLpR=lerp(tlLpR,r,0.04);
+      const loL=tlLpL, hiL=l-tlLpL, loR=tlLpR, hiR=r-tlLpR;
+      const outL=loL*(1-t)+hiL*(1+t), outR=loR*(1-t)+hiR*(1+t);
+      l=lerp(l,outL,P.L_tl); r=lerp(r,outR,P.L_tl); }
+
     let cD=P.crDwn; if(bCrush)cD=cl(P.crDwn*(1+P.bAmt*(0.5+0.5*b)*3),1,64);
     if(cD>1 || P.crBits<16){
       if(crCnt<=0){ crHoldL=quant(l,P.crBits); crHoldR=quant(r,P.crBits); crCnt=cD|0; }
@@ -1059,12 +1385,59 @@ function schedule(now){
   } else { mNext=now+40; }
   if(P.dr>0 && P.dd>0){ if(now>=dNext){ smoothDrift(); dNext=now+1000/P.dr; } }
   else dNext=now+300;
-  Sensors.tick(now); Scene.tick(now); Dsp.update();
+  Sensors.tick(now); Scene.tick(now); Dsp.update(); DemodGuard.tick(now);
 }
 function smoothDrift(){ const d=P.dd;
   MASH.forEach(k=>{ if(Math.random()<.4){ const c=CTRL[k].def, span=(c.rmax-c.rmin);
     let v=P[k]+(Math.random()*2-1)*span*.1*d; v=cl(v,c.min,c.max); if(c.st>=1)v=Math.round(v); setPval(k,v);} });
 }
+
+/* ============ DEMODULATION-DETECTION GUARD ============
+   Watches the app's OWN recent output (the same `cap` ring buffer the visualizer reads)
+   for signs it has become too regular — a strong, sustained autocorrelation peak means the
+   signal is settling into a predictable, more easily demodulated/filtered-out pattern,
+   which works against the whole point of a masker. When that holds for several checks in a
+   row, it responds with an aggressive, hands-off "remodulation burst": reseed every chaos
+   core, hard-reroll a big slice of every dial, and spike the mash rate briefly. Analysis
+   runs on the main thread every ~1.5s off the existing capture buffer — nowhere near the
+   audio callback's per-sample budget, so it costs nothing there. */
+const DemodGuard=(function(){
+  const LAGS=[53,127,241,401]; // samples; a spread of short/medium periods, deliberately not tied to any one module's own rate
+  const WIN=480;
+  let en=true, next=0, streak=0, lastScore=0, cooldown=0, burstFlash=0;
+  function periodicity(){
+    const base=(capW-WIN-8+CAP*4)%CAP;
+    let energy=0; for(let i=0;i<WIN;i++){ const s=cap[(base+i)%CAP]; energy+=s*s; }
+    if(energy<1e-6) return 0; // near-silence isn't "too regular", it's just quiet
+    let best=0;
+    for(const lag of LAGS){
+      let corr=0;
+      for(let i=0;i<WIN;i++){ corr+=cap[(base+i)%CAP]*cap[(base+i+lag)%CAP]; }
+      const norm=Math.abs(corr)/energy;
+      if(norm>best) best=norm;
+    }
+    return cl(best,0,1);
+  }
+  function burst(){
+    seedChaos();
+    const pool=MASH.slice(); for(let i=pool.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [pool[i],pool[j]]=[pool[j],pool[i]]; }
+    pool.slice(0, Math.ceil(pool.length*0.5)).forEach(randCtrl);
+    flushDirty();
+    const savedPps=P.mPps; setSpeed(cl(savedPps*6,20,600));
+    setTimeout(()=>setSpeed(savedPps), 2500);
+    burstFlash=1; streak=0; cooldown=8000;
+    Alerts.push(1,`Demod guard: output pattern held steady for a while — fired an aggressive remodulation burst to break it up.`,'demod');
+    haptic('clip'); toast('Remodulating — pattern looked too steady');
+  }
+  function tick(now){
+    if(!en || !running || cooldown>0){ if(cooldown>0)cooldown-=16; return; }
+    if(now<next) return; next=now+1500;
+    lastScore=periodicity();
+    if(lastScore>0.72) streak++; else streak=Math.max(0,streak-1);
+    if(streak>=3) burst();
+  }
+  return { tick, set enabled(v){en=v;}, get enabled(){return en;}, get score(){return lastScore;}, get flash(){const f=burstFlash;burstFlash*=0.8;return f;} };
+})();
 
 /* ============ SENSORS ============ */
 const Sensors=(function(){
@@ -1115,6 +1488,7 @@ const Sensors=(function(){
     get enabled(){return enabled;}, lat:null,lon:null,netType:'—',downlink:null,
     val(k){ return raw[k]||0; }, raw,
     tick(now){ if(!enabled)return; bridge(); },
+    enable, disable,
     toggle(){ enabled?disable():enable(); },
     feed(obj){ for(const k in obj) if(k in raw) raw[k]=cl(obj[k],-1,1); } // from accessories
   };
@@ -1385,17 +1759,33 @@ const Mic=(function(){
   const SPEECH_LO=250, SPEECH_HI=3500, ULTRA_LO=18000;
   async function enable(){
     if(enabled) return;
-    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ toast('getUserMedia unavailable'); return; }
-    try{ stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}}); }
-    catch(e){
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+      toast(window.isSecureContext===false
+        ? 'Mic needs a secure context — open this as the installed app, not a bare file preview.'
+        : 'getUserMedia unavailable on this browser/WebView.');
+      return;
+    }
+    let lastErr=null;
+    // Some WebView/OEM builds reject the advanced constraint set below (OverconstrainedError)
+    // even though a plain mic request would succeed — try the strict constraints first, then
+    // retry with a bare {audio:true} before giving up, so a picky constraint negotiation
+    // doesn't masquerade as a permission problem.
+    for(const constraints of [{audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}},{audio:true}]){
+      try{ stream=await navigator.mediaDevices.getUserMedia(constraints); lastErr=null; break; }
+      catch(e){ lastErr=e; }
+    }
+    if(lastErr){
       // Surface the real DOMException name — a bare "permission denied" toast used to hide
-      // whether this was a fresh OS denial vs. a stale in-page cache from an earlier attempt
-      // that raced the OS permission dialog (see MainActivity.kt for the native-side fix).
-      const name=e&&e.name?e.name:'Error';
-      if(name==='NotAllowedError') toast('Mic blocked. If you just granted the permission, fully close and reopen the app once.');
+      // whether this was a fresh OS denial, a stale in-page cache from an attempt that raced
+      // the OS permission dialog (see MainActivity.kt for the native-side fix), or something
+      // else entirely (no device, insecure context, constraints).
+      const name=lastErr&&lastErr.name?lastErr.name:'Error';
+      if(name==='NotAllowedError') toast('Mic blocked. If you just granted the permission, fully close and reopen the app once (not just switch away and back).');
       else if(name==='NotFoundError') toast('No microphone found on this device.');
-      else toast('Mic error: '+name);
-      console.warn('getUserMedia failed', e);
+      else if(name==='NotReadableError') toast('Mic is busy — another app may be using it.');
+      else if(name==='SecurityError') toast('Mic blocked by a secure-context restriction — open this as the installed app.');
+      else toast('Mic error: '+name+(lastErr.message?' — '+lastErr.message:''));
+      console.warn('getUserMedia failed', lastErr);
       return;
     }
     try{
@@ -1770,23 +2160,87 @@ const Lan=(function(){
   return { scan };
 })();
 
+/* ============ SATELLITE VIEW (real GNSS telemetry, native-bridge only, receive-only) ============
+   A GPS/GNSS receiver has no transmit path by design — it listens to satellites, it never
+   talks back to them. This reads the phone's own GnssStatus (satellite count, constellation
+   mix, per-satellite signal strength) — the same kind of information the Web Geolocation
+   API doesn't expose, but the OS already has. Nothing here spoofs, injects, or transmits
+   anything toward satellites or receivers — that's a federal offense (GNSS spoofing/jamming)
+   and genuinely dangerous to aviation and marine navigation regardless of intent; it was
+   never on the table. */
+const SatView=(function(){
+  let en=false, poll=null;
+  function render(){
+    if(!window.EMIBridge||!EMIBridge.getGnssStatus){ $('satSrc').textContent='native only'; return; }
+    $('satSrc').textContent='live';
+    try{
+      const s=JSON.parse(EMIBridge.getGnssStatus()||'{}');
+      $('satCount').textContent=s.count!=null?String(s.count):'—';
+      $('satUsed').textContent=s.used!=null?String(s.used):'—';
+      $('satCn0').textContent=s.avgCn0!=null?s.avgCn0.toFixed(1)+' dB-Hz':'—';
+      const el=$('satConst'); if(el){
+        const cs=s.constellations||{};
+        const keys=Object.keys(cs);
+        el.innerHTML=keys.length?'':'<div class="muted">No satellites tracked yet.</div>';
+        keys.forEach(k=>{ const it=document.createElement('div'); it.className='item';
+          const nm=document.createElement('div'); nm.className='n'; nm.textContent=k;
+          const n=document.createElement('span'); n.className='rssi'; n.textContent=cs[k];
+          it.append(nm,n); el.appendChild(it); });
+      }
+    }catch(e){}
+  }
+  function enable(){
+    en=true; $('satEn').setAttribute('aria-pressed','true');
+    if(window.EMIBridge&&EMIBridge.startGnss){ try{EMIBridge.startGnss();}catch(e){} }
+    if(poll)clearInterval(poll); poll=setInterval(render,2000); render();
+    toast(window.EMIBridge&&EMIBridge.getGnssStatus?'Satellite view on':'Satellite view needs the installed app (native bridge)');
+  }
+  function disable(){
+    en=false; $('satEn').setAttribute('aria-pressed','false');
+    if(window.EMIBridge&&EMIBridge.stopGnss){ try{EMIBridge.stopGnss();}catch(e){} }
+    if(poll){clearInterval(poll);poll=null;}
+  }
+  return { enable, disable, get enabled(){return en;} };
+})();
+
 /* ============ WARDRIVING (local GPS-tagged track log; export only, no auto-upload) ============ */
 const Wardrive=(function(){
   let on=false, track=[], apsSeen=new Map(), autoIv=null;
   function log(kind,extra){
-    if(!on || Sensors.lat==null) return;
+    if(!on || Sensors.lat==null) return false;
     track.push({t:Date.now(),lat:Sensors.lat,lon:Sensors.lon,kind,...extra});
     updUi();
+    return true;
   }
   function ingestWifi(list){
     if(!on) return;
-    list.forEach(r=>{ if(r.bssid && !apsSeen.has(r.bssid)){ apsSeen.set(r.bssid,r.ssid); log('wifi',{ssid:r.ssid,bssid:r.bssid,level:r.level}); } });
+    // Only mark a BSSID "seen" once it's actually been logged with a real fix — otherwise
+    // an AP scanned in the gap before the first GPS fix arrives gets marked seen anyway and
+    // is silently skipped forever afterward, since it never gets a second chance.
+    list.forEach(r=>{ if(r.bssid && !apsSeen.has(r.bssid)){
+        if(log('wifi',{ssid:r.ssid,bssid:r.bssid,level:r.level})) apsSeen.set(r.bssid,r.ssid);
+      } });
   }
   function updUi(){
     const p=$('wdPoints'); if(p)p.textContent=String(track.length);
     const a=$('wdAps'); if(a)a.textContent=String(apsSeen.size);
+    const s=$('wdState'); if(s && on) s.textContent = Sensors.lat==null ? 'waiting for GPS' : 'logging';
   }
-  function enable(){ on=true; $('wdEn').setAttribute('aria-pressed','true'); $('wdState').textContent='on'; toast('Wardriving on — local log only'); }
+  // Wardriving needs two OTHER things to actually log anything: GPS (Sensors tab) and a
+  // recurring Wi-Fi scan. Previously the toggle here didn't touch either — a user who just
+  // hit this switch got a silent, permanently-empty log with no indication why. Now
+  // enabling Wardrive turns both on itself; the "Auto-scan" chip becomes an override, not
+  // a requirement.
+  function enable(){
+    on=true; $('wdEn').setAttribute('aria-pressed','true'); $('wdState').textContent='on';
+    if(!Sensors.enabled){ Sensors.enable(); }
+    RF.wifiScanNow();
+    setAutoScan(true);
+    const chip=$('wdAutoScan'); if(chip)chip.setAttribute('aria-pressed','true');
+    toast(Sensors.lat==null
+      ? 'Wardriving on — waiting for a GPS fix (grant location if prompted)'
+      : 'Wardriving on — local log only');
+  }
   function disable(){ on=false; $('wdEn').setAttribute('aria-pressed','false'); $('wdState').textContent='off'; if(autoIv){clearInterval(autoIv);autoIv=null;} }
   function clearLog(){ track=[]; apsSeen.clear(); updUi(); toast('Wardrive log cleared'); }
   function setAutoScan(v){
@@ -1808,7 +2262,7 @@ const Wardrive=(function(){
       setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },1000);
     }catch(e){ toast('Export failed — '+(e&&e.message?e.message:'unknown error')); }
   }
-  return { enable, disable, clearLog, setAutoScan, ingestWifi,
+  return { enable, disable, clearLog, setAutoScan, ingestWifi, tick:updUi,
     exportGpx(){ if(!track.length){toast('Nothing logged yet');return;} download(toGpx(),'emi-wardrive.gpx','application/gpx+xml'); },
     exportCsv(){ if(!track.length){toast('Nothing logged yet');return;} download(toCsv(),'emi-wardrive.csv','text/csv'); },
     get on(){return on;} };
@@ -1896,6 +2350,12 @@ function draw(now){
       const dl=$('rv_dl');if(dl)dl.textContent=(Sensors.downlink!=null?Sensors.downlink+' Mb':'—');
       const cell=$('rv_cell');if(cell)cell.textContent=(Sensors.raw.rtt?Math.round((Sensors.raw.rtt+1)/2*100)+'%':'—');
       const gps=$('rv_gps');if(gps)gps.textContent=(Sensors.lat!=null?Sensors.lat.toFixed(3)+','+Sensors.lon.toFixed(3):'—'); }
+    Wardrive.tick();
+    const dgS=$('dgScore'),dgB=$('dgBar'),dgT=$('dgTag');
+    if(dgS){ const sc=DemodGuard.score; dgS.textContent=Math.round(sc*100)+'%'; if(dgB)dgB.style.width=(sc*100)+'%';
+      if(dgT)dgT.textContent=DemodGuard.enabled?(running?'watching':'idle'):'off'; }
+    if(DemodGuard.flash>0.4){ const dl=$('dgTag'); if(dl){dl.textContent='remodulating'; dl.className='tag pill ok';}
+      setTimeout(()=>{ const el=$('dgTag'); if(el)el.className='tag'; },900); }
   }
   Mic.tick();
   if(--anomCd<=0){ anomCd=45; Anomaly.tick(); Accessories.meshRender(); } // ~throttled, native-bridge-backed reads
@@ -1939,6 +2399,11 @@ function setSpeed(hz){P.mPps=cl(hz,0.3,600);$('spd').value=Math.round(speedInv(P
 $('spd').addEventListener('input',e=>setSpeed(speedHz(+e.target.value/1000)));
 document.querySelectorAll('[data-s]').forEach(b=>b.addEventListener('click',()=>setSpeed(+b.dataset.s)));
 setSpeed(11);
+function setRandIntensity(pct){ randIntensity=cl(pct/100,0.1,1);
+  $('riSlide').value=Math.round(randIntensity*100); $('riR').textContent=Math.round(randIntensity*100)+'%';
+  document.querySelectorAll('[data-ri]').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.ri===Math.round(randIntensity*100)))); }
+$('riSlide').addEventListener('input',e=>setRandIntensity(+e.target.value));
+document.querySelectorAll('[data-ri]').forEach(b=>b.addEventListener('click',()=>setRandIntensity(+b.dataset.ri)));
 $('rand').addEventListener('click',()=>randomizeAll());
 $('go').addEventListener('click',()=>running?stop():start());
 
@@ -1950,6 +2415,9 @@ document.querySelectorAll('#tabs .tab').forEach(t=>t.addEventListener('click',()
 
 /* sensors + haptics wiring */
 $('sensEn').addEventListener('click',()=>Sensors.toggle());
+$('dgEn').addEventListener('click',()=>{ const b=$('dgEn'),v=b.getAttribute('aria-pressed')!=='true';
+  b.setAttribute('aria-pressed',String(v)); DemodGuard.enabled=v; });
+$('satEn').addEventListener('click',()=>{ SatView.enabled?SatView.disable():SatView.enable(); });
 $('hapEn').addEventListener('click',()=>{const s=$('hapEn'),v=s.getAttribute('aria-pressed')!=='true';s.setAttribute('aria-pressed',String(v));Haptics.enabled=v;});
 $('hapI').addEventListener('input',e=>{Haptics.intensity=+e.target.value;$('hapIR').textContent=Math.round(e.target.value*100)+'%';});
 document.querySelectorAll('[data-hap]').forEach(b=>b.addEventListener('click',()=>{const v=b.getAttribute('aria-pressed')!=='true';b.setAttribute('aria-pressed',String(v));Haptics.setOn(b.dataset.hap,v);}));

@@ -96,6 +96,24 @@ don't act — is the one invariant every feature in this app is built to keep
 on the right side of, no matter how the request for the next feature is
 framed.
 
+**Round 3.2 (tune-up):** "randomized BLE activity" and "randomized RF
+activity... minimal radial, so it's not harmful but still increases the
+surface area" were both requests to have the app *transmit* — BLE
+advertising and any RF emission use the radio to broadcast, not passively
+receive. "Minimal" power or range doesn't change that it's still
+transmission, still subject to spectrum regulation, and still outside what
+this app does. Also requested: "real satellite signal shenanigans." Read
+generously as *receive* satellite telemetry, that's the Satellite View
+feature (real `GnssStatus` data — count, constellations, signal strength).
+Read as *transmitting* toward or spoofing GNSS/GPS signals, that's GNSS
+spoofing/jamming — a federal offense in the US (and most countries)
+regardless of intent, and genuinely dangerous: aircraft, ships, and
+emergency services depend on accurate GPS, and spoofed signals have caused
+real navigation incidents. Not built, not going to be, "shenanigans" framing
+notwithstanding. Same invariant as everything else here: read what's
+already reaching the device, never transmit, never act on someone else's
+receiver.
+
 ## Use it lawfully
 
 Mask your own conversations, in your own space, with the consent of the people
