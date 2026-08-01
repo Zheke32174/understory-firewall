@@ -4,9 +4,11 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.webkit.JavascriptInterface
 import org.json.JSONArray
+import androidx.core.content.ContextCompat
 import org.json.JSONObject
 
 /**
@@ -27,11 +29,18 @@ import org.json.JSONObject
  *  │               │                          │ back no more privileged than ours.      │
  *  │ Device Owner  │ this app, as DO          │ Same DPM powers, directly, no third-    │
  *  │ (self)        │                          │ party app in the trust path.            │
- *  │ ADB           │ the human               │ Instructions. No runtime capability.     │
+ *  │ Self-dump     │ this app, holding DUMP   │ The SAME read-only service dumps, in    │
+ *  │ (adb-granted) │ granted over adb         │ process. PERSISTENT across reboot, no   │
+ *  │               │                          │ helper app needed. No DPM powers.       │
+ *  │ ADB           │ the human                │ Grants the tiers above.                 │
  *  └───────────────┴──────────────────────────┴─────────────────────────────────────────┘
  *
- * So "Dhizuku as a fallback for Shizuku" is only half true and the UI says so: if Shizuku
- * goes away, the *diagnostics* go away with it — nothing else can serve them. What Dhizuku
+ * So "Dhizuku as a fallback for Shizuku" is only half true and the UI says so: Dhizuku
+ * cannot serve the diagnostics at all. What CAN serve them without Shizuku is the
+ * self-dump tier: android.permission.DUMP is declared signature|privileged|**development**,
+ * and that development flag means `adb shell pm grant` works on it for an ordinary app.
+ * Once granted it persists across reboot with no helper process — which makes it the
+ * strongest *durable* diagnostics tier, not a last resort. What Dhizuku
  * and device-owner provide instead is the **resilience** tier, which Shizuku genuinely
  * cannot: `setUserControlDisabledPackages` (API 30+) is the one supported mechanism on
  * stock Android that makes an app resistant to being silently force-stopped.
@@ -113,9 +122,17 @@ class PrivilegeBridge(private val ctx: Context) {
             "UI-level only — adb can still stop the app",
             "Settings → Security → Device admin apps → enable EMI Chaos Bench.")
 
+        // The self-dump tier. Listed BEFORE the manual-adb row because it is not a fallback
+        // of last resort — for diagnostics it is the strongest *persistent* tier there is.
+        val dumpOk = hasDumpPermission()
+        tier("selfdump", "Self-dump (adb-granted DUMP)", true, dumpOk,
+            "Read-only service dumps in this app's own process — persistent, survives reboot, needs no helper app running",
+            "Cannot make the app force-stop-proof",
+            "adb shell pm grant ${ctx.packageName} android.permission.DUMP")
+
         tier("adb", "ADB (manual)", true, false,
-            "Whatever you run yourself",
-            "Nothing at runtime — this tier is instructions, not a capability",
+            "Grants the tiers above — it is how self-dump and device owner are enabled in the first place",
+            "Nothing by itself at runtime",
             "adb shell, with the device connected or over wireless debugging.")
 
         val o = JSONObject()
@@ -126,7 +143,9 @@ class PrivilegeBridge(private val ctx: Context) {
         // The single most useful capability question, answered plainly.
         o.put("forceStopProtectionPossible", Build.VERSION.SDK_INT >= 30 && (doSelf || dhPerm))
         o.put("forceStopProtected", isUserControlDisabled())
-        o.put("diagnosticsPossible", shizukuOk)
+        o.put("diagnosticsPossible", shizukuOk || dumpOk)
+        o.put("selfDump", dumpOk)
+        o.put("dumpGrantCmd", "adb shell pm grant ${ctx.packageName} android.permission.DUMP")
         return o.toString()
     }
 
@@ -207,4 +226,63 @@ class PrivilegeBridge(private val ctx: Context) {
     @JavascriptInterface
     fun adbCommand(): String =
         "adb shell dpm set-device-owner ${ctx.packageName}/.EmiDeviceAdminReceiver"
+
+    // ---- SELF-DUMP tier ---------------------------------------------------------------
+    // The one genuinely persistent diagnostics tier, and the reason "ADB" is not merely an
+    // instructions screen.
+    //
+    // android.permission.DUMP is declared signature|privileged|**development**. That third
+    // flag is the whole point: `development` permissions can be granted to an ordinary
+    // third-party app with `adb shell pm grant`. Once granted it STICKS — it survives reboot
+    // and needs no helper process running, which Shizuku (started over adb) does not.
+    //
+    // With it held, the app can read the same service dumps the Shizuku allowlist reads,
+    // but IN ITS OWN PROCESS: get the service binder from ServiceManager and call dump()
+    // against a pipe. No shell, no third-party app in the trust path, nothing to keep alive.
+    private fun hasDumpPermission(): Boolean =
+        ContextCompat.checkSelfPermission(ctx, "android.permission.DUMP") == PackageManager.PERMISSION_GRANTED
+
+    /** Read-only service dumps, in-process. Same fixed allowlist discipline as Shizuku's. */
+    private val DUMP_ALLOWLIST = mapOf(
+        "telephony_registry" to Pair("telephony.registry", arrayOf<String>()),
+        "connectivity" to Pair("connectivity", arrayOf<String>()),
+        "sms_service" to Pair("isms", arrayOf<String>()),
+        "carrier_config" to Pair("carrier_config", arrayOf<String>())
+    )
+
+    @JavascriptInterface
+    fun selfDump(key: String): String {
+        if (!hasDumpPermission()) return "error: DUMP permission not granted. Run: adb shell pm grant ${ctx.packageName} android.permission.DUMP"
+        val entry = DUMP_ALLOWLIST[key] ?: return "error: '$key' is not on the read-only allowlist"
+        return try {
+            val sm = Class.forName("android.os.ServiceManager")
+            val binder = sm.getMethod("getService", String::class.java)
+                .invoke(null, entry.first) as? android.os.IBinder
+                ?: return "error: service '${entry.first}' not found"
+            val pipe = android.os.ParcelFileDescriptor.createPipe()
+            val read = pipe[0]; val write = pipe[1]
+            val out = StringBuilder()
+            val reader = Thread {
+                try {
+                    android.os.ParcelFileDescriptor.AutoCloseInputStream(read).use { ins ->
+                        val buf = ByteArray(8192)
+                        var n: Int
+                        while (ins.read(buf).also { n = it } > 0) {
+                            out.append(String(buf, 0, n))
+                            if (out.length > 200_000) break
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+            reader.start()
+            try { binder.dump(write.fileDescriptor, entry.second) } finally {
+                try { write.close() } catch (_: Exception) {}
+            }
+            reader.join(5000)
+            val s = out.toString()
+            if (s.length > 20_000) s.substring(0, 20_000) + "\n...(truncated)" else s
+        } catch (e: Exception) {
+            "error: ${e.message}"
+        }
+    }
 }

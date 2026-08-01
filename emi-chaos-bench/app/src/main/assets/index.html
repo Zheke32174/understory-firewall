@@ -496,6 +496,8 @@
         <div class="grid">
           <div class="stat"><small>Track points</small><b id="wdPoints">0</b></div>
           <div class="stat"><small>Unique APs</small><b id="wdAps">0</b></div>
+          <div class="stat"><small>Scan budget</small><b id="wdBudget">—</b></div>
+          <div class="stat"><small>Status</small><b id="wdWhy">off</b></div>
         </div>
         <div class="row"><button class="btn" id="wdExportGpx">Export GPX</button>
           <button class="btn" id="wdExportCsv">Export CSV</button>
@@ -1465,8 +1467,13 @@ const Dsp=(function(){
   async function loadIr(){
     if(irBuf||!builtFor) return irBuf;
     try{
-      const r=await fetch('dsp/BadJack_HiFi_Convolver_48k.wav');
-      const ab=await r.arrayBuffer();
+      let ab=null;
+      if(window.EMIBridge&&EMIBridge.readAssetBase64){
+        const b64=EMIBridge.readAssetBase64('dsp/BadJack_HiFi_Convolver_48k.wav');
+        if(b64){ const bin=atob(b64); const u=new Uint8Array(bin.length);
+          for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i); ab=u.buffer; }
+      }
+      if(!ab){ const r=await fetch('dsp/BadJack_HiFi_Convolver_48k.wav'); ab=await r.arrayBuffer(); }
       irBuf=await builtFor.decodeAudioData(ab);
       const info=$('convInfo');
       if(info) info.textContent=irBuf.numberOfChannels+'ch · '+irBuf.length+' taps · '+Math.round(irBuf.sampleRate/1000)+'k';
@@ -1558,11 +1565,20 @@ const BadJack=(function(){
     if(nums.length<5 || nums.length%5!==0) return null;
     const secs=[];
     for(let i=0;i<nums.length;i+=5) secs.push({b0:nums[i],b1:nums[i+1],b2:nums[i+2],a1:nums[i+3],a2:nums[i+4]});
-    // Stability check per section: poles of 1 - a1 z^-1 - a2 z^-2 must be inside |z|<1.
-    // A malformed or wrong-convention file would otherwise blow the output up instantly.
+    // Stability check per section. The difference equation here is
+    //     y = b0x + b1x1 + b2x2 + a1*y1 + a2*y2
+    // so the denominator is 1 - a1·z⁻¹ - a2·z⁻², i.e. in standard 1 + A1z⁻¹ + A2z⁻² form
+    // A1 = -a1 and A2 = -a2. Jury's conditions (|A2| < 1, |A1| < 1 + A2) therefore become
+    //     |a2| < 1   and   |a1| < 1 - a2
+    // NOT `1 + a2`, which is what this originally said. That sign error inverted the test:
+    // for a normal high-Q audio section (a2 ≈ -0.98) it demanded |a1| < 0.02 when the real
+    // bound is 1.98, so it rejected 5 of the 6 sections in the bundled file and the loader
+    // could never succeed. Verified against the actual pole magnitudes: all six sections sit
+    // at |z| = 0.43-0.99, and the corrected test still rejects a deliberately divergent
+    // section at |z| = 1.18.
     for(const s of secs){
       const a1=s.a1,a2=s.a2;
-      if(!(Math.abs(a2)<1 && Math.abs(a1)<1+a2+1e-9 && Math.abs(a1)<2)) return {error:'unstable section'};
+      if(!(Math.abs(a2)<1 && Math.abs(a1)<1-a2)) return {error:'unstable section'};
     }
     return secs;
   }
@@ -1739,6 +1755,11 @@ const BadJack=(function(){
       harsh_lpL=harsh_lpR=air_lpL=air_lpR=0; db_low=db_env=0;
       drx_low=drx_tlp=drx_low_env=drx_mid_env=drx_high_env=0;
       avo_is_recording=0; avo_playback_csr=0; avo_gain=1; avo_thresh=0; avo_max_thresh=0;
+      avo_record_csr=0; avo_record_buffer=0; avo_playback_buffer=0; avo_arpeg_idx=0; avo_play_rate=1;
+      // Zero the Avocado audio too. Without this a power-cycle of the rack left the previous
+      // session's samples in the ring, so re-enabling replayed stale audio — and any content
+      // driven loud by an earlier setting survived a "reset" that was supposed to clear it.
+      if(avoL){ avoL.fill(0); avoR.fill(0); }
       ddcState.forEach(s=>{s.x1L=s.x2L=s.y1L=s.y2L=s.x1R=s.x2R=s.y1R=s.y2R=0;}); } };
 })();
 
@@ -2121,16 +2142,22 @@ function proc(e){
     if(!isFinite(l))l=0; if(!isFinite(r))r=0;
     L[i]=l; Rr[i]=r;
   }
-  // BadJack rack runs as a post-pass over the finished buffer, exactly where the ported
-  // EEL's @sample block sits in JamesDSP's chain: after the source, before the output.
-  BadJack.process(L,Rr,n);
-  // Capture ring is filled AFTER the rack so the demod/band guards analyse what actually
-  // leaves the app, not the pre-DSP signal. Feeding them the wrong tap would let a
-  // rack setting quietly re-introduce the very regularity they exist to catch.
+  // Capture ring is filled from the SYNTHESIS output, BEFORE the BadJack rack. Two reasons,
+  // and the first is a correctness bug rather than a preference:
+  //
+  //  1. The granular and glitch modules re-read `cap` as a source. Filling it post-rack put
+  //     the rack inside their feedback path — their own output came back through the rack's
+  //     gain stages and into them again. Bounded by the limiter, but a resonant loop nobody
+  //     asked for, and one that only appeared once the rack existed.
+  //  2. The guards act by rerolling the CHAOS ENGINE's dials. That is the signal they can
+  //     actually steer; if a rack setting flattened the output, no chaos reroll would fix it.
+  //     Watching the stage you can correct is the coherent choice.
   let rmsAcc=0;
   for(let i=0;i<n;i++){ const m=(L[i]+Rr[i])*.5; cap[capW]=m; capW=(capW+1)%CAP; rmsAcc+=m*m;
     BandGuard.feedLow(m); }
-  BandGuard.feedLong(Math.sqrt(rmsAcc/Math.max(1,n)));
+  BandGuard.feedLong(Math.sqrt(rmsAcc/Math.max(1,n)), n);
+  // Rack runs last, exactly where the ported EEL's @sample block sits in JamesDSP's chain.
+  BadJack.process(L,Rr,n);
   applyModOut(saved);
   if(clipCount>n*0.2){ if(clipHot<=0){haptic('clip');clipHot=8;} } clipHot--;
   // Audio-callback cost, measured not guessed: if a buffer eats most of its own real-time
@@ -2408,13 +2435,25 @@ const BandGuard=(function(){
   let cursor=0, next=0, en=true, lastTrip='—';
 
   /* Fed from the audio path once per buffer — cheap: one abs+accumulate per sample slot. */
-  function feedLong(rms){
-    longAcc+=rms; longN++;
-    if(longN>=Math.max(1,Math.round(LDEC/128))){ // proc() calls once per ~1024-sample buffer
-      longBuf[longW]=longAcc/longN; longW=(longW+1)%LONG; longAcc=0; longN=0;
+  /* Fed once per audio buffer with that buffer's RMS and its LENGTH.
+     The length matters: this used to divide LDEC by a hard-coded 128 on the assumption that
+     proc() delivers ~1024-sample buffers, which made the resulting rate a function of
+     whatever buffer size the device actually chose. The infrasound lag->frequency mapping is
+     derived from that rate, so a wrong rate silently mislabels every infrasound reading.
+     Now the decimation counts real SAMPLES, so the emitted rate is exactly sr/LDEC no matter
+     what buffer size the platform hands us. */
+  let longSampleAcc=0;
+  function feedLong(rms,nSamples){
+    const n=nSamples||1;
+    longAcc+=rms*n; longSampleAcc+=n;
+    if(longSampleAcc>=LDEC){
+      longBuf[longW]=longAcc/longSampleAcc; longW=(longW+1)%LONG;
+      longAcc=0; longSampleAcc=0;
       if(longFilled<LONG) longFilled++;
     }
   }
+  /** Emitted sample rate of longBuf, used to turn lags into frequencies honestly. */
+  function longRate(){ return sr/LDEC; }
   /* Mean-removed normalised autocovariance, max over a lag set. Returns 0 when the input
      has no variance to speak of — the zero-energy guard lives here as well as at band level. */
   function autocov(arr,n,lags){
@@ -2510,8 +2549,12 @@ const BandGuard=(function(){
       st.energy=mean;
       st.quiet = mean<1e-4;
       if(st.quiet){ st.score=0; st.am=0; return; }
-      // lags here are in decimated samples (~187Hz), so lag 9 ≈ 20Hz ... lag 187 ≈ 1Hz
-      st.am=autocov(tmp,n,[3,5,9,14,19,28,37,56,75,94,140,187]);
+      // Lags are converted FROM target frequencies using the real emitted rate, rather
+      // than hard-coded on an assumed one — 0.5Hz to 18Hz across the infrasound band.
+      const lr=longRate();
+      const lags=[18,14,11,8,6,4.5,3,2,1.5,1,0.7,0.5]
+        .map(f=>Math.round(lr/f)).filter(l=>l>=2 && l<n/3);
+      st.am=lags.length?autocov(tmp,n,lags):0;
       st.score=st.am;
     } else {
       // Low bands come off the decimated long ring (12kHz, 341ms); everything above uses the
@@ -3637,7 +3680,44 @@ const RF=(function(){
     if(wpsCount>0) Alerts.push(1,`${wpsCount} nearby network${wpsCount===1?'':'s'} advertise WPS — a known-weak pairing mode (WPS PIN brute-force).`,'wps');
     if(openCount>0) Alerts.push(1,`${openCount} nearby network${openCount===1?'':'s'} are open or WEP-secured — traffic there isn't protected by the network itself.`,'open-net');
   }
-  async function wifiScanNow(){
+  /* ---- SHARED WI-FI SCAN BUDGET ----------------------------------------------------
+     Android throttles WifiManager.startScan hard — 4 requests per 2 minutes for a
+     foreground app — and it does NOT error when you exceed it. It just returns the previous
+     cached results, or nothing. That silence is what makes over-scanning so easy to ship by
+     accident, and it is exactly what happened here: 3.4 added wardriving's own 15s
+     auto-scan (already 8 per 2 min, over budget on its own), then 3.5/3.6 added the chaotic
+     Wi-Fi cadence, the combined scanner and the sensor blaster as additional consumers. All
+     four competed for the same four slots, so the one feature that genuinely NEEDS fresh
+     results — wardriving, which can't log an AP it never sees — got starved and appeared to
+     stop working.
+
+     So every Wi-Fi scan request now goes through here. Wardriving is 'critical' and always
+     gets budget; the chaos scanners are 'chaos' and may only consume slots while spare
+     capacity remains, so they add timing entropy without ever eating the log. Refusals are
+     counted and surfaced rather than hidden — an invisible throttle is the bug. */
+  const SCAN_WINDOW=120000, SCAN_MAX=4;
+  let scanStamps=[], scanDenied=0, scanGranted=0;
+  function budgetOk(priority){
+    const now=Date.now();
+    while(scanStamps.length && now-scanStamps[0]>SCAN_WINDOW) scanStamps.shift();
+    const room=SCAN_MAX-scanStamps.length;
+    if(room<=0){ scanDenied++; return false; }
+    // Keep two slots in reserve for wardriving whenever it's running.
+    let wdOn=false; try{ wdOn=Wardrive.on; }catch(e){}
+    if(priority!=='critical' && wdOn && room<=2){ scanDenied++; return false; }
+    scanStamps.push(now); scanGranted++; return true;
+  }
+  function budgetState(){
+    const now=Date.now();
+    while(scanStamps.length && now-scanStamps[0]>SCAN_WINDOW) scanStamps.shift();
+    return {used:scanStamps.length, max:SCAN_MAX, denied:scanDenied, granted:scanGranted};
+  }
+  async function wifiScanNow(priority){
+    if(!budgetOk(priority||'critical')){
+      const b=budgetState();
+      const st=$('rfState'); if(st)st.textContent=`throttled ${b.used}/${b.max} per 2min`;
+      return;
+    }
     $('rfState').textContent='scanning…';
     try{
       if(window.EMIBridge&&EMIBridge.wifiScan){
@@ -3660,7 +3740,7 @@ const RF=(function(){
   // so a "marathon" here is a long window during which requests are issued, not a magic way
   // to scan faster than the OS allows — over-requesting is silently dropped by the platform,
   // never escalated. Nothing is transmitted beyond an ordinary scan.
-  const wifiCadence=makeChaosCadence('wifi',()=>{ wifiScanNow(); },()=>{},m=>{
+  const wifiCadence=makeChaosCadence('wifi',()=>{ wifiScanNow('chaos'); },()=>{},m=>{
     const el=$('wifiCadMode'); if(el)el.textContent=m;
   });
   function setChaoticWifi(v){
@@ -3723,7 +3803,7 @@ const RF=(function(){
       it.append(b,s); list.appendChild(it); });
     el.appendChild(list);
   }
-  return { wifiScanNow, classifyBle, renderAccKinds, wellKnownUuid, toggleTrust, setChaoticWifi,
+  return { wifiScanNow, classifyBle, renderAccKinds, wellKnownUuid, toggleTrust, setChaoticWifi, budgetState,
     get wifiCadenceMode(){return wifiCadence.mode;},
     exportWifiLog(){ if(!wifiScanLog.length){toast('Nothing scanned yet');return;} downloadFile(wifiLogToCsv(),'emi-wifi-scan-log.csv','text/csv'); },
     get lastWifi(){return lastWifi;}, get ACCESSORY_KINDS(){return ACCESSORY_KINDS;} };
@@ -3750,8 +3830,8 @@ const Scanners=(function(){
     // Each combined burst independently re-rolls which radio(s) it drives.
     const r=Math.random();
     if(r<0.40){ Accessories.scan(); lastPick='ble'; }
-    else if(r<0.80){ RF.wifiScanNow(); lastPick='wifi'; }
-    else { Accessories.scan(); RF.wifiScanNow(); lastPick='both'; }
+    else if(r<0.80){ RF.wifiScanNow('chaos'); lastPick='wifi'; }
+    else { Accessories.scan(); RF.wifiScanNow('chaos'); lastPick='both'; }
   },()=>{
     try{ Accessories.stop(); }catch(e){}
   },m=>{ const el=$('scMode'); if(el)el.textContent=m; });
@@ -4576,6 +4656,17 @@ const Wardrive=(function(){
     const p=$('wdPoints'); if(p)p.textContent=String(track.length);
     const a=$('wdAps'); if(a)a.textContent=String(apsSeen.size);
     const s=$('wdState'); if(s && on) s.textContent = Sensors.lat==null ? 'waiting for GPS' : 'logging';
+    // Say WHY nothing is being logged. A wardrive log that quietly stops growing is
+    // indistinguishable from one that has simply seen everything nearby — which is exactly
+    // how the scan-budget starvation went unnoticed.
+    let st=null; try{ st=RF.budgetState(); }catch(e){}
+    const b=$('wdBudget');
+    if(b) b.textContent = st ? (st.used+'/'+st.max+' per 2min'+(st.denied?' · '+st.denied+' deferred':'')) : '—';
+    const w=$('wdWhy');
+    if(w) w.textContent = !on ? 'off'
+      : Sensors.lat==null ? 'no GPS fix yet — nothing can be logged without one'
+      : (st && st.used>=st.max) ? 'scan budget spent — a slot frees within 2 min'
+      : 'logging normally';
   }
   // Wardriving needs two OTHER things to actually log anything: GPS (Sensors tab) and a
   // recurring Wi-Fi scan. Previously the toggle here didn't touch either — a user who just
@@ -4585,7 +4676,7 @@ const Wardrive=(function(){
   function enable(){
     on=true; $('wdEn').setAttribute('aria-pressed','true'); $('wdState').textContent='on';
     if(!Sensors.enabled){ Sensors.enable(); }
-    RF.wifiScanNow();
+    RF.wifiScanNow('critical');
     setAutoScan(true);
     const chip=$('wdAutoScan'); if(chip)chip.setAttribute('aria-pressed','true');
     toast(Sensors.lat==null
@@ -4596,7 +4687,10 @@ const Wardrive=(function(){
   function clearLog(){ track=[]; apsSeen.clear(); updUi(); toast('Wardrive log cleared'); }
   function setAutoScan(v){
     if(autoIv){clearInterval(autoIv);autoIv=null;}
-    if(v) autoIv=setInterval(()=>{ if(on) RF.wifiScanNow(); },15000);
+    // 4 scans / 2 min is the platform cap, i.e. one per 30s. The old 15s interval asked
+    // for twice the budget and the surplus was silently dropped, which looked like the
+    // log stalling for no reason. 32s stays just under with headroom.
+    if(v) autoIv=setInterval(()=>{ if(on) RF.wifiScanNow('critical'); },32000);
   }
   function toGpx(){
     const pts=track.map(p=>`  <wpt lat="${p.lat}" lon="${p.lon}"><time>${new Date(p.t).toISOString()}</time><name>${(p.kind==='wifi'?p.ssid||'(hidden)':p.kind)}</name><desc>${p.kind}${p.bssid?' '+p.bssid:''}${p.level!=null?' '+p.level+'dBm':''}</desc></wpt>`).join('\n');
@@ -4836,10 +4930,19 @@ $('bjEn').addEventListener('click',()=>{ const b=$('bjEn'),v=b.getAttribute('ari
   b.setAttribute('aria-pressed',String(v)); BadJack.params.on=v?1:0;
   BadJack.reset(); $('bjTag').textContent=v?'active':'off';
   toast(v?'BadJack rack on — this app’s audio only':'BadJack rack off'); });
+// Bundled assets are read through the native bridge, not fetch(). See EmiBridge.readAssetText:
+// WebView blocks file://->file:// fetches by default, so fetch() fails here on-device with
+// nothing but a console error. fetch stays as the fallback for a plain-browser preview.
+async function readBundled(name){
+  if(window.EMIBridge&&EMIBridge.readAssetText){
+    const t=EMIBridge.readAssetText(name);
+    if(t) return t;
+  }
+  const r=await fetch(name); return await r.text();
+}
 async function loadBundledDdc(){
   try{
-    const r=await fetch('dsp/BadJack_BassLite_SmoothTop.ddc');
-    const txt=await r.text();
+    const txt=await readBundled('dsp/BadJack_BassLite_SmoothTop.ddc');
     const secs=BadJack.parseDdc(txt,sr);
     if(!secs||secs.error){ toast('DDC parse failed'+(secs&&secs.error?': '+secs.error:'')); return; }
     BadJack.setDdc(secs,'BassLite SmoothTop'); BadJack.params.ddcOn=1;

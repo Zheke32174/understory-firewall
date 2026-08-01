@@ -30,6 +30,57 @@ BLE/Wi-Fi field tools (accessory pairing, sensor telemetry, profiles,
 geofencing, anomaly detection) and porting those *interaction and detection*
 ideas — never any transmit capability — onto an audio masker.
 
+## 3.6.1 — fixes found by adversarial review and a user bug report
+
+**Wardriving stopped logging (reported).** Traced to a resource conflict I introduced across
+3.4–3.6, not to the wardriving code. Android throttles `WifiManager.startScan` to **4 requests
+per 2 minutes** and does *not* error when you exceed it — it silently returns the previous
+cached results. 3.4 gave wardriving a 15s auto-scan (8 per 2 min, over budget on its own),
+then 3.5/3.6 added the chaotic Wi-Fi cadence, the combined scanner and the sensor blaster as
+further consumers of the same four slots. The one feature that genuinely needs *fresh* results
+got starved, and the silence made it look like a bug in wardriving.
+
+Now every Wi-Fi scan goes through a shared budget: wardriving is `critical` and always gets
+slots, the chaos scanners are `chaos` and only consume spare capacity, wardrive's own interval
+moved to 32s (just under the cap instead of double it), and the panel shows scans-used plus a
+plain-language reason — because an invisible throttle was the actual defect.
+
+**DDC loader was completely dead (critical, found by review).** The biquad stability check had
+an inverted sign: for `y = b0x + b1x₁ + b2x₂ + a1y₁ + a2y₂` the Jury condition is
+`|a1| < 1 − a2`, and it said `1 + a2`. For a normal high-Q audio section (a2 ≈ −0.98) that
+demanded `|a1| < 0.02` where the true bound is 1.98 — so it rejected **5 of the 6 sections** in
+the bundled file and the loader could never succeed. Verified against actual pole magnitudes;
+the corrected test still rejects a deliberately divergent section at |z| = 1.18.
+
+**Bundled DDC and IR were unreadable on-device.** The page loads from `file:///android_asset/`,
+and WebView's `allowFileAccessFromFileURLs` defaults to false, so `fetch()` to a sibling asset
+is blocked by same-origin — silently, with only a console error. Fixed by reading assets
+natively across the bridge (restricted to `dsp/`) rather than the two worse options: enabling
+that flag re-opens a known local-file exfiltration hole, and moving to `WebViewAssetLoader`
+would change the page's *origin* and orphan every saved profile in localStorage.
+
+**Audio feedback loop through the rack.** The capture ring was being filled *after* BadJack,
+but the granular and glitch modules re-read that ring as a source — putting the rack's gain
+stages inside their own feedback path. The ring is now filled pre-rack, which also makes the
+guards watch the stage they can actually steer (they correct by rerolling chaos dials; no
+chaos reroll can undo a rack setting).
+
+**Infrasound guard was mis-calibrated.** Its decimated ring was fed once per audio buffer with
+a hard-coded assumption about buffer size, so its real sample rate — and therefore every
+lag→frequency mapping derived from it — drifted with whatever buffer the device chose.
+Decimation now counts real samples, giving exactly sr/256 = 187.5Hz over a 5.5s span, and lags
+are computed *from* that rate: 0.70–18.75Hz.
+
+**Avocado reset now clears its audio buffers**, so power-cycling the rack no longer replays the
+previous session's samples.
+
+**ADB is a real tier now, not an instructions screen** — and this corrects something 3.6 got
+wrong. `android.permission.DUMP` is declared `signature|privileged|**development**`, and that
+development flag means `adb shell pm grant <pkg> android.permission.DUMP` works for an ordinary
+app. Once granted it **persists across reboot and needs no helper process**, which makes
+in-process self-dump the strongest *durable* diagnostics tier — stronger than Shizuku, which
+dies on reboot when started over adb. Same fixed read-only allowlist discipline.
+
 ## What's new in 3.6 — BadJack
 
 **Three independent scanners, staggered.** BLE-only, Wi-Fi-only, and a new **combined**

@@ -459,6 +459,43 @@ class EmiBridge(private val ctx: Context, private val web: WebView) : SensorEven
         }
     }
 
+    // ---- Bundled asset access ----------------------------------------------------------
+    // The page is loaded from file:///android_asset/, and WebView's
+    // `allowFileAccessFromFileURLs` defaults to FALSE — so a fetch() from that page to a
+    // sibling asset is blocked by the same-origin policy, silently, with only a console
+    // error. That killed the bundled DDC and impulse-response loading outright.
+    //
+    // The two obvious fixes are both worse than this one: enabling
+    // allowFileAccessFromFileURLs re-opens a well-known local-file exfiltration hole, and
+    // moving to WebViewAssetLoader/https would change the page's ORIGIN, which silently
+    // orphans every saved profile in localStorage. Reading the asset natively and handing it
+    // across the bridge costs nothing and changes neither.
+    //
+    // Restricted to the dsp/ directory so this can never become a general file reader.
+    private fun safeAsset(name: String): String? {
+        if (name.contains("..") || name.startsWith("/")) return null
+        if (!name.startsWith("dsp/")) return null
+        return name
+    }
+
+    @JavascriptInterface
+    fun readAssetText(name: String): String {
+        val n = safeAsset(name) ?: return ""
+        return try {
+            ctx.assets.open(n).bufferedReader().use { it.readText() }
+        } catch (_: Exception) { "" }
+    }
+
+    /** Base64 so binary assets (the IR WAV) survive the JS-bridge string boundary. */
+    @JavascriptInterface
+    fun readAssetBase64(name: String): String {
+        val n = safeAsset(name) ?: return ""
+        return try {
+            val bytes = ctx.assets.open(n).use { it.readBytes() }
+            android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+        } catch (_: Exception) { "" }
+    }
+
     /** Opens this app's own system settings page (permissions / special app access), the
      *  screen where an appops-level change would have to be made deliberately by a human. */
     @JavascriptInterface

@@ -40,6 +40,15 @@
          how throttled the OS currently considers it. Self-introspection only. -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
+    <!-- DUMP is signature|privileged|DEVELOPMENT. The development flag is what lets a normal
+         app hold it once a human runs `adb shell pm grant <pkg> android.permission.DUMP`.
+         Declaring it here does nothing on its own — without that explicit grant the app has
+         it in name only. When granted it enables the read-only, in-process service dumps in
+         PrivilegeBridge.selfDump(), which unlike Shizuku persist across reboot and need no
+         helper process. Same fixed allowlist discipline: four read-only service dumps, no
+         free-form execution. -->
+    <uses-permission android:name="android.permission.DUMP"
+        tools:ignore="ProtectedPermissions" />
 
     <uses-feature android:name="android.hardware.audio.output" android:required="true" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
