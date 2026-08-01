@@ -133,6 +133,10 @@ class MainActivity : ComponentActivity() {
         // EMIBridge so its surface stays visibly four methods wide — append, read, count,
         // verify — with no delete anywhere on it.
         webView.addJavascriptInterface(VaultBridge(this), "EMIVault")
+        // Native file export. The page's own Blob + <a download> path is a silent no-op in a
+        // WebView — no DownloadListener, no exception, no file — which is why every export
+        // button appeared to do nothing.
+        webView.addJavascriptInterface(Exporter(this), "EMIExport")
         // Read-only view onto the SERVICE-owned native scan/detection engine. The page can
         // start it, stop it and look at it; it has no way to raise, edit, suppress or delete a
         // finding, because detection and recording happen on the far side of this boundary.

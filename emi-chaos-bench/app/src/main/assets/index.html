@@ -1094,6 +1094,9 @@
 "use strict";
 const $=i=>document.getElementById(i), cl=(v,a,b)=>Math.min(Math.max(v,a),b),
       rnd=(a,b)=>a+Math.random()*(b-a), lerp=(a,b,t)=>a+(b-a)*t, TAU=2*Math.PI;
+// Shared by all three export helpers, which live in three separate module IIFEs — defined
+// here rather than beside one of them so a "saved" toast can name the size in every case.
+const fmtBytes=n=>{ n=+n||0; return n<1024?n+' B':(n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(2)+' MB'); };
 let ctx=null,node=null,mediaEl=null,mediaDest=null,mediaGain=null,running=false,sr=48000;
 function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('on'),1600);}
 
@@ -3404,11 +3407,23 @@ const ScanStutter=(function(){
 
     // --- WHOLE-SCREEN write: jolts the entire app and invalidates the whole document ---
     if(appEl){
-      // STRUCTURAL write — every op. This is the actual hammer: it invalidates layout for
-      // every section, which is what costs main-thread time, janks the UI and starves the
-      // audio callback. Small values, because the damage is the relayout, not the offset.
-      appEl.style.paddingLeft=((base*3)%7)+'px';
-      appEl.style.paddingRight=((base*5)%7)+'px';
+      /* STRUCTURAL write — every op. This has to dirty style for the whole subtree WITHOUT
+         changing the document's scrollable geometry.
+
+         The previous version wrote paddingLeft/paddingRight on the app root, and that broke
+         scrolling: changing the root's padding changes content width, which reflows every
+         section, which changes total document height — dozens of times a second. The browser
+         clamps scrollTop against a height that is moving underneath it, so the view fights
+         you and the bottom of the page becomes unreachable. Forcing relayout must not mean
+         moving the thing the user is trying to read.
+
+         A custom property invalidates computed style for the entire subtree and costs a real
+         recalc, but participates in no layout box, so scroll height is untouched. The layout
+         cost then comes from the anvil writes below (contained inside a fixed-height,
+         overflow-hidden box) combined with the deep geometry READS, which force a full
+         synchronous layout pass over the whole tree. Same main-thread damage, no hijacked
+         scroll. */
+      appEl.style.setProperty('--hammer', String(base%997));
       // VISIBLE jolt — only on bursts flagged for it, and ALWAYS cleared when the burst ends
       // (see the reset in pulse()). Applying it on every burst at ~50 bursts/s left the app
       // permanently transformed: it never returned to neutral, so it read as a broken screen
@@ -3435,7 +3450,10 @@ const ScanStutter=(function(){
       case 0: r=(appEl||host).offsetHeight; break;
       case 1: r=cells[base%n].offsetHeight; break;
       case 2: r=(deepEl||host).getBoundingClientRect().top; break;
-      case 3: r=document.body.scrollHeight; break;
+      // NOTE: deliberately NOT document.body.scrollHeight. Reading it is harmless, but pairing
+      // it with root writes is what made the scroll position unstable, and keeping the whole
+      // read set clear of document-height queries makes that hard to reintroduce by accident.
+      case 3: r=(deepEl||host).offsetTop; break;
       case 4: r=cells[(base+7)%n].clientHeight; break;
       default: r=parseFloat(getComputedStyle(deepEl||cells[(base+3)%n]).height)||0;
     }
@@ -3499,7 +3517,7 @@ const ScanStutter=(function(){
 
        That also bounds it. rAF fires once, so a jolt can never persist — which is precisely
        the failure that made the app unusable when the transform was simply left applied. */
-    if(appEl){ appEl.style.paddingLeft=''; appEl.style.paddingRight='';
+    if(appEl){ appEl.style.removeProperty('--hammer');
       if(jolt && !joltPending){
         joltPending=true;
         try{ requestAnimationFrame(()=>{ joltPending=false;
@@ -3514,7 +3532,13 @@ const ScanStutter=(function(){
     // that is the whole point of the foreground service — so the glitch is driven from there
     // instead, and this path is left owning only the DOM/bridge work, which is meaningless
     // when nothing is being rendered anyway.
-    if(Math.random()<0.35) toast('scan…');
+    /* The "scan…" toast is GONE. There is one shared toast element, so firing one up to ~18
+       times a second meant the hammer overwrote every other message the app tried to show —
+       export confirmations, alert text, permission feedback — within a few hundred
+       milliseconds. "Saved to Downloads/emi-wardrive.gpx (201 B)" was being replaced by
+       "scan…" before it could be read, which made working exports look like broken ones.
+       The panel already reports bursts, rate, ops and main-thread share live, so the toast
+       added nothing and cost every other piece of feedback in the app. */
     // Deliberately NOT reported to the Governor. The Governor treats audio-callback overrun as
     // evidence the device is under stress and responds by shrinking the RADIO duty cycle. These
     // glitches are the requested effect, not a symptom — feeding them in would make the hammer
@@ -3566,7 +3590,9 @@ const ScanStutter=(function(){
         if(anvil) anvil.className='anvil';
         // Undo the whole-screen writes. Without this the app is left permanently skewed and
         // offset at whatever the last burst happened to set — off has to mean straight again.
-        if(appEl){ appEl.style.transform=''; appEl.style.paddingLeft=''; appEl.style.paddingRight=''; }
+        // Clear what is actually written now: the transform and the custom property. The
+        // padding clears here were left over from the version that broke scrolling.
+        if(appEl){ appEl.style.transform=''; appEl.style.removeProperty('--hammer'); }
         setTxt('ssRate','0/s'); setTxt('ssMode','idle');
         setTxt('ssReflow','—'); setTxt('ssMs','—'); setTxt('ssOps','—'); setTxt('ssDuty','—'); } },
     get enabled(){ return on; },
@@ -3761,10 +3787,24 @@ const Accessories=(function(){
     return rows.join('\n');
   }
   function downloadFile(text,filename,mime){
+    /* Native save first. The Blob + <a download> path below works in a desktop browser and
+       is a SILENT NO-OP in an Android WebView: WebView ignores the download attribute, no
+       DownloadListener is registered to catch it, and a.click() throws nothing — so the
+       catch never fired, no file was written, and no error was ever shown. Every export
+       button in this app did nothing at all, invisibly. That is the bug.
+       The blob path is kept only as the browser-preview fallback. */
+    try{
+      if(window.EMIExport&&EMIExport.save){
+        const r=JSON.parse(EMIExport.save(filename,mime,text));
+        if(r&&r.ok){ toast('Saved to '+(r.path||filename)+' ('+fmtBytes(r.bytes)+')'); return true; }
+        toast('Export failed — '+((r&&r.reason)||'unknown')); return false;
+      }
+    }catch(e){ toast('Export failed — '+(e&&e.message?e.message:'bridge error')); return false; }
     try{ const blob=new Blob([text],{type:mime}); const url=URL.createObjectURL(blob);
       const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click();
       setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },1000);
-    }catch(e){ toast('Export failed — '+(e&&e.message?e.message:'unknown error')); }
+      toast('Export started (browser preview)'); return true;
+    }catch(e){ toast('Export failed — '+(e&&e.message?e.message:'unknown error')); return false; }
   }
   function bondedRender(){
     const list=$('bondedList'); if(!list)return;
@@ -4398,10 +4438,24 @@ const RF=(function(){
     return rows.join('\n');
   }
   function downloadFile(text,filename,mime){
+    /* Native save first. The Blob + <a download> path below works in a desktop browser and
+       is a SILENT NO-OP in an Android WebView: WebView ignores the download attribute, no
+       DownloadListener is registered to catch it, and a.click() throws nothing — so the
+       catch never fired, no file was written, and no error was ever shown. Every export
+       button in this app did nothing at all, invisibly. That is the bug.
+       The blob path is kept only as the browser-preview fallback. */
+    try{
+      if(window.EMIExport&&EMIExport.save){
+        const r=JSON.parse(EMIExport.save(filename,mime,text));
+        if(r&&r.ok){ toast('Saved to '+(r.path||filename)+' ('+fmtBytes(r.bytes)+')'); return true; }
+        toast('Export failed — '+((r&&r.reason)||'unknown')); return false;
+      }
+    }catch(e){ toast('Export failed — '+(e&&e.message?e.message:'bridge error')); return false; }
     try{ const blob=new Blob([text],{type:mime}); const url=URL.createObjectURL(blob);
       const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click();
       setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },1000);
-    }catch(e){ toast('Export failed — '+(e&&e.message?e.message:'unknown error')); }
+      toast('Export started (browser preview)'); return true;
+    }catch(e){ toast('Export failed — '+(e&&e.message?e.message:'unknown error')); return false; }
   }
   function wifiRender(list){
     const el=$('wifiList'); if(!el)return;
@@ -5614,10 +5668,24 @@ const Wardrive=(function(){
     return rows.join('\n');
   }
   function download(text,filename,mime){
+    /* Native save first. The Blob + <a download> path below works in a desktop browser and
+       is a SILENT NO-OP in an Android WebView: WebView ignores the download attribute, no
+       DownloadListener is registered to catch it, and a.click() throws nothing — so the
+       catch never fired, no file was written, and no error was ever shown. Every export
+       button in this app did nothing at all, invisibly. That is the bug.
+       The blob path is kept only as the browser-preview fallback. */
+    try{
+      if(window.EMIExport&&EMIExport.save){
+        const r=JSON.parse(EMIExport.save(filename,mime,text));
+        if(r&&r.ok){ toast('Saved to '+(r.path||filename)+' ('+fmtBytes(r.bytes)+')'); return true; }
+        toast('Export failed — '+((r&&r.reason)||'unknown')); return false;
+      }
+    }catch(e){ toast('Export failed — '+(e&&e.message?e.message:'bridge error')); return false; }
     try{ const blob=new Blob([text],{type:mime}); const url=URL.createObjectURL(blob);
       const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click();
       setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },1000);
-    }catch(e){ toast('Export failed — '+(e&&e.message?e.message:'unknown error')); }
+      toast('Export started (browser preview)'); return true;
+    }catch(e){ toast('Export failed — '+(e&&e.message?e.message:'unknown error')); return false; }
   }
   /* Every reason wardriving can fail to log, answered in one place. Built because the
      scan-budget starvation was invisible: the log simply stopped growing, which looks
