@@ -48,7 +48,29 @@ class MaskerService : Service() {
                 return e
             }
         }
+
+        /**
+         * Escalation detector, also service-owned. Same reasoning as the scan engine: a
+         * detector that only runs while its UI is open misses precisely the window an attacker
+         * would choose. Findings go to the encrypted log whether or not anything is watching.
+         */
+        @Volatile
+        var escalationGuard: EscalationGuard? = null
+            private set
+
+        fun ensureEscalationGuard(ctx: Context): EscalationGuard {
+            escalationGuard?.let { return it }
+            synchronized(this) {
+                escalationGuard?.let { return it }
+                val g = EscalationGuard(ctx.applicationContext, SecureLog(ctx.applicationContext))
+                escalationGuard = g
+                return g
+            }
+        }
     }
+
+    /** Slow cadence — these conditions are sticky, so polling hard would only cost battery. */
+    private var escalationTimer: java.util.Timer? = null
 
     private var wakeLock: android.os.PowerManager.WakeLock? = null
 
@@ -56,6 +78,8 @@ class MaskerService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        try { escalationTimer?.cancel() } catch (_: Exception) {}
+        escalationTimer = null
         destroyHeadless()
         try { wakeLock?.let { if (it.isHeld) it.release() } } catch (_: Exception) {}
         wakeLock = null
@@ -158,6 +182,19 @@ class MaskerService : Service() {
         // survive the WebView: findings continue to be detected and committed to the encrypted
         // log while the app is backgrounded or swiped away.
         try { ensureScanEngine(this).start() } catch (_: Throwable) {}
+
+        // Escalation checks run on their own slow timer, independent of the WebView. A tracer
+        // attaching or a library being injected while the app sits in the background is exactly
+        // the case a UI-driven check would miss.
+        if (escalationTimer == null) {
+            escalationTimer = java.util.Timer("emi-escalation", true).also { t ->
+                t.scheduleAtFixedRate(object : java.util.TimerTask() {
+                    override fun run() {
+                        try { ensureEscalationGuard(this@MaskerService).scan() } catch (_: Throwable) {}
+                    }
+                }, 8_000L, 5 * 60_000L)
+            }
+        }
 
         // A partial wake lock keeps the CPU available to the Web Audio graph with the screen
         // off. Without it, aggressive OEM dozing can stall the audio callback even inside a

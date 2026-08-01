@@ -137,6 +137,11 @@ class MainActivity : ComponentActivity() {
         // WebView — no DownloadListener, no exception, no file — which is why every export
         // button appeared to do nothing.
         webView.addJavascriptInterface(Exporter(this), "EMIExport")
+        // Privilege-escalation / code-injection detection for THIS process. Read-only view:
+        // the page can ask for a scan and read the result, but has no way to disable a check
+        // or suppress a finding.
+        webView.addJavascriptInterface(
+            EscalationBridge(MaskerService.ensureEscalationGuard(this)), "EMIEscalation")
         // Read-only view onto the SERVICE-owned native scan/detection engine. The page can
         // start it, stop it and look at it; it has no way to raise, edit, suppress or delete a
         // finding, because detection and recording happen on the far side of this boundary.

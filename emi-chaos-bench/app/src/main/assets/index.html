@@ -483,6 +483,50 @@
 
   <div class="page" id="page-detect">
     <div class="sect">
+      <div class="head"><span class="t">Escalation guard</span><span class="tag" id="egState">—</span></div>
+      <div class="body">
+        <div class="grid">
+          <div class="stat"><small>Verdict</small><b id="egVerdict">—</b></div>
+          <div class="stat"><small>Tracer</small><b id="egTracer">—</b></div>
+          <div class="stat"><small>W^X pages</small><b id="egWx">—</b></div>
+          <div class="stat"><small>Fileless exec</small><b id="egFileless">—</b></div>
+          <div class="stat"><small>Injected libs</small><b id="egForeign">—</b></div>
+          <div class="stat"><small>SELinux</small><b id="egSelinux">—</b></div>
+        </div>
+        <div class="row"><div class="cell full"><button class="btn" id="egScan">Scan now</button></div></div>
+        <div id="egList"></div>
+        <div class="muted">Looks for someone escalating <b>against this app</b> — code injected into its
+          address space, a tracer attached to its process, the sandbox not being enforced, or a payload
+          running from memory with no file on disk.
+          <br><br>
+          <b>This is not a root blocker.</b> It does not care whether you have rooted your own phone, and it
+          will not refuse to run if you have — that punishes the owner for controlling their device and
+          stops no attacker. The question here is the opposite one: has anything got <i>inside</i> this app.
+          <br><br>
+          <b>What it checks:</b> <code>TracerPid</code> for a live ptrace attachment (the mechanism a debugger
+          or injector uses to read and write this app’s memory); memory mapped both writable and
+          executable, which normal code never needs; executable regions backed by <code>memfd</code> or
+          deleted files — code never written to disk, which is what an obfuscated in-memory implant looks
+          like and what a file scanner can never find; native libraries loaded from world-writable or
+          shell-owned directories; known code-injection frameworks mapped into this process; whether SELinux
+          is enforcing; whether this app’s own APK sits where it should and is read-only; and overlay
+          mounts covering system paths, which is how a rootkit shows one filesystem to some processes and a
+          different one to others.
+          <br><br>
+          <b>It reports and never blocks.</b> No self-kill, no lockout, no “integrity failed”.
+          Retaliation is trivially bypassed by anyone who has already achieved injection, and a false
+          positive would end a masking session you may be relying on. A finding costs you a notification and
+          a line in the encrypted log — that is the entire response, deliberately.
+          <br><br>
+          <b>Honest limit:</b> an attacker with kernel-level control can defeat every check above — they
+          can lie about <code>/proc</code>, hide mappings and forge the answers. This raises the cost of a
+          <i>quiet</i> compromise; it cannot prove there isn’t one. Several checks also have legitimate
+          causes (the ART JIT produces some writable-executable pages; some ROMs overlay system paths), so
+          findings state what was observed rather than declaring a verdict. Runs natively on a slow cadence
+          in the background, so a tracer attaching while the app is out of sight is still caught.</div>
+      </div>
+    </div>
+    <div class="sect">
       <div class="head"><span class="t">Native scan engine</span><span class="tag" id="nsState">—</span></div>
       <div class="body">
         <div class="grid">
@@ -1097,6 +1141,38 @@ const $=i=>document.getElementById(i), cl=(v,a,b)=>Math.min(Math.max(v,a),b),
 // Shared by all three export helpers, which live in three separate module IIFEs — defined
 // here rather than beside one of them so a "saved" toast can name the size in every case.
 const fmtBytes=n=>{ n=+n||0; return n<1024?n+' B':(n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(2)+' MB'); };
+/* Clipboard copy that tells the truth about whether it worked.
+   navigator.clipboard.writeText() returns a PROMISE. Every call site used to wrap it in a
+   synchronous try/catch, which cannot catch a rejection — so when the write was refused the
+   app still said "Copied", the user got nothing, and the manual-copy fallback in the catch
+   block was unreachable dead code. Clipboard writes really are refused in a WebView (an
+   unfocused window and some OEM builds both do it), so this was a silent lie, not a
+   theoretical one. Resolve/reject are handled properly here, with an execCommand fallback
+   that works in contexts where the async API is refused, and an honest message if neither
+   path succeeds. */
+function copyText(t,okMsg){
+  const ok=()=>toast(okMsg||'Copied');
+  const fallback=()=>{
+    try{
+      const ta=document.createElement('textarea');
+      ta.value=t; ta.setAttribute('readonly','');
+      ta.style.cssText='position:fixed;top:0;left:0;width:1px;height:1px;opacity:0';
+      document.body.appendChild(ta); ta.select();
+      try{ ta.setSelectionRange(0,String(t).length); }catch(e){}
+      let done=false;
+      try{ done=!!(document.execCommand&&document.execCommand('copy')); }catch(e){}
+      ta.remove();
+      if(done){ ok(); return; }
+    }catch(e){}
+    toast('Copy blocked — select the text and copy it manually');
+  };
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(String(t)).then(ok,fallback); return;
+    }
+  }catch(e){}
+  fallback();
+}
 let ctx=null,node=null,mediaEl=null,mediaDest=null,mediaGain=null,running=false,sr=48000;
 function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('on'),1600);}
 
@@ -1978,7 +2054,10 @@ function proc(e){
   // what makes the stutter keep running with the app backgrounded, the screen off, or the app
   // swiped away onto the headless WebView — the audio callback is still being serviced there,
   // while page timers are throttled or suspended outright.
-  if(ssOn) ScanStutter.audioTick(n, (actx&&actx.sampleRate)||48000);
+  // `sr` is this module's tracked sample rate (set from the context on start). An earlier
+  // version referenced `actx`, which is a DIFFERENT variable scoped inside the mic module and
+  // therefore undefined here — it threw a ReferenceError on every single audio buffer.
+  if(ssOn) ScanStutter.audioTick(n, sr||48000);
   const aR=chz(P.aRate), bR=chz(P.bRate);
   const cvOn=!!P.e_cv, cR=chz(P.cRate), dR=chz(P.dRate), eR=chz(P.eRate), fR=chz(P.fRate);
   const spN=P.spN|0, cwN=P.cwS|0, hmH=P.hmH|0, usN=P.usN|0;
@@ -5183,7 +5262,7 @@ const Privilege=(function(){
     adb(){
       const c=(window.EMIPriv&&EMIPriv.adbCommand)?EMIPriv.adbCommand()
         :'adb shell dpm set-device-owner com.ant.emichaosbg/.EmiDeviceAdminReceiver';
-      try{ navigator.clipboard.writeText(c); toast('Copied: '+c); }
+      try{ copyText(c,'Copied: '+c); }
       catch(e){ toast(c); }
     } };
 })();
@@ -5499,6 +5578,46 @@ const SatView=(function(){
 })();
 
 /* ============ WARDRIVING (local GPS-tagged track log; export only, no auto-upload) ============ */
+/* ============ ESCALATION GUARD — VIEWER ONLY ============
+   Renders EscalationGuard.kt's findings. Holds no detection logic: every check runs natively
+   and commits to the encrypted log before this page hears about it. The bridge exposes only
+   scan() and cached() — there is deliberately no way from here to disable a check or clear a
+   finding, because a detector the compartment under attack can switch off is not a detector. */
+const Escalation=(function(){
+  let last=null;
+  const set=(id,v)=>{const el=$(id); if(el)el.textContent=v;};
+  function render(force){
+    if(!window.EMIEscalation){
+      set('egState','native build only'); set('egVerdict','—');
+      const l=$('egList'); if(l)l.innerHTML='<div class="muted">Runs in the installed app; a browser preview has no process to inspect.</div>';
+      return;
+    }
+    try{ last=JSON.parse(force?EMIEscalation.scan():EMIEscalation.cached()); }catch(e){ last=null; }
+    if(!last){ set('egState','error'); return; }
+    const n=last.count||0;
+    set('egState', last.clean?'clean':(n+' finding'+(n===1?'':'s')));
+    set('egVerdict', last.clean?'clean':'flagged');
+    set('egTracer', last.tracerPid?('PID '+last.tracerPid):(last.tracerPid===0?'none':'—'));
+    set('egWx', last.wxRegions!=null?String(last.wxRegions):'—');
+    set('egFileless', last.fileless!=null?String(last.fileless):'—');
+    set('egForeign', last.foreignLibs?String(last.foreignLibs.length):'—');
+    set('egSelinux', last.selinux||'—');
+    const l=$('egList'); if(!l) return;
+    const f=last.findings||[];
+    if(!f.length){ l.innerHTML='<div class="muted" style="margin-top:8px">Nothing flagged in this process.</div>'; return; }
+    // textContent, never innerHTML, for the finding bodies — they quote paths read from
+    // /proc, which is attacker-influenceable content and must never be parsed as markup.
+    l.innerHTML=''; 
+    f.forEach(x=>{
+      const d=document.createElement('div'); d.className='m';
+      d.style.cssText='margin-top:8px;padding:8px;border-left:3px solid '+(x.sev>=3?'#c0392b':'#d68910')+';background:rgba(255,255,255,.35);font-size:11px;line-height:1.5';
+      d.textContent=x.what;
+      l.appendChild(d);
+    });
+  }
+  return { render, get last(){ return last; } };
+})();
+
 /* ============ NATIVE SCAN ENGINE — VIEWER ONLY ============
    This module renders the native engine's state. It deliberately holds no detection logic of
    its own: the scanning, the heuristics and the alert-raising all live in ScanEngine.kt, and
@@ -5830,6 +5949,7 @@ function draw(now){
       const gps=$('rv_gps');if(gps)gps.textContent=(Sensors.lat!=null?Sensors.lat.toFixed(3)+','+Sensors.lon.toFixed(3):'—'); }
     Wardrive.tick();
     NativeScan.render();
+    Escalation.render(false);
     const dgS=$('dgScore'),dgB=$('dgBar'),dgT=$('dgTag');
     if(dgS){ const sc=DemodGuard.score; dgS.textContent=Math.round(sc*100)+'%'; if(dgB)dgB.style.width=(sc*100)+'%';
       if(dgT)dgT.textContent=DemodGuard.enabled?(running?'watching':'idle'):'off'; }
@@ -5940,6 +6060,15 @@ $('ssOver').addEventListener('click',()=>{ const b=$('ssOver'),v=b.getAttribute(
 // still has to be told, or the UI would claim "on" while nothing hammered. That mismatch is
 // exactly how this feature came to read as absent before, so it is started explicitly here and
 // the two are seeded from the same markup values rather than from a second hardcoded default.
+$('egScan').addEventListener('click',()=>{
+  // Forces an immediate native scan rather than reading the cached result — for right after
+  // you have attached or detached something and want to see it reflected now.
+  try{ Escalation.render(true);
+    const l=Escalation.last;
+    toast(l ? (l.clean?'Escalation guard: clean':('Escalation guard: '+l.count+' finding'+(l.count===1?'':'s')))
+            : 'Escalation guard unavailable');
+  }catch(e){ toast('Escalation scan failed'); }
+});
 $('ssJolt').addEventListener('click',()=>{ const b=$('ssJolt'),v=b.getAttribute('aria-pressed')!=='true';
   b.setAttribute('aria-pressed',String(v)); ScanStutter.screenJolt=v;
   b.textContent = v ? 'Screen jolt — ON' : 'Screen jolt — OFF';
@@ -6028,7 +6157,7 @@ $('wsDisc').addEventListener('click',()=>Accessories.wsDisconnect());
 $('micEn').addEventListener('click',()=>{ Mic.enabled?Mic.disable():Mic.enable(); });
 $('micDiag').addEventListener('click',()=>{ const b=$('micDiagBox'); b.style.display='block'; b.value=Mic.diagnostics(); });
 $('micDiagCopy').addEventListener('click',()=>{ const b=$('micDiagBox'); if(b.style.display==='none'){b.style.display='block';b.value=Mic.diagnostics();}
-  try{ navigator.clipboard.writeText(b.value); toast('Copied — paste it back to Claude'); }
+  try{ copyText(b.value,'Copied — paste it back to Claude'); }
   catch(e){ b.select(); toast('Select + copy manually'); } });
 document.querySelectorAll('[data-vad]').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('[data-vad]').forEach(x=>x.setAttribute('aria-pressed','false'));
@@ -6106,7 +6235,7 @@ $('sceneEn').addEventListener('click',()=>{const s=$('sceneEn'),v=s.getAttribute
 $('sceneT').addEventListener('input',e=>{Scene.period=+e.target.value*1000;$('sceneR').textContent=e.target.value+'s';});
 $('expBtn').addEventListener('click',()=>Profiles.exportAll());
 $('impBtn').addEventListener('click',()=>Profiles.importText());
-$('copyBtn').addEventListener('click',()=>{const t=Profiles.exportAll();try{navigator.clipboard.writeText(t);toast('Copied');}catch(e){toast('Select + copy manually');}});
+$('copyBtn').addEventListener('click',()=>copyText(Profiles.exportAll(),'Copied'));
 
 document.addEventListener('visibilitychange',()=>{
   if(!running)return;
