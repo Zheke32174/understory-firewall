@@ -146,19 +146,36 @@ class BleWatcher(
         try { onDevice?.invoke(o) } catch (_: Throwable) {}
     }
 
+    /**
+     * Every failure path RECORDS its reason before returning it.
+     *
+     * It previously only returned the reason as a String, and the sole caller —
+     * MaskerService's `try { ensureBleWatcher(this).start() } catch {}` — discarded it. The
+     * result was that status() reported running=false with no error field, so the Data screen
+     * printed "idle": Bluetooth switched off, location permission never granted, and a genuinely
+     * quiet room all rendered identically.
+     *
+     * For a follower detector that is the worst possible failure. "No tracker is following you"
+     * and "this never looked" must never be the same words on screen — the whole value of the
+     * SCANNER cell is telling those two apart. So lastError is set on the way out of every
+     * branch, and cleared only on a scan that actually registered.
+     */
     fun start(): String {
         if (running) return "already running"
+
+        fun fail(reason: String): String { lastError = reason; return reason }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.BLUETOOTH_SCAN)
-            != PackageManager.PERMISSION_GRANTED) return "BLUETOOTH_SCAN not granted"
+            != PackageManager.PERMISSION_GRANTED) return fail("BLUETOOTH_SCAN not granted")
         if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION)
-            != PackageManager.PERMISSION_GRANTED) return "location permission not granted"
+            != PackageManager.PERMISSION_GRANTED) return fail("location permission not granted")
 
         val bm = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
-            ?: return "no BluetoothManager"
-        val ad = bm.adapter ?: return "no Bluetooth adapter"
-        if (!ad.isEnabled) return "Bluetooth is off"
-        val s = ad.bluetoothLeScanner ?: return "no LE scanner (Bluetooth off?)"
+            ?: return fail("no BluetoothManager")
+        val ad = bm.adapter ?: return fail("no Bluetooth adapter")
+        if (!ad.isEnabled) return fail("Bluetooth is off")
+        val s = ad.bluetoothLeScanner ?: return fail("no LE scanner (Bluetooth off?)")
 
         val t = HandlerThread("emi-ble").also { it.start() }
         thread = t; handler = Handler(t.looper)

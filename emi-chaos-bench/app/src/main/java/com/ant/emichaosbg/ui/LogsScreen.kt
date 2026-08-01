@@ -21,17 +21,38 @@ import java.util.*
  * a second on the UI thread. Rendering natively does not just remove a formatting layer, it
  * removes the incentive to poll an expensive call from a render loop at all.
  *
- * The same discipline still applies here and is enforced by structure rather than by care:
- * count() is cheap and may be read on entry; read() and verify() are O(records) with a decrypt
- * each and run ONLY on an explicit press, on a background thread, never on the main thread.
+ * The same discipline still applies here, and the reported freeze on pressing LOGS proved it
+ * had been applied by care rather than by structure — care that then missed two paths:
+ *
+ *   1. count() was documented as cheap but walked and DECRYPTED the entire log to increment a
+ *      counter. It now reads the sealed head, which already stores the count. O(1).
+ *   2. The screen still touched the vault on the main thread, because `val log = SecureLog(...)`
+ *      runs during construction — inside the tab's click handler — and first use generates the
+ *      Keystore key.
+ *
+ * So the rule is now structural: NOTHING on this screen touches SecureLog on the main thread.
+ * The field is lazy, and every dereference is inside Async. count() is cheap AND off-thread;
+ * read(), verify() and the exports are O(records) with a decrypt each and additionally require
+ * an explicit press.
  */
 class LogsScreen(ctx: Context) : ScrollView(ctx) {
 
     private val vaultVals: List<TextView>
     private val entries: LinearLayout
     private val tag: TextView
-    private val log = SecureLog(ctx.applicationContext)
-    private val exporter = Exporter(ctx.applicationContext)
+    private lateinit var lastExport: TextView
+    // LAZY, AND DEREFERENCED ONLY FROM A BACKGROUND THREAD.
+    //
+    // As a `val` this constructed SecureLog during LogsScreen's own construction — which
+    // happens on the main thread, inside the Logs tab's click handler. SecureLog's constructor
+    // mkdirs(), and its first real use generates a non-exportable AES key in the Keystore;
+    // StrongBox key generation on a secure element is not fast. That is the freeze that was
+    // reported on pressing Logs, and it is invisible in a debug build on a warm Keystore.
+    //
+    // `by lazy` moves the cost to first dereference, and every dereference below is inside an
+    // Async block, so the cost lands on the data thread instead of the frame deadline.
+    private val log by lazy { SecureLog(ctx.applicationContext) }
+    private val exporter by lazy { Exporter(ctx.applicationContext) }
     private val fmt = SimpleDateFormat("MMM d HH:mm:ss", Locale.US)
 
     init {
@@ -63,6 +84,24 @@ class LogsScreen(ctx: Context) : ScrollView(ctx) {
                 .apply { leftMargin = Nx.dp(ctx, 6) } })
         body.addView(r2)
 
+        // SHARE — because "it saved to Downloads" is only useful if the file can then be found.
+        // This hands the same content straight to the system share sheet, so the log can be sent
+        // somewhere without locating a file at all. Reported as an export that produced nothing
+        // findable; a share sheet fails visibly rather than silently.
+        val r3 = Nx.row(ctx).apply { layoutParams = LinearLayout.LayoutParams(-1, -2)
+            .apply { topMargin = Nx.dp(ctx, 6) } }
+        r3.addView(Nx.button(ctx, "Share JSON") { share(json = true) }
+            .apply { layoutParams = LinearLayout.LayoutParams(0, -2, 1f) })
+        r3.addView(Nx.button(ctx, "Share CSV") { share(json = false) }
+            .apply { layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+                .apply { leftMargin = Nx.dp(ctx, 6) } })
+        body.addView(r3)
+
+        // Where the last export actually landed, kept on screen. A toast is gone in three
+        // seconds and cannot be re-read; this is the answer to "where did it go".
+        lastExport = Nx.body(ctx, "No export yet this session.")
+        body.addView(lastExport)
+
         entries = Nx.column(ctx)
         body.addView(entries)
         card.addView(body)
@@ -85,16 +124,21 @@ class LogsScreen(ctx: Context) : ScrollView(ctx) {
         refreshCheap()
     }
 
-    /** Safe on entry: a single head-file read, no decryption. */
+    /**
+     * Cheap in complexity — count() is now O(1) against the sealed head — but still NOT free:
+     * it decrypts that head, and the first call of the session may generate the Keystore key.
+     * So it goes through Async like everything else here. "Cheap" was the assumption that put
+     * this call on the main thread in the first place.
+     */
     fun refreshCheap() {
-        runCatching {
-            val n = log.count()
+        tag.text = "reading…"
+        Async.load(this, { log.count() }) { n ->
             vaultVals[0].text = n.toString()
             tag.text = if (n == 0L) "empty" else "$n record(s)"
         }
     }
 
-    private fun bg(work: () -> Unit) = Thread { runCatching(work) }.apply { isDaemon = true }.start()
+    private fun bg(work: () -> Unit) = Async.run(work)
 
     private fun loadEntries() {
         tag.text = "loading…"
@@ -152,20 +196,47 @@ class LogsScreen(ctx: Context) : ScrollView(ctx) {
         }
     }
 
+    private fun name(json: Boolean) =
+        "emi-vault-" + SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date()) +
+            if (json) ".json" else ".csv"
+
+    private fun mime(json: Boolean) = if (json) "application/json" else "text/csv"
+
     private fun export(json: Boolean) {
-        bg {
+        Async.load(this, {
             val body = if (json) log.exportJson() else log.exportCsv()
-            val name = "emi-vault-" + SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date()) +
-                if (json) ".json" else ".csv"
-            val res = runCatching {
-                JSONObject(exporter.save(name, if (json) "application/json" else "text/csv", body))
-            }.getOrNull()
-            post {
-                Toast.makeText(context,
-                    if (res?.optBoolean("ok") == true)
-                        "Saved to ${res.optString("path")} (${res.optInt("bytes")} bytes)"
-                    else "Export failed — ${res?.optString("reason") ?: "unknown"}",
-                    Toast.LENGTH_LONG).show()
+            runCatching { JSONObject(exporter.save(name(json), mime(json), body))
+                .put("chars", body.length) }
+                .getOrElse { JSONObject().put("ok", false).put("reason", it.javaClass.simpleName) }
+        }) { res ->
+            val ok = res.optBoolean("ok")
+            val msg = if (ok)
+                "Saved to ${res.optString("path")} (${res.optInt("bytes")} bytes)" +
+                    if (res.optBoolean("fallback")) " — app-private fallback, reachable over USB" else ""
+            else "Export FAILED — ${res.optString("reason").ifBlank { "unknown" }}"
+            // Persisted on screen, not just toasted: the report was "there are no logs at that
+            // location", and a toast that has already vanished cannot be checked against the
+            // folder being looked in.
+            lastExport.text = msg + "\n\nInternal storage > Download. If it is not there, use " +
+                "Share instead — that hands the file to another app directly and does not " +
+                "depend on finding it in a folder."
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun share(json: Boolean) {
+        Async.load(this, {
+            val body = if (json) log.exportJson() else log.exportCsv()
+            runCatching { JSONObject(exporter.share(name(json), mime(json), body)) }
+                .getOrElse { JSONObject().put("ok", false).put("reason", it.javaClass.simpleName) }
+        }) { res ->
+            if (!res.optBoolean("ok")) {
+                val why = res.optString("reason").ifBlank { "unknown" }
+                lastExport.text = "Share FAILED — $why"
+                Toast.makeText(context, "Share failed — $why", Toast.LENGTH_LONG).show()
+            } else {
+                lastExport.text = "Shared ${res.optString("path")} — pick a destination in the " +
+                    "sheet. Nothing left the device until you choose one."
             }
         }
     }

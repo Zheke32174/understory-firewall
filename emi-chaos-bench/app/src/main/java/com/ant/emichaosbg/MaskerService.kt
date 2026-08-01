@@ -280,6 +280,23 @@ class MaskerService : Service() {
             escalationTimer = java.util.Timer("emi-escalation", true).also { t ->
                 t.scheduleAtFixedRate(object : java.util.TimerTask() {
                     override fun run() {
+                        // BLE SCANNING IS RETRIED, NOT ATTEMPTED ONCE.
+                        //
+                        // start() is called once when the service starts, and at that instant
+                        // the adapter may still be coming up, Bluetooth may be off, or location
+                        // permission may not have been granted yet. Under a one-shot attempt all
+                        // three fail permanently: the watcher then sits idle forever while the
+                        // Data screen reports "nothing following" — for a follower detector, the
+                        // most dangerous sentence it can print. Seen exactly that on device: the
+                        // scanner read idle with 0 sightings at one point and "observing" with
+                        // 350 sightings minutes later, because something else happened to start
+                        // it. Nothing should have to happen; it should retry.
+                        //
+                        // Cheap: start() returns "already running" immediately when it is.
+                        try {
+                            val b = ensureBleWatcher(this@MaskerService)
+                            if (!b.isRunning()) b.start()
+                        } catch (_: Throwable) {}
                         try { ensureEscalationGuard(this@MaskerService).scan() } catch (_: Throwable) {}
                         // Cell checks run here too: a forced 4G->2G downgrade or a tracking-area
                         // flip is most useful to catch while the phone is sitting in a pocket,

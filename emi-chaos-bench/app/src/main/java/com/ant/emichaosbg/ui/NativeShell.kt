@@ -81,7 +81,20 @@ object Nx {
         return bar to tag
     }
 
-    /** A labelled value cell. Returns the value view so the screen can update it. */
+    /**
+     * A labelled value cell. Returns the value view so the screen can update it.
+     *
+     * THE VALUE IS SINGLE-LINE AND SHRINKS TO FIT, deliberately. These cells are one third of
+     * the screen wide and hold values that come from the system, whose width this code does not
+     * get to choose: an LTE cell ID is nine digits, a carrier name can be long, and the user's
+     * font scale multiplies both. At a fixed 17sp a nine-digit cell ID wrapped onto a second
+     * line, which made that one box taller than its neighbours and visibly broke the alignment
+     * of the whole row.
+     *
+     * Autosize rather than ellipsize because these are identifiers, not prose — a cell ID
+     * truncated to "1139753…" is worse than useless, since the digits are the entire content.
+     * Shrinking keeps every character readable and keeps every row the same height.
+     */
     fun stat(ctx: Context, label: String): Pair<LinearLayout, TextView> {
         val box = column(ctx).apply {
             setBackgroundColor(Color.parseColor("#e6e1d4"))
@@ -90,11 +103,20 @@ object Nx {
         box.addView(TextView(ctx).apply {
             text = label.uppercase(); setTextColor(SOFT); textSize = 8.5f
             typeface = Typeface.MONOSPACE; letterSpacing = 0.07f
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
         })
         val v = TextView(ctx).apply {
-            text = "—"; setTextColor(INK); textSize = 17f
+            text = "—"; setTextColor(INK)
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            maxLines = 1
+            setSingleLine(true)
+            ellipsize = android.text.TextUtils.TruncateAt.END
         }
+        // Uniform autosize: 17sp when it fits, down to 10sp when it does not.
+        androidx.core.widget.TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+            v, 10, 17, 1, android.util.TypedValue.COMPLEX_UNIT_SP
+        )
         box.addView(v)
         return box to v
     }

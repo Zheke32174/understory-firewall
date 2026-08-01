@@ -225,6 +225,16 @@
       <div class="head"><span class="t">DOM hammer</span><span class="tag" id="ssRate">0/s</span>
         <div class="sw" id="ssEn" aria-pressed="true"></div></div>
       <div class="body">
+        <div class="muted" style="margin-bottom:8px">
+          <b>Two channels from one knob.</b> <b>GLOBAL</b> is the audible scan-stutter — it rides
+          the audio clock, reaches outward through the masking output, survives the app being
+          backgrounded or swiped away, and runs <b>at capacity</b>. <b>LOCAL</b> is the on-screen
+          thrash — it runs on the UI thread, so it is the only half that could cripple this
+          device, and it is the only half that is governed: it yields the instant you touch the
+          screen, spasms then guarantees recovery, and its main-thread share is hard-capped at
+          <span id="ssCeilInline">40%</span>. Turn Severity up and the outward chaos goes as hard
+          as the phone allows while the screen stays legible and every touch still lands.
+        </div>
         <div class="row"><div class="cell full"><small>Severity <span id="ssAmtR">75%</span></small>
           <input id="ssAmt" type="range" min="0" max="1" step="0.01" value="0.75"></div></div>
         <div class="row"><div class="cell full">
@@ -233,12 +243,14 @@
           <button class="btn" id="ssJolt" aria-pressed="false">Screen jolt — OFF</button></div></div>
         <div class="anvil" id="ssThrash"></div>
         <div class="grid">
-          <div class="stat"><small>Bursts</small><b id="ssCount">0</b></div>
+          <div class="stat"><small>GLOBAL · scan stutter/s</small><b id="ssGlobal">0/s</b></div>
+          <div class="stat"><small>LOCAL · main-thread</small><b id="ssDuty">—</b></div>
           <div class="stat"><small>Mode</small><b id="ssMode">idle</b></div>
+          <div class="stat"><small>Bursts</small><b id="ssCount">0</b></div>
           <div class="stat"><small>Reflows/s</small><b id="ssReflow">—</b></div>
           <div class="stat"><small>Burst ms</small><b id="ssMs">—</b></div>
           <div class="stat"><small>Ops/burst</small><b id="ssOps">—</b></div>
-          <div class="stat"><small>Main-thread</small><b id="ssDuty">—</b></div>
+          <div class="stat"><small>LOCAL ceiling</small><b id="ssCeil">40%</b></div>
         </div>
         <div class="muted">The sound-and-app stutter that happened when the BLE chaotic cadence ran with
           <b>Bluetooth switched off</b> — isolated, rebuilt as its own function, and now identical whether
@@ -3843,6 +3855,37 @@ const ChaosPulse=(function(){
    the main thread always keeps the rest, at every severity, overdrive included. Overdrive
    raises the ceiling to ~70%. The audible glitch is ALSO asserted directly (hold/drop in
    proc()) so it never depends on how fast a given phone's bridge happens to be. */
+/* ============ THE GLOBAL / LOCAL BALANCE (the design, stated once) =====================
+   The brief: accomplish the chaos disruptor GLOBALLY without crippling the touchscreen and
+   image on the LOCAL end. Those only pull against each other if you drive both ends from one
+   throttle. They do not have to share one, because they do not run in the same place.
+
+   TWO CHANNELS, TWO CLOCKS, TWO THREADS — and only one of them can hurt local usability:
+
+     GLOBAL  — the audible scan-stutter. Scheduled on the AUDIO clock (audioTick), consumed
+               inside the audio callback (proc → step). It reaches OUTWARD: it is the masking
+               signal an eavesdropper hears, and it keeps running with the app backgrounded,
+               the screen off, or the app swiped away, because the audio callback keeps being
+               serviced when the setTimeout loop is frozen. It is consumed on the AUDIO thread,
+               so no matter how hard it is driven it cannot stall a finger drag or a repaint.
+               THIS is where "maximum capacity chaoticness" lives, and it runs at capacity —
+               it is never yielded to touch and never calmed by the local envelope, because it
+               has no way to cripple the local end.
+
+     LOCAL   — the DOM thrash and the optional screen jolt. Scheduled on setTimeout, executed
+               on the MAIN/UI thread. It is the only half that can make the device itself
+               unusable, so it is the only half that is governed for usability: it yields the
+               thread the instant you touch the screen, it is bounded by a spasm→recover
+               envelope so any degraded window is short and always followed by a guaranteed
+               calm, and its main-thread share is clamped by a HARD ceiling the Severity knob
+               cannot push past. It is the visible garnish on the chaos, not the chaos itself.
+
+   So Severity drives GLOBAL to capacity and drives LOCAL only up to its safety ceiling. Turn
+   it to the top and the sound and the outward disruption go as hard as the device allows,
+   while the screen still hitches-but-recovers and the touchscreen still answers every touch.
+   That is the balance: global reaches out, local stays reversible. */
+const LOCAL_MAX_DUTY = 0.40;   // hard main-thread ceiling for the LOCAL channel, at ANY severity
+
 const ScanStutter=(function(){
   let intensity=0.65, over=false, bursts=0, on=false, timer=null;
   let holdSamples=0, dropSamples=0;
@@ -3851,6 +3894,8 @@ const ScanStutter=(function(){
   // Audio-clock scheduling state — see audioTick(). Kept separate from the setTimeout path on
   // purpose: one drives sound and survives backgrounding, the other drives the DOM and cannot.
   let audioClock=0, nextGlitchAt=0, glitches=0;
+  // Rolling GLOBAL-channel rate (glitches/s), measured on the audio clock for the readout.
+  let gRate=0, gN=0, gRateT=0;
   // The anvil: real, laid-out cells. Built once, lazily, into #ssThrash.
   const CELLS=28; let anvil=null, cells=null, phase=0, appEl=null, deepEl=null;
   function buildAnvil(){
@@ -4101,22 +4146,23 @@ const ScanStutter=(function(){
     return inSpasm;
   }
   function dutyTarget(){
-    /* Target main-thread SHARE — and this had to come down a long way.
+    /* LOCAL main-thread SHARE. This is the LOCAL channel's governor, and it is deliberately
+       modest — the chaos the user turned up lives in the GLOBAL audio channel, which this does
+       not touch. This half only has to be visible, never dominant.
 
-       It was 12-52% normal and 30-70% in overdrive. Those numbers were chosen against an
-       idle page, but the hammer does not run on an idle page: the scanners, the sensor bus,
-       the analyser draw and the audio callback all want the same thread. At 70% the app had
-       no headroom left and simply froze, and even at 52% real touch scrolling could not get
-       a look in.
+       History: it was 12-52% normal / 30-70% overdrive against an idle page, but the hammer
+       shares the thread with the scanners, the sensor bus, the analyser draw and the audio
+       callback. At 70% the app froze; even 52% locked out touch scrolling. Then 5-18% / 26%.
 
-       5-18% normal, up to 26% in overdrive. That is still a synchronous whole-document
-       relayout several times a second — more than enough to jank the UI visibly and collide
-       with the audio callback, which is the entire point — while leaving the main thread the
-       majority of its time. A disruption effect that takes the app down with it is not a
-       feature, it is a hang. */
-    const base = over ? (0.10 + intensity*0.16) : (0.05 + intensity*0.13);
-    // Spasm roughly triples the share; calm drops it to a floor the UI cannot feel.
-    return inSpasm ? Math.min(0.62, base*3.2) : Math.min(base, 0.05);
+       Now the peak is capped by LOCAL_MAX_DUTY (0.40) at EVERY severity and overdrive setting,
+       and the spasm multiplier is bounded by that same ceiling. 40% is a synchronous
+       whole-document relayout several times a second — plainly visible as a hitch, colliding
+       with the audio callback exactly as intended — while leaving the main thread the clear
+       majority of its time, so a spasm reads as "the screen stuttered" and never as "the
+       screen froze". The recover window drops to a floor the UI cannot feel. */
+    const base = over ? (0.09 + intensity*0.14) : (0.05 + intensity*0.11);
+    // Spasm lifts the share toward — but never past — the hard local ceiling; calm floors it.
+    return inSpasm ? Math.min(LOCAL_MAX_DUTY, base*3.0) : Math.min(base, 0.05);
   }
   function step(){
     if(!on) return;
@@ -4138,9 +4184,13 @@ const ScanStutter=(function(){
     set enabled(v){
       if(v===on) return; on=v;
       if(timer){clearTimeout(timer);timer=null;}
-      if(v){ opT=perfNow(); opWin=0; rT=perfNow(); rN=0; buildAnvil(); step();
-        toast('DOM hammer on — works with Bluetooth on or off'); }
+      if(v){ opT=perfNow(); opWin=0; rT=perfNow(); rN=0; gRate=0; gN=0; gRateT=0;
+        const ceil=Math.round(LOCAL_MAX_DUTY*100)+'%';
+        setTxt('ssCeil', ceil); { const el=$('ssCeilInline'); if(el) el.textContent=ceil; }
+        buildAnvil(); step();
+        toast('DOM hammer on — GLOBAL stutter at capacity, LOCAL capped at '+ceil); }
       else { holdSamples=0; dropSamples=0;
+        setTxt('ssGlobal','0/s');
         if(anvil) anvil.className='anvil';
         // Undo the whole-screen writes. Without this the app is left permanently skewed and
         // offset at whatever the last burst happened to set — off has to mean straight again.
@@ -4176,20 +4226,28 @@ const ScanStutter=(function(){
       if(!on) return;
       const sr=sampleRate>0?sampleRate:48000;
       audioClock += (nSamples/sr)*1000;               // ms of real audio elapsed
+      // ROLLING GLOBAL RATE, for the readout — this channel's "how hard is it running".
+      if(gRateT===0) gRateT=audioClock;
+      if(audioClock-gRateT>1000){ gRate=gN*1000/(audioClock-gRateT); gN=0; gRateT=audioClock;
+        setTxt('ssGlobal', Math.round(gRate)+'/s'); }
       if(audioClock < nextGlitchAt) return;
-      // Mean rate rises with severity: ~6/s at zero, ~46/s at full, ~74/s in overdrive.
-      const perSec=(6+intensity*intensity*40)*(over?1.6:1);
+      // THE GLOBAL CHANNEL RUNS AT CAPACITY. It is consumed on the audio thread and cannot
+      // stall the UI, so nothing here is held back for local usability — this is where the
+      // Severity knob spends most of its range. Mean rate: ~7/s at zero, ~56/s at full, ~90/s
+      // in overdrive. Depth (the fraction of the gap the output is held or dropped) climbs with
+      // severity too, so the stutter both quickens AND deepens as you turn it up.
+      const perSec=(7+intensity*intensity*49)*(over?1.6:1);
       const gap=1000/perSec;
       const jitter=rnd(gap*0.45,gap*1.7);             // never a metronome
       nextGlitchAt = audioClock + jitter;
-      const frac=cl((over?0.42:0.25)+intensity*0.45, 0, 0.88);
+      const frac=cl((over?0.44:0.27)+intensity*0.48, 0, 0.9);
       const span=Math.max(64, (jitter/1000)*sr*frac);
       const g=Math.random();
       if(g<0.45) holdSamples=Math.round(rnd(span*0.6,span*1.4));
       else if(g<0.9) dropSamples=Math.round(rnd(span*0.5,span*1.2));
       else { holdSamples=Math.round(rnd(span*0.3,span*0.7));
              dropSamples=Math.round(rnd(span*0.3,span*0.7)); }   // both: stutter then gap
-      glitches++;
+      glitches++; gN++;
     },
     get glitches(){ return glitches; },
     /* Consumed per sample by proc(): 0 = normal, 1 = hold previous sample, 2 = drop. */
@@ -4201,6 +4259,21 @@ const ScanStutter=(function(){
     get active(){ return holdSamples>0||dropSamples>0; }
   };
 })();
+
+/* Narrow diagnostic handle for the GLOBAL (audio) channel. It exposes NO capability the
+   on-screen controls do not already give — the pump forwards the same audioTick the audio
+   callback calls, step()/glitches/active are read-only state — but it lets the audible channel
+   be exercised and verified WITHOUT a live AudioContext: the harness has no audio output, and
+   an on-device self-check can confirm the stutter engine is producing holds/drops even before
+   the masker is started. Kept off the sensitive surface deliberately: it cannot enable the
+   masker, grant permissions, read the vault, or touch the bridge. */
+try{ window.__hammer = {
+  audioTick:(n,sr)=>ScanStutter.audioTick(n,sr),
+  step:()=>ScanStutter.step(),
+  get glitches(){ return ScanStutter.glitches; },
+  get active(){ return ScanStutter.active; },
+  set overdrive(v){ ScanStutter.overdrive=v; }, get overdrive(){ return ScanStutter.overdrive; }
+}; }catch(e){}
 
 /* ============ CHAOS GOVERNOR ============
    The brief: crank the chaos hard, but don't damage anything, and self-regulate WITHOUT

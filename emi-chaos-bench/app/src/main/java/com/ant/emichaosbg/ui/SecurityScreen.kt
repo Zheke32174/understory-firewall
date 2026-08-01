@@ -142,65 +142,84 @@ class SecurityScreen(ctx: Context) : ScrollView(ctx) {
         root.addView(cellCard)
     }
 
-    /** Pulled on a slow cadence by the shell, and on demand from the buttons. */
+    /**
+     * Gathers on a background thread and applies on the main one. Every call below blocks:
+     * SecureLog's first use generates a Keystore key, EscalationGuard reads /proc/self/maps,
+     * NetGuard reads /proc/net/arp, CellSecurity makes telephony binder calls. Doing that
+     * inline is what froze this screen — the same mistake the page made, in Kotlin.
+     */
     fun refresh(force: Boolean) {
-        val c = context
-        runCatching {
-            val g = MaskerService.ensureEscalationGuard(c)
-            val o = JSONObject(if (force) g.scan() else g.cached())
-            escTag.text = if (o.optBoolean("clean", true)) "clean" else "${o.optInt("count")} finding(s)"
-            escVals[0].text = if (o.optBoolean("clean", true)) "clean" else "flagged"
-            escVals[1].text = o.optInt("tracerPid", 0).let { if (it > 0) "PID $it" else "none" }
-            escVals[2].text = o.opt("wxRegions")?.toString() ?: "—"
-            escVals[3].text = o.opt("fileless")?.toString() ?: "—"
-            escVals[4].text = o.optJSONArray("foreignLibs")?.length()?.toString() ?: "—"
-            escVals[5].text = o.optString("selinux", "—")
-            escList.removeAllViews()
-            val f = o.optJSONArray("findings")
-            if (f != null) for (i in 0 until f.length()) {
-                val x = f.optJSONObject(i) ?: continue
-                escList.addView(Nx.finding(c, x.optInt("sev", 1), x.optString("what"))
-                    .apply { layoutParams = LinearLayout.LayoutParams(-1, -2)
-                        .apply { topMargin = Nx.dp(c, 6) } })
+        val c = context.applicationContext
+        Async.load(this, {
+            val out = HashMap<String, JSONObject?>()
+            out["esc"] = runCatching {
+                val g = MaskerService.ensureEscalationGuard(c)
+                JSONObject(if (force) g.scan() else g.cached())
+            }.getOrNull()
+            out["tj"] = runCatching {
+                MaskerService.tapjackRef?.let { JSONObject(it.status()) }
+            }.getOrNull()
+            out["net"] = runCatching {
+                val n = MaskerService.ensureNetGuard(c)
+                JSONObject(if (force) n.scan() else n.cached())
+            }.getOrNull()
+            out["cell"] = runCatching {
+                val cs = MaskerService.ensureCellSecurity(c)
+                JSONObject(if (force) cs.scan() else cs.cached())
+            }.getOrNull()
+            out
+        }, { out ->
+            out["esc"]?.let { o ->
+                escTag.text = if (o.optBoolean("clean", true)) "clean" else "${o.optInt("count")} finding(s)"
+                escVals[0].text = if (o.optBoolean("clean", true)) "clean" else "flagged"
+                escVals[1].text = o.optInt("tracerPid", 0).let { if (it > 0) "PID $it" else "none" }
+                escVals[2].text = o.opt("wxRegions")?.toString() ?: "\u2014"
+                escVals[3].text = o.opt("fileless")?.toString() ?: "\u2014"
+                escVals[4].text = o.optJSONArray("foreignLibs")?.length()?.toString() ?: "\u2014"
+                escVals[5].text = o.optString("selinux", "\u2014")
+                escList.removeAllViews()
+                val f = o.optJSONArray("findings")
+                if (f != null) for (i in 0 until f.length()) {
+                    val x = f.optJSONObject(i) ?: continue
+                    escList.addView(Nx.finding(context, x.optInt("sev", 1), x.optString("what")),
+                        LinearLayout.LayoutParams(-1, -2).apply { topMargin = Nx.dp(context, 6) })
+                }
             }
-        }
-        runCatching {
-            val t = MaskerService.tapjackRef ?: return@runCatching
-            val o = JSONObject(t.status())
-            val blocked = o.optInt("filteredTouches", 0)
-            tjTag.text = if (blocked > 0) "$blocked obscured" else "monitoring"
-            tjVals[0].text = blocked.toString()
-            tjVals[1].text = o.optInt("overlayCount", 0).toString()
-            tjVals[2].text = o.optInt("a11yCount", 0).toString()
-        }
-        runCatching {
-            val n = MaskerService.ensureNetGuard(c)
-            val o = JSONObject(if (force) n.scan() else n.cached())
-            if (o.optBoolean("ok", true)) {
-                val dup = o.optJSONArray("duplicateMacs")?.length() ?: 0
-                netTag.text = if (dup > 0) "$dup duplicate MAC(s)" else "nothing anomalous"
-                netVals[0].text = o.optInt("arpEntries", 0).toString()
-                netVals[1].text = dup.toString()
-                netVals[2].text = o.optString("gatewayMac", "—")
-                netVals[3].text = if (o.optBoolean("vpn")) "on" else "off"
-                netVals[4].text = if (o.optBoolean("captivePortal")) "YES" else "no"
-                netVals[5].text = o.optString("httpProxy", "").ifBlank { "none" }
-            } else netTag.text = "not yet run"
-        }
-        runCatching {
-            val cs = MaskerService.ensureCellSecurity(c)
-            val o = JSONObject(if (force) cs.scan() else cs.cached())
-            if (o.optBoolean("ok", true)) {
-                val reg = o.optJSONObject("registered")
-                val sec = o.optString("security", "unknown")
-                cellTag.text = if (sec == "insecure") "INSECURE" else sec
-                cellVals[0].text = reg?.optInt("gen")?.let { if (it > 0) "${it}G" else "none" } ?: "—"
-                cellVals[1].text = sec
-                cellVals[2].text = o.opt("neighbourCount")?.toString() ?: "—"
-                cellVals[3].text = o.opt("dominanceDb")?.let { "$it dB" } ?: "—"
-                cellVals[4].text = reg?.optLong("cid", -1)?.let { if (it >= 0) it.toString() else "—" } ?: "—"
-                cellVals[5].text = reg?.optInt("area", -1)?.let { if (it >= 0) it.toString() else "—" } ?: "—"
-            } else cellTag.text = "unavailable"
-        }
+            out["tj"]?.let { o ->
+                val blocked = o.optInt("filteredTouches", 0)
+                tjTag.text = if (blocked > 0) "$blocked obscured" else "monitoring"
+                tjVals[0].text = blocked.toString()
+                tjVals[1].text = o.optInt("overlayCount", 0).toString()
+                tjVals[2].text = o.optInt("a11yCount", 0).toString()
+            }
+            out["net"]?.let { o ->
+                if (o.optBoolean("ok", true)) {
+                    val dup = o.optJSONArray("duplicateMacs")?.length() ?: 0
+                    netTag.text = if (dup > 0) "$dup duplicate MAC(s)" else "nothing anomalous"
+                    netVals[0].text = o.optInt("arpEntries", 0).toString()
+                    netVals[1].text = dup.toString()
+                    netVals[2].text = o.optString("gatewayMac", "\u2014")
+                    netVals[3].text = if (o.optBoolean("vpn")) "on" else "off"
+                    netVals[4].text = if (o.optBoolean("captivePortal")) "YES" else "no"
+                    netVals[5].text = o.optString("httpProxy", "").ifBlank { "none" }
+                } else netTag.text = "not yet run"
+            }
+            out["cell"]?.let { o ->
+                if (o.optBoolean("ok", true)) {
+                    val reg = o.optJSONObject("registered")
+                    val sec = o.optString("security", "unknown")
+                    val simN = o.optInt("simCount", 0)
+                    val eN = o.optInt("esimCount", 0)
+                    cellTag.text = (if (sec == "insecure") "INSECURE" else sec) +
+                        (if (simN > 1) "  ·  $simN SIMs" + (if (eN > 0) " ($eN eSIM)" else "") else "")
+                    cellVals[0].text = reg?.optInt("gen")?.let { if (it > 0) "${it}G" else "none" } ?: "\u2014"
+                    cellVals[1].text = sec
+                    cellVals[2].text = o.opt("neighbourCount")?.toString() ?: "\u2014"
+                    cellVals[3].text = o.opt("dominanceDb")?.let { "$it dB" } ?: "\u2014"
+                    cellVals[4].text = reg?.optLong("cid", -1)?.let { if (it >= 0) it.toString() else "\u2014" } ?: "\u2014"
+                    cellVals[5].text = reg?.optInt("area", -1)?.let { if (it >= 0) it.toString() else "\u2014" } ?: "\u2014"
+                } else cellTag.text = "unavailable"
+            }
+        })
     }
 }

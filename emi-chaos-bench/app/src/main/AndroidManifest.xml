@@ -65,6 +65,15 @@
          free-form execution. -->
     <uses-permission android:name="android.permission.DUMP"
         tools:ignore="ProtectedPermissions" />
+    <!-- APPEAR ON TOP. Declaring this is what puts the app in Settings > Apps > Special
+         access > Appear on top, where it previously did not appear at all. It is an
+         appear-on-top *capability*, not an appear-on-top *behaviour*: nothing in this app
+         draws a system overlay on its own, and the permission is never self-granted — the
+         user grants it from that Settings screen. It exists so the disruptor can reach
+         beyond this app's own window when the user asks it to, and so the app can be
+         reasoned about in the same settings surface as everything else that can draw on
+         top of you. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <uses-feature android:name="android.hardware.audio.output" android:required="true" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
@@ -121,6 +130,26 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback|microphone"
             android:stopWithTask="false" />
+
+        <!-- TAPJACK / OVERLAY DETECTION. Optional and inert until a human enables it in
+             Settings > Accessibility; DECLARING IT IS WHAT MAKES THIS APP APPEAR IN THAT LIST
+             AT ALL, which it previously did not. Scoped to window CHANGE events and window
+             METADATA only: it never reads screen content and never blocks a touch — the two
+             earlier attempts at tapjack protection went through the input path and broke the
+             screen both times. See OverlayWatch.kt and res/xml/overlay_watch.xml for the
+             exact limits. BIND_ACCESSIBILITY_SERVICE means only the system can bind it. -->
+        <service
+            android:name=".OverlayWatch"
+            android:exported="true"
+            android:label="@string/overlay_watch_summary"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/overlay_watch" />
+        </service>
 
         <!-- Device-admin entry point. Inert until a human explicitly activates it (Settings)
              or provisions this app as device owner over adb. Its only purpose is resilience:

@@ -4,4 +4,6 @@
     <string name="admin_description">Optional. Lets the masker resist being silently force-stopped or uninstalled. It requests no password, wipe, or login-monitoring powers.</string>
     <string name="admin_request_explanation">Enabling this only protects the masker from being stopped or removed without your say-so. It does not grant password, wipe, or login-monitoring powers.</string>
     <string name="admin_disable_warning">Turning this off lets any app or tap force-stop or uninstall the masker again.</string>
+    <string name="overlay_watch_summary">Detect apps drawing on top of this one (tapjacking)</string>
+    <string name="overlay_watch_description">Optional. Reports when another app draws a window over this one — the setup used to harvest taps you believe you are giving this app. It reads window position and size only: it never reads screen content, never sees what you type, and never blocks a touch. Findings go to the encrypted log.</string>
 </resources>

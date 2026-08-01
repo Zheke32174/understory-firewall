@@ -67,7 +67,25 @@ class Exporter(private val ctx: Context) {
         }
     }
 
+    /**
+     * THE WRITE IS VERIFIED, NOT ASSUMED.
+     *
+     * Reported as "no file at that location" after a success toast, and the old version could
+     * not tell the difference between a real save and several ways of half-saving:
+     *
+     *   - IS_PENDING is set to 1 before writing and cleared afterwards. A pending entry is
+     *       INVISIBLE to the Files app and to every media-scanning consumer. If the clearing
+     *       update failed — or the process died between the write and the update — the row
+     *       existed, the bytes existed, and the user saw nothing in Downloads. The old code
+     *       ignored update()'s return value entirely, so that case reported success.
+     *   - insert() returning a URI does not mean anything was written to it.
+     *
+     * So now: the pending flag is cleared and the row is queried BACK for its size and real
+     * display name. If the row is gone, or reports zero bytes, or the clear failed, that is a
+     * failure and it says so rather than pointing at an empty folder.
+     */
     private fun saveViaMediaStore(name: String, mime: String, content: String): String {
+        val bytes = content.toByteArray()
         val cv = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, name)
             put(MediaStore.MediaColumns.MIME_TYPE, mime)
@@ -79,11 +97,31 @@ class Exporter(private val ctx: Context) {
             ?: throw IllegalStateException("MediaStore refused the insert")
         resolver.openOutputStream(uri).use { os ->
             os ?: throw IllegalStateException("no output stream")
-            os.write(content.toByteArray())
+            os.write(bytes)
+            os.flush()
         }
         cv.clear(); cv.put(MediaStore.MediaColumns.IS_PENDING, 0)
-        resolver.update(uri, cv, null, null)
-        return "Downloads/$name"
+        val cleared = resolver.update(uri, cv, null, null)
+        if (cleared < 1) throw IllegalStateException(
+            "file stayed in PENDING state — it is written but hidden from Downloads")
+
+        // Read the row back. This is the only honest confirmation available to us.
+        var seenName = name
+        var seenSize = -1L
+        runCatching {
+            resolver.query(uri,
+                arrayOf(MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE),
+                null, null, null)?.use { c ->
+                if (c.moveToFirst()) {
+                    seenName = c.getString(0) ?: name
+                    seenSize = c.getLong(1)
+                }
+            }
+        }
+        if (seenSize == 0L) throw IllegalStateException("file was created but is empty")
+        // MediaStore may rename on collision (foo.json -> foo (1).json). Report the REAL name,
+        // otherwise the user is told to look for a filename that is not there.
+        return "Downloads/$seenName"
     }
 
     @Suppress("DEPRECATION")

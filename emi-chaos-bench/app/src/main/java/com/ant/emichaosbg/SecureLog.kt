@@ -253,7 +253,23 @@ class SecureLog(private val ctx: Context) {
         }
     }
 
+    /**
+     * O(1). This used to call walk{}, which DECRYPTS EVERY RECORD, in order to increment a
+     * counter — and the Logs screen called it during construction, on the main thread, from a
+     * tab press. That froze the app on open, and got worse as the log grew: the same
+     * decrypt-the-world-to-render mistake this project already made once with verify().
+     *
+     * The count is already known. append() seals it into the head file alongside the chain
+     * head, so reading it costs one small file read and one decrypt of a two-field JSON object,
+     * whatever the log's size.
+     *
+     * The walk remains as a FALLBACK, and only for the case the head is unreadable (count < 0),
+     * where there is no cheaper answer and a wrong count would be worse than a slow one. That
+     * path is rare, bounded by a damaged head, and never the ordinary tab-open path.
+     */
     fun count(): Long = synchronized(lock) {
+        val head = readHead()
+        if (head.count >= 0) return head.count
         var n = 0L
         try { walk { _, _, _ -> n++ } } catch (_: Exception) {}
         n

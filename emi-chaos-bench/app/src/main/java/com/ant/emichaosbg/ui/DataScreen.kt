@@ -100,11 +100,30 @@ class DataScreen(ctx: Context) : ScrollView(ctx) {
         root.addView(tCard)
     }
 
+    /**
+     * Gathers off the main thread, renders on it.
+     *
+     * Everything this reads is a binder call or a subsystem's own JSON build: TrackerWatch
+     * serialises every identity it is holding, BleWatcher reports its buffer, and
+     * ensureTowerLog may CONSTRUCT the tower log on first press. None of that belongs on the
+     * frame deadline, and this screen is reached by a tab press exactly like the Logs screen
+     * that froze.
+     */
     fun refresh() {
         val c = context
+        Async.load(this, {
+            val out = HashMap<String, String?>()
+            out["watch"] = runCatching { MaskerService.trackerWatch?.stats() }.getOrNull()
+            out["ble"] = runCatching { MaskerService.bleWatcher?.status() }.getOrNull()
+            out["tower"] = runCatching { MaskerService.ensureTowerLog(c.applicationContext).stats() }.getOrNull()
+            out
+        }) { data -> render(c, data) }
+    }
+
+    private fun render(c: android.content.Context, data: HashMap<String, String?>) {
         runCatching {
-            val w = MaskerService.trackerWatch ?: return@runCatching
-            val o = JSONObject(w.stats())
+            val ws = data["watch"] ?: return@runCatching
+            val o = JSONObject(ws)
             val cands = o.optJSONArray("candidates")
             var following = 0
             if (cands != null) for (i in 0 until cands.length())
@@ -113,19 +132,26 @@ class DataScreen(ctx: Context) : ScrollView(ctx) {
             followVals[1].text = following.toString()
             followVals[5].text = o.optLong("sessions").toString()
 
-            // Scanner truth: an all-clear from a scanner that is not running is not an all-clear.
-            val b = MaskerService.bleWatcher
-            val bs = b?.let { runCatching { JSONObject(it.status()) }.getOrNull() }
+            // SCANNER TRUTH: an all-clear from a scanner that is not running is not an
+            // all-clear. BleWatcher now records WHY it failed to start, so this can name the
+            // cause — "Bluetooth is off", "location permission not granted" — instead of the
+            // bare "idle" that was indistinguishable from a quiet room. The tag repeats the
+            // reason rather than the word "idle" for the same reason: the header is what gets
+            // read at a glance, and at a glance "scanner idle" looks like a normal state.
+            val bs = data["ble"]?.let { runCatching { JSONObject(it) }.getOrNull() }
             val observing = bs?.optBoolean("running") == true
+            val why = bs?.optString("error").takeUnless { it.isNullOrBlank() }
             followVals[2].text = when {
                 bs == null -> "not started"
                 observing -> "observing"
-                else -> bs.optString("error", "idle")
+                why != null -> why
+                else -> "stopped"
             }
             followVals[3].text = bs?.optLong("sightings")?.toString() ?: "—"
             followVals[4].text = bs?.optLong("flushes")?.toString() ?: "—"
             followTag.text = when {
-                !observing -> "scanner idle"
+                bs == null -> "NOT SCANNING — service not started"
+                !observing -> "NOT SCANNING — ${why ?: "stopped"}"
                 following > 0 -> "$following FOLLOWING"
                 else -> "nothing following"
             }
@@ -148,8 +174,7 @@ class DataScreen(ctx: Context) : ScrollView(ctx) {
             }
         }
         runCatching {
-            val t = MaskerService.ensureTowerLog(c)
-            val o = JSONObject(t.stats())
+            val o = JSONObject(data["tower"] ?: return@runCatching)
             towerTag.text = if (o.optBoolean("running")) "logging" else "off"
             towerVals[0].text = o.optInt("fixes").toString()
             towerVals[1].text = o.optInt("uniqueCells").toString()
@@ -161,17 +186,32 @@ class DataScreen(ctx: Context) : ScrollView(ctx) {
     }
 
     private fun toggleTower() {
-        val t = MaskerService.ensureTowerLog(context)
-        val now = if (t.isRunning()) { t.stop(); false } else { t.start(); true }
-        Toast.makeText(context,
-            if (now) "Tower & position logging on — this log contains location"
-            else "Tower logging off", Toast.LENGTH_SHORT).show()
-        refresh()
+        val app = context.applicationContext
+        Async.load(this, {
+            val t = MaskerService.ensureTowerLog(app)
+            if (t.isRunning()) { t.stop(); false } else { t.start(); true }
+        }) { now ->
+            Toast.makeText(context,
+                if (now) "Tower & position logging on — this log contains location"
+                else "Tower logging off", Toast.LENGTH_SHORT).show()
+            refresh()
+        }
     }
 
     private fun exportTower(kind: String) {
-        Thread {
-            val t = MaskerService.ensureTowerLog(context)
+        val app = context.applicationContext
+        Async.load(this, {
+            val t = MaskerService.ensureTowerLog(app)
+            // THE EMPTY CHECK ASKS THE LOG HOW MANY FIXES IT HAS.
+            //
+            // It used to infer emptiness from body.length < 140, and a GPX header alone is
+            // longer than that — so with zero fixes recorded the guard passed, an empty track
+            // was written to Downloads, and the user was told "Saved". A file that claims to be
+            // a position log and contains no positions is worse than a refusal, because it
+            // looks like evidence of having been somewhere with nothing there.
+            val fixes = runCatching { JSONObject(t.stats()).optInt("fixes", 0) }.getOrDefault(0)
+            if (fixes <= 0) return@load JSONObject().put("empty", true)
+
             val body = when (kind) {
                 "gpx" -> t.exportGpx(); "kml" -> t.exportKml(); else -> t.exportCsv()
             }
@@ -182,18 +222,18 @@ class DataScreen(ctx: Context) : ScrollView(ctx) {
             }
             val name = "emi-towers-" +
                 SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date()) + "." + kind
-            // Header/skeleton only means nothing was logged — say so rather than writing a stub.
-            val res = if (body.length < 140) null
-                else runCatching { JSONObject(exporter.save(name, mime, body)) }.getOrNull()
-            post {
-                Toast.makeText(context,
-                    when {
-                        body.length < 140 -> "Nothing logged yet"
-                        res?.optBoolean("ok") == true ->
-                            "Saved to ${res.optString("path")} (${res.optInt("bytes")} bytes)"
-                        else -> "Export failed — ${res?.optString("reason") ?: "unknown"}"
-                    }, Toast.LENGTH_LONG).show()
-            }
-        }.apply { isDaemon = true }.start()
+            runCatching { JSONObject(exporter.save(name, mime, body)).put("fixes", fixes) }
+                .getOrElse { JSONObject().put("ok", false).put("reason", it.javaClass.simpleName) }
+        }) { res ->
+            Toast.makeText(context,
+                when {
+                    res.optBoolean("empty") ->
+                        "Nothing logged yet — start tower logging first"
+                    res.optBoolean("ok") ->
+                        "Saved ${res.optInt("fixes")} fixes to ${res.optString("path")} " +
+                        "(${res.optInt("bytes")} bytes)"
+                    else -> "Export failed — ${res.optString("reason").ifBlank { "unknown" }}"
+                }, Toast.LENGTH_LONG).show()
+        }
     }
 }

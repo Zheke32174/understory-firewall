@@ -67,9 +67,53 @@ class CellSecurity(private val ctx: Context, private val log: SecureLog) {
             != PackageManager.PERMISSION_GRANTED) {
             return o.put("ok", false).put("reason", "READ_PHONE_STATE not granted").toString()
         }
-        val tm = ctx.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+        val base = ctx.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
             ?: return o.put("ok", false).put("reason", "no TelephonyManager").toString()
 
+        /* MULTI-SIM AND eSIM. The default TelephonyManager reports ONE subscription — whichever
+           the platform considers default for data. On a phone with a physical SIM and an eSIM,
+           or two eSIM profiles, that means an entire second radio was invisible here: a
+           downgrade or a catcher on the other subscription would not have been seen at all.
+           eSIMs make that the common case rather than an edge one.
+
+           So every active subscription is enumerated and reported, and the SECURITY VERDICT is
+           taken from the WEAKEST of them. If either radio is sitting on 2G you are reachable
+           over 2G, and reporting the better one would be a comfortable lie. */
+        val sims = JSONArray()
+        var weakestGen = Int.MAX_VALUE
+        var weakestTm: TelephonyManager = base
+        try {
+            val sm = ctx.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE)
+                as? android.telephony.SubscriptionManager
+            @Suppress("MissingPermission")
+            val subs = sm?.activeSubscriptionInfoList ?: emptyList()
+            for (si in subs) {
+                val stm = try { base.createForSubscriptionId(si.subscriptionId) } catch (_: Throwable) { null }
+                    ?: continue
+                val gen = try { ratOf(stm) } catch (_: Throwable) { 0 }
+                val embedded = try { si.isEmbedded } catch (_: Throwable) { false }
+                sims.put(JSONObject()
+                    .put("slot", si.simSlotIndex)
+                    .put("subId", si.subscriptionId)
+                    .put("carrier", si.carrierName?.toString() ?: "")
+                    .put("embedded", embedded)          // true = eSIM profile
+                    .put("gen", gen)
+                    .put("kind", if (embedded) "eSIM" else "physical"))
+                if (gen in 1 until weakestGen) { weakestGen = gen; weakestTm = stm }
+            }
+        } catch (_: SecurityException) {
+        } catch (_: Throwable) {}
+        o.put("sims", sims)
+        o.put("simCount", sims.length())
+        o.put("esimCount", (0 until sims.length()).count { sims.optJSONObject(it)?.optBoolean("embedded") == true })
+        if (sims.length() > 1) o.put("multiSimNote",
+            "This device has ${sims.length()} active subscriptions. The verdict below describes " +
+            "the WEAKEST of them, because you are reachable over whichever radio is least " +
+            "protected — reporting the better one would be a comfortable lie.")
+
+        // Analyse the weakest subscription; falls back to the default when enumeration is
+        // unavailable (no permission, or a single-SIM device).
+        val tm = weakestTm
         val cells = try { tm.allCellInfo ?: emptyList() } catch (_: SecurityException) { emptyList() }
             catch (_: Throwable) { emptyList() }
         o.put("cellCount", cells.size)
@@ -213,6 +257,22 @@ class CellSecurity(private val ctx: Context, private val log: SecureLog) {
         o.put("checkedAt", System.currentTimeMillis())
         lastReport = o
         return o.toString()
+    }
+
+    /** Registered-cell generation for ONE subscription, so each SIM is judged on its own radio. */
+    private fun ratOf(tm: TelephonyManager): Int {
+        val cells = try { tm.allCellInfo ?: emptyList() } catch (_: Throwable) { emptyList() }
+        for (c in cells) {
+            if (!c.isRegistered) continue
+            return when {
+                c is CellInfoGsm -> 2
+                c is CellInfoWcdma -> 3
+                c is CellInfoLte -> 4
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && c is CellInfoNr -> 5
+                else -> 0
+            }
+        }
+        return 0
     }
 
     fun cached(): String = (lastReport ?: JSONObject().put("ok", false).put("reason", "not yet run")).toString()

@@ -62,26 +62,42 @@ class ShellView(
         orientation = VERTICAL
         setBackgroundColor(Nx.BG)
 
-        val bar = HorizontalScrollView(ctx).apply {
-            isHorizontalScrollBarEnabled = false
+        // THE NAV BAR DIVIDES THE WIDTH; IT DOES NOT SCROLL.
+        //
+        // It was a HorizontalScrollView of wrap_content buttons, which meant the strip's width
+        // was the sum of four labels plus padding — and at the user's font scale that sum
+        // exceeded the screen, so DATA sat half off the right edge. A scrollable nav bar hides
+        // destinations behind a gesture nobody thinks to make on something that looks like a
+        // tab bar; it read as a broken layout, and it was one.
+        //
+        // Four destinations is a fixed, small set, so each simply takes a quarter of the width
+        // and the LABEL shrinks to fit rather than the bar overflowing. Nothing can be pushed
+        // off screen by a long label or a large font, because there is no off screen to be
+        // pushed to.
+        val strip = Nx.row(ctx).apply {
             setBackgroundColor(Nx.PANEL)
+            setPadding(Nx.dp(ctx, 6), Nx.dp(ctx, 6), Nx.dp(ctx, 6), Nx.dp(ctx, 6))
         }
-        val strip = Nx.row(ctx).apply { setPadding(Nx.dp(ctx, 6), Nx.dp(ctx, 6), Nx.dp(ctx, 6), Nx.dp(ctx, 6)) }
-        DESTS.forEach { (name, _) ->
+        DESTS.forEachIndexed { i, (name, _) ->
             val b = Button(ctx).apply {
                 text = name
                 isAllCaps = true
-                textSize = 11f
                 typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-                setPadding(Nx.dp(ctx, 14), Nx.dp(ctx, 8), Nx.dp(ctx, 14), Nx.dp(ctx, 8))
+                setPadding(Nx.dp(ctx, 4), Nx.dp(ctx, 8), Nx.dp(ctx, 4), Nx.dp(ctx, 8))
+                // Button carries a default minWidth that would re-inflate the row past the
+                // screen even with weights applied.
+                minWidth = 0; minimumWidth = 0
+                maxLines = 1
                 setOnClickListener { show(name) }
             }
+            androidx.core.widget.TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+                b, 8, 11, 1, android.util.TypedValue.COMPLEX_UNIT_SP
+            )
             tabs.add(b)
-            strip.addView(b, LinearLayout.LayoutParams(-2, -2)
-                .apply { rightMargin = Nx.dp(ctx, 4) })
+            strip.addView(b, LinearLayout.LayoutParams(0, -2, 1f)
+                .apply { if (i > 0) leftMargin = Nx.dp(ctx, 4) })
         }
-        bar.addView(strip)
-        addView(bar, LayoutParams(-1, -2))
+        addView(strip, LayoutParams(-1, -2))
         addView(content, LayoutParams(-1, 0, 1f))
 
         show("Masker")
