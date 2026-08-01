@@ -25,7 +25,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="EMI Bench">
-<title>EMI Chaos Bench · Accessories</title>
+<title>Chaos Orb · Accessories</title>
 <style>
   :root{--panel:#c9c6bd;--hi:#dcd9d1;--lo:#a4a196;--ink:#1c1e21;--soft:#5b5d5c;
     --rule:#8d8a80;--well:#0e1c1b;--edge:#050b0b;--ph:#5fd4c4;--go:#c8452f;--am:#e0a33c;
@@ -185,7 +185,7 @@
 </head>
 <body>
 <div class="app">
-  <h1>EMI Chaos Bench</h1>
+  <h1>Chaos Orb</h1>
   <div class="sub">accessories edition · thirty-plus sources · sensor-driven · voice-band masker</div>
   <div class="warn">baseband audio model — does not radiate · masks a nearby mic only</div>
 
@@ -2058,7 +2058,7 @@ function start(){
       mediaEl.srcObject=mediaDest.stream; mediaEl.play().catch(()=>{});
     }
     if('mediaSession' in navigator){
-      try{navigator.mediaSession.metadata=new MediaMetadata({title:'EMI Chaos Bench',artist:'Background masker',album:'Accessories edition'});}catch(e){}
+      try{navigator.mediaSession.metadata=new MediaMetadata({title:'Chaos Orb',artist:'Background masker',album:'Accessories edition'});}catch(e){}
       try{navigator.mediaSession.setActionHandler('play',()=>{if(!running)start();});}catch(e){}
       try{navigator.mediaSession.setActionHandler('pause',()=>{if(running)stop();});}catch(e){}
       try{navigator.mediaSession.setActionHandler('stop',()=>{if(running)stop();});}catch(e){}
@@ -6622,7 +6622,7 @@ const Wardrive=(function(){
   }
   function toGpx(){
     const pts=track.map(p=>`  <wpt lat="${p.lat}" lon="${p.lon}"><time>${new Date(p.t).toISOString()}</time><name>${(p.kind==='wifi'?p.ssid||'(hidden)':p.kind)}</name><desc>${p.kind}${p.bssid?' '+p.bssid:''}${p.level!=null?' '+p.level+'dBm':''}</desc></wpt>`).join('\n');
-    return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="EMI Chaos Bench">\n${pts}\n</gpx>`;
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Chaos Orb">\n${pts}\n</gpx>`;
   }
   function toCsv(){
     const rows=['time,lat,lon,kind,ssid,bssid,level'];
@@ -6840,7 +6840,7 @@ build(); buildSensGrid(); buildRadioGrid(); Profiles.init(); updModCount(); RF.r
     "<path d='M18 150 Q52 40 90 150 T158 120 T238 138' fill='none' stroke='#5fd4c4' stroke-width='9'/>"+
     "<circle cx='158' cy='120' r='11' fill='#e0a33c'/>"+
     "<rect x='18' y='196' width='220' height='6' rx='3' fill='#2c6f68'/></svg>");
-  const MANIFEST={name:"EMI Chaos Bench",short_name:"EMI Bench",display:"standalone",
+  const MANIFEST={name:"Chaos Orb",short_name:"Chaos Orb",display:"standalone",
     orientation:"portrait",background_color:"#141618",theme_color:"#1c1e21",
     icons:[{src:ICON,sizes:"any",type:"image/svg+xml",purpose:"any"}]};
   const h=document.head;
