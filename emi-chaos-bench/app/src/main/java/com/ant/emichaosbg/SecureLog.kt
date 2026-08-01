@@ -185,6 +185,16 @@ class SecureLog(private val ctx: Context) {
                 .put("badge", badge ?: "")
                 .put("src", source.take(40))
                 .put("prev", prev)
+            // Device context AT THE MOMENT OF THE FINDING. A bare line cannot answer the
+            // questions that decide whether it mattered — screen off or in use, charging or
+            // not, Wi-Fi or cellular, masker running or idle, device hot enough for the
+            // sensors to be drifting. Captured inside the same sealed record, so it is
+            // covered by the same authentication tag and hash chain as the message: context
+            // that could be edited afterwards would be worse than none.
+            // Deliberately carries NO location, SSID, BSSID, cell identity or device serial —
+            // see LogContext. Failure to read it degrades to an absent field, never a lost
+            // record.
+            runCatching { rec.put("ctx", LogContext.capture(ctx)) }
             val plain = rec.toString().toByteArray()
 
             val blob = seal(plain, seq)
@@ -256,6 +266,73 @@ class SecureLog(private val ctx: Context) {
      * Reports the first sequence number that disagrees rather than a bare pass/fail, because
      * "record 41 of 60 was altered" is actionable and "integrity: false" is not.
      */
+    /** Every record, with context and chain fields, plus this log's own verify result. */
+    fun exportJson(): String = synchronized(lock) {
+        val arr = JSONArray()
+        var truncatedAt: Long? = null
+        try { walk { seq, o, _ -> arr.put(o) } }
+        catch (e: Exception) { truncatedAt = arr.length().toLong() }
+        val root = JSONObject()
+            .put("format", "emi-chaos-bench/secure-log/1")
+            .put("exportedAt", System.currentTimeMillis())
+            .put("records", arr.length())
+            .put("entries", arr)
+        // Self-describing trust state. If the chain broke, the export says where.
+        root.put("verify", JSONObject(verify()))
+        truncatedAt?.let {
+            root.put("truncated", true)
+            root.put("truncatedAfter", it)
+            root.put("truncatedNote",
+                "Reading stopped at record $it — the remainder could not be decrypted or " +
+                "authenticated. Everything before this point verified.")
+        }
+        root.toString()
+    }
+
+    fun exportCsv(): String = synchronized(lock) {
+        val sb = StringBuilder()
+        sb.append("seq,timestamp_iso,epoch_ms,severity,badge,source,message,")
+            .append("battery_pct,charging,plugged,batt_temp_c,screen_on,dozing,power_save,")
+            .append("network,metered,masking,uptime_ms,app_version,sdk,device\n")
+        val iso = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", java.util.Locale.US)
+        fun q(v: Any?): String {
+            val t = v?.toString() ?: ""
+            return if (t.any { it == ',' || it == '"' || it == '\n' || it == '\r' })
+                "\"" + t.replace("\"", "\"\"") + "\"" else t
+        }
+        try {
+            walk { _, o, _ ->
+                val c = o.optJSONObject("ctx")
+                val t = o.optLong("t")
+                sb.append(o.optLong("seq")).append(',')
+                    .append(q(iso.format(java.util.Date(t)))).append(',')
+                    .append(t).append(',')
+                    .append(o.optInt("sev")).append(',')
+                    .append(q(o.optString("badge"))).append(',')
+                    .append(q(o.optString("src"))).append(',')
+                    .append(q(o.optString("msg"))).append(',')
+                    .append(q(c?.opt("battery"))).append(',')
+                    .append(q(c?.opt("charging"))).append(',')
+                    .append(q(c?.opt("plugged"))).append(',')
+                    .append(q(c?.opt("battTempC"))).append(',')
+                    .append(q(c?.opt("screenOn"))).append(',')
+                    .append(q(c?.opt("dozing"))).append(',')
+                    .append(q(c?.opt("powerSave"))).append(',')
+                    .append(q(c?.opt("net"))).append(',')
+                    .append(q(c?.opt("metered"))).append(',')
+                    .append(q(c?.opt("masking"))).append(',')
+                    .append(q(c?.opt("upMs"))).append(',')
+                    .append(q(c?.opt("appVer"))).append(',')
+                    .append(q(c?.opt("sdk"))).append(',')
+                    .append(q(c?.opt("device"))).append('\n')
+            }
+        } catch (e: Exception) {
+            sb.append("# reading stopped early: ${e.javaClass.simpleName} — ")
+                .append("records after this point could not be authenticated\n")
+        }
+        sb.toString()
+    }
+
     fun verify(): String = synchronized(lock) {
         val o = JSONObject()
         var chain = GENESIS
@@ -342,4 +419,20 @@ class VaultBridge(ctx: Context) {
 
     @JavascriptInterface
     fun verify(): String = log.verify()
+
+    /**
+     * Full detail export. read() is capped and shaped for on-screen display; this is the
+     * whole record set including the per-entry device context and the hash-chain fields, for
+     * getting evidence off the device or auditing it elsewhere.
+     *
+     * The verification result is embedded in the export itself rather than left to be checked
+     * separately: an exported log that does not say whether its own chain verified is a
+     * document that cannot be trusted by whoever receives it.
+     */
+    @JavascriptInterface
+    fun exportJson(): String = log.exportJson()
+
+    /** Spreadsheet-shaped, one row per finding, context flattened into columns. */
+    @JavascriptInterface
+    fun exportCsv(): String = log.exportCsv()
 }

@@ -129,10 +129,22 @@
   textarea{width:100%;min-height:70px;font-family:var(--mono);font-size:10px;padding:7px;border:1px solid var(--rule);
     border-radius:2px;background:rgba(255,255,255,.6);color:var(--ink);resize:vertical}
   .muted{font-size:9.5px;color:var(--soft);line-height:1.5;margin-top:6px}
-  .toast{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:#141618;color:var(--ph);
-    font-size:11px;padding:9px 14px;border-radius:4px;border:1px solid #2c6f68;opacity:0;transition:opacity .2s;
-    pointer-events:none;z-index:99;max-width:90%}
-  .toast.on{opacity:.97}
+  /* Pinned to the very bottom EDGE as a slim full-width status strip, not floated in the
+     middle of the screen. It used to sit at bottom:16px centred, which put it directly over
+     whatever panel you were reading or the control you were about to press — and because
+     several subsystems toast on their own cadence, that was a popup landing on the content
+     repeatedly while you tried to use a menu. As an edge strip it reports without occluding. */
+  /* Sheet switcher inside the Logs tab. Live alerts, the durable vault, security state and
+     a collected-data summary are four different questions; putting them on one scroll is why
+     the alert list ended up buried among controls in the first place. */
+  .sheets{display:flex;gap:6px;margin:0 0 10px;flex-wrap:wrap}
+  .sheet{display:none}
+  .sheet.on{display:block}
+  .toast{position:fixed;left:0;right:0;bottom:0;background:#141618;color:var(--ph);
+    font-size:10.5px;line-height:1.35;padding:7px 12px calc(7px + env(safe-area-inset-bottom,0px));
+    border-top:1px solid #2c6f68;opacity:0;transition:opacity .18s;
+    pointer-events:none;z-index:99;text-align:center}
+  .toast.on{opacity:.96}
   .gauge{position:relative;width:100%;max-width:180px;margin:6px auto;aspect-ratio:1/1;border-radius:50%;
     background:conic-gradient(from 180deg,#2c6f68 0deg,var(--am) calc(var(--gv,0)*1.8deg),var(--lo) calc(var(--gv,0)*1.8deg));
     display:flex;align-items:center;justify-content:center}
@@ -200,6 +212,7 @@
     <button class="tab" data-p="detect">Detect</button>
     <button class="tab" data-p="link">Link</button>
     <button class="tab" data-p="dsp">DSP</button>
+    <button class="tab" data-p="logs">Logs</button>
     <button class="tab" data-p="profiles">Profiles</button>
   </div>
 
@@ -895,10 +908,6 @@
           to go look closer, not a certified detector.</div>
       </div>
     </div>
-    <div class="sect">
-      <div class="head"><span class="t">Alert log</span><span class="tag" id="alertCount">0</span></div>
-      <div class="body"><div class="alertlog" id="alertLog"><div class="muted">No alerts yet.</div></div></div>
-    </div>
   </div>
 
   <div class="page" id="page-link">
@@ -1096,6 +1105,166 @@
     </div>
   </div>
 
+  <div class="page" id="page-logs">
+    <div class="sheets" id="logSheets">
+      <button class="chip" data-sheet="live" aria-pressed="true">Live alerts</button>
+      <button class="chip" data-sheet="vault" aria-pressed="false">Vault</button>
+      <button class="chip" data-sheet="security" aria-pressed="false">Security</button>
+      <button class="chip" data-sheet="data" aria-pressed="false">Collected data</button>
+    </div>
+
+    <div class="sheet on" id="sheet-live">
+    <div class="sect">
+      <div class="head"><span class="t">Alert log</span><span class="tag" id="alertCount">0</span></div>
+      <div class="body"><div class="alertlog" id="alertLog"><div class="muted">No alerts yet.</div></div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn" id="vaultJson">Export vault JSON</button>
+          <button class="btn" id="vaultCsv">Export vault CSV</button>
+        </div>
+        <div class="row"><button class="btn" id="vaultVerify">Verify chain</button></div>
+        <div class="grid" style="margin-top:8px">
+          <div class="stat"><small>Vault records</small><b id="vaultCount">—</b></div>
+          <div class="stat"><small>Chain</small><b id="vaultChain">—</b></div>
+        </div>
+        <div class="muted">The list above is the in-page view and is capped. The <b>vault</b> is the
+          real record: encrypted with a non-exportable Keystore key, append-only, and hash-chained so a
+          removed or edited entry is detectable rather than silent. There is deliberately no delete or
+          clear anywhere on its interface.
+          <br><br>
+          <b>Each entry now carries the device context at the moment it was recorded</b> — battery level and
+          whether it was charging and on what, battery temperature, whether the screen was on, dozing or in
+          power-save, network <i>type</i>, whether the masker was actually running, process uptime, app
+          version and device model. A finding without its situation cannot answer the questions that decide
+          whether it mattered: was the phone idle and face-down, or in use? was this a live observation or
+          the idle baseline? was the device hot enough for the sensors to be drifting? It also makes patterns
+          visible across entries — "all of these happened while charging, screen off" is a pattern; a list of
+          timestamps is not.
+          <br><br>
+          The context is sealed <i>inside</i> the same record as the message, so it is covered by the same
+          authentication tag and hash chain — context that could be altered afterwards would be worse than
+          none. It deliberately carries <b>no location, SSID, BSSID, cell identity or device serial</b>: this
+          is exactly the file most worth stealing, and a precise location history would be the most damaging
+          thing in it. Network type is recorded; which network is not.
+          <br><br>
+          <b>Export</b> writes the full detail — every record, the context, the chain fields, and the result
+          of verifying the chain, embedded in the export itself. An exported log that does not state whether
+          its own chain verified is a document the recipient cannot trust. CSV flattens the context into
+          columns for a spreadsheet; JSON keeps everything. If a record cannot be authenticated, the export
+          says exactly where reading stopped instead of quietly returning a shorter file.</div>
+      </div>
+    </div>
+    </div>
+
+    <div class="sheet" id="sheet-vault">
+      <div class="sect">
+        <div class="head"><span class="t">Encrypted vault</span><span class="tag" id="vaultChain2">—</span></div>
+        <div class="body">
+          <div class="grid">
+            <div class="stat"><small>Records</small><b id="vaultCount2">—</b></div>
+            <div class="stat"><small>Chain</small><b id="vaultChain3">—</b></div>
+            <div class="stat"><small>Oldest</small><b id="vaultOldest">—</b></div>
+            <div class="stat"><small>Newest</small><b id="vaultNewest">—</b></div>
+          </div>
+          <div class="row">
+            <button class="btn" id="vaultJson2">Export JSON</button>
+            <button class="btn" id="vaultCsv2">Export CSV</button>
+            <button class="btn" id="vaultVerify2">Verify</button>
+          </div>
+          <div id="vaultPreview"></div>
+          <div class="muted">The durable record, separate from the live list. Encrypted with a
+            non-exportable Keystore key, append-only, hash-chained so a removed or edited entry is
+            detectable rather than silent, and with <b>no delete or clear anywhere on its interface</b> —
+            not hidden, not admin-gated, absent.
+            <br><br>
+            Every entry carries the device context at the moment it was recorded: battery level and
+            charge state, battery temperature, screen on/dozing/power-save, network <i>type</i>, whether
+            the masker was actually running, process uptime, app version and device model. That is what
+            turns a timestamp into something you can reason from — whether the phone was idle and
+            face-down or in use, whether this was a live observation or the idle baseline, whether the
+            device was hot enough for the sensors to be drifting. Context is sealed inside the same
+            record as the message, so the same authentication tag and hash chain cover it.
+            <br><br>
+            Deliberately carries <b>no location, SSID, BSSID, cell identity or serial</b>. This is the
+            file most worth stealing; a precise movement history would be the most damaging thing in it.
+            Exports embed the chain-verification result, so a recipient can tell whether what they were
+            handed is intact.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sheet" id="sheet-security">
+      <div class="sect">
+        <div class="head"><span class="t">Tapjacking &amp; overlays</span><span class="tag" id="tjState">—</span></div>
+        <div class="body">
+          <div class="grid">
+            <div class="stat"><small>Touch filter</small><b id="tjFilter">—</b></div>
+            <div class="stat"><small>Blocked taps</small><b id="tjBlocked">—</b></div>
+            <div class="stat"><small>Overlay apps</small><b id="tjOverlay">—</b></div>
+            <div class="stat"><small>A11y services</small><b id="tjA11y">—</b></div>
+          </div>
+          <div class="row">
+            <button class="btn" id="tjRefresh">Refresh</button>
+            <button class="btn" id="tjOverlaySet">Overlay settings</button>
+            <button class="btn" id="tjA11ySet">Accessibility settings</button>
+          </div>
+          <div id="tjList"></div>
+          <div class="muted"><b>The attack:</b> another app draws a window on top of this one and leaves
+            it transparent, or leaves a hole in it. You believe you are tapping a control here; the touch
+            actually lands on the attacker's window, or their window is lying to you about what the
+            control underneath does. It is how permission dialogs and confirmations get subverted on
+            Android, and it needs no root — only the overlay permission, which many ordinary-looking apps
+            request.
+            <br><br>
+            <b>The defence, and it is real:</b> Android flags every touch delivered while another window
+            covers this one. <code>filterTouchesWhenObscured</code> makes the framework <b>discard</b>
+            those touches before they reach anything. This is the one place in the whole app where
+            something is genuinely blocked instead of reported — a tap you did not knowingly aim here
+            should not land, and the cost of dropping it is that you tap again. <i>Blocked taps</i> counts
+            them, so an attack that gets defeated is visible rather than silent.
+            <br><br>
+            <b>Accessibility services</b> can read the content of every screen and inject gestures — the
+            most powerful thing an app on Android can hold, and the usual home of stalkerware. Enabled
+            ones are listed so an unexpected entry is obvious, with a button straight to the settings
+            screen that turns it off. <b>This app does not request an accessibility service for itself:</b>
+            the capability it would grant is exactly the capability this app exists to warn you about, and
+            holding it would make this the most dangerous app on your device.
+            <br><br>
+            Holding the overlay permission is not itself wrongdoing — screen recorders, chat bubbles and
+            colour filters all use it legitimately — so the list is shown without accusation. The
+            blocked-tap count is the signal that matters.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sheet" id="sheet-data">
+      <div class="sect">
+        <div class="head"><span class="t">Collected data</span><span class="tag" id="cdState">—</span></div>
+        <div class="body">
+          <div class="grid">
+            <div class="stat"><small>Wardrive points</small><b id="cdWd">—</b></div>
+            <div class="stat"><small>Unique APs</small><b id="cdAps">—</b></div>
+            <div class="stat"><small>Wi-Fi seen</small><b id="cdWifi">—</b></div>
+            <div class="stat"><small>BLE seen</small><b id="cdBle">—</b></div>
+            <div class="stat"><small>Vault records</small><b id="cdVault">—</b></div>
+            <div class="stat"><small>Native scans</small><b id="cdScans">—</b></div>
+          </div>
+          <div class="muted">Everything this app is holding, in one place, so "what does it actually have
+            on me" has a single answer instead of being spread across six panels.
+            <br><br>
+            All of it is local. Nothing here is uploaded, and the app has no server to upload it to. The
+            exports on each panel are the only way data leaves the device, and each one is an explicit
+            press that writes a file to Downloads — sharing it further is a separate, deliberate step
+            through the system share sheet.
+            <br><br>
+            Wardrive points and AP sightings are the only records that contain location, because a route
+            log without positions is not a route log. They live in the wardrive track, not in the
+            encrypted vault, and are exported only when you press export. The vault itself holds no
+            location at all.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="page" id="page-profiles">
     <div class="sect">
       <div class="head"><span class="t">Profiles</span><span class="tag" id="profActive">—</span></div>
@@ -1150,6 +1319,28 @@ const fmtBytes=n=>{ n=+n||0; return n<1024?n+' B':(n<1048576?(n/1024).toFixed(1)
    theoretical one. Resolve/reject are handled properly here, with an execCommand fallback
    that works in contexts where the async API is refused, and an honest message if neither
    path succeeds. */
+/* Shared file export, in the GLOBAL helper scope on purpose.
+   The three older export helpers each live inside their own module IIFE, which is fine for
+   their own callers but invisible to anything else — a handler defined at top level that
+   called one of them would throw ReferenceError on the first click. That is the same class of
+   bug as referencing a variable scoped to another module, and it is not the kind that shows up
+   until someone presses the button on a real device. Anything outside those modules uses this.
+   Native writer first; the blob path is only for a plain-browser preview, where it works. */
+function saveExport(text,filename,mime){
+  try{
+    if(window.EMIExport&&EMIExport.save){
+      const r=JSON.parse(EMIExport.save(filename,mime,text));
+      if(r&&r.ok){ toast('Saved to '+(r.path||filename)+' ('+fmtBytes(r.bytes)+')'); return true; }
+      toast('Export failed — '+((r&&r.reason)||'unknown')); return false;
+    }
+  }catch(e){ toast('Export failed — '+(e&&e.message?e.message:'bridge error')); return false; }
+  try{ const blob=new Blob([text],{type:mime}); const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },1000);
+    toast('Export started (browser preview)'); return true;
+  }catch(e){ toast('Export failed — '+(e&&e.message?e.message:'unknown error')); return false; }
+}
 function copyText(t,okMsg){
   const ok=()=>toast(okMsg||'Copied');
   const fallback=()=>{
@@ -2044,6 +2235,7 @@ function applyModIn(){ const saved={}; const routes=Sensors.enabled?MODMATRIX:[]
 function applyModOut(saved){ for(const k in saved)P[k]=saved[k]; }
 
 let ssHoldL=0, ssHoldR=0;
+let bursts_vaultTick=0;
 function proc(e){
   const procT0=perfNow();
   const ssOn=ScanStutter.enabled;
@@ -5950,6 +6142,7 @@ function draw(now){
     Wardrive.tick();
     NativeScan.render();
     Escalation.render(false);
+    if((bursts_vaultTick=(bursts_vaultTick||0)+1)%20===0) vaultRefresh(false);
     const dgS=$('dgScore'),dgB=$('dgBar'),dgT=$('dgTag');
     if(dgS){ const sc=DemodGuard.score; dgS.textContent=Math.round(sc*100)+'%'; if(dgB)dgB.style.width=(sc*100)+'%';
       if(dgT)dgT.textContent=DemodGuard.enabled?(running?'watching':'idle'):'off'; }
@@ -6060,6 +6253,159 @@ $('ssOver').addEventListener('click',()=>{ const b=$('ssOver'),v=b.getAttribute(
 // still has to be told, or the UI would claim "on" while nothing hammered. That mismatch is
 // exactly how this feature came to read as absent before, so it is started explicitly here and
 // the two are seeded from the same markup values rather than from a second hardcoded default.
+/* ---- Logs tab: sheet switching ---- */
+document.querySelectorAll('#logSheets .chip').forEach(c=>c.addEventListener('click',()=>{
+  const want=c.dataset.sheet;
+  document.querySelectorAll('#logSheets .chip').forEach(x=>
+    x.setAttribute('aria-pressed', String(x.dataset.sheet===want)));
+  document.querySelectorAll('#page-logs .sheet').forEach(x=>
+    x.classList.toggle('on', x.id==='sheet-'+want));
+  if(want==='security') Tapjack.render(true);
+  if(want==='vault'||want==='data') vaultRefresh(false);
+  if(want==='data') CollectedData.render();
+}));
+
+/* ---- Tapjacking / overlay readout ---- */
+const Tapjack=(function(){
+  let last=null;
+  const set=(id,v)=>{const el=$(id); if(el)el.textContent=v;};
+  function render(force){
+    if(!window.EMITapjack||!EMITapjack.status){
+      set('tjState','native build only'); set('tjFilter','—'); return;
+    }
+    try{ last=JSON.parse(EMITapjack.status()); }catch(e){ last=null; }
+    if(!last){ set('tjState','error'); return; }
+    const blocked=last.filteredTouches||0;
+    set('tjState', blocked>0?(blocked+' blocked'):'protected');
+    set('tjFilter', last.filterActive?'active':'OFF');
+    set('tjBlocked', String(blocked));
+    set('tjOverlay', String(last.overlayCount!=null?last.overlayCount:'—'));
+    set('tjA11y', String(last.a11yCount!=null?last.a11yCount:'—'));
+    const L=$('tjList'); if(!L) return;
+    L.innerHTML='';
+    const add=(title,items,fmt)=>{
+      const h=document.createElement('div');
+      h.className='muted'; h.style.cssText='margin-top:10px;font-weight:600';
+      h.textContent=title+' ('+items.length+')'; L.appendChild(h);
+      if(!items.length){ const e=document.createElement('div'); e.className='muted';
+        e.textContent='none'; L.appendChild(e); return; }
+      items.forEach(it=>{ const d=document.createElement('div');
+        d.style.cssText='font-size:10.5px;padding:4px 0;border-bottom:1px dashed var(--rule)';
+        // textContent, never innerHTML: these are package names and labels chosen by other
+        // apps, i.e. attacker-controllable strings, and must never be parsed as markup.
+        d.textContent=fmt(it); L.appendChild(d); });
+    };
+    add('Apps that can draw over this one', last.overlayApps||[],
+        a=>a.label+'  ·  '+a.pkg+(a.system?'  · system':''));
+    add('Enabled accessibility services', last.a11yServices||[],
+        a=>a.label+'  ·  '+a.pkg);
+  }
+  return { render, get last(){ return last; } };
+})();
+$('tjRefresh').addEventListener('click',()=>{ Tapjack.render(true);
+  const l=Tapjack.last;
+  toast(l ? ((l.filteredTouches||0)>0
+      ? (l.filteredTouches+' tap(s) blocked while this app was covered')
+      : 'No obscured taps seen — touch filter active')
+    : 'Tapjack status unavailable'); });
+$('tjOverlaySet').addEventListener('click',()=>{
+  try{ if(window.EMITapjack&&EMITapjack.openOverlaySettings){ EMITapjack.openOverlaySettings(); return; } }catch(e){}
+  toast('Needs the installed app'); });
+$('tjA11ySet').addEventListener('click',()=>{
+  try{ if(window.EMITapjack&&EMITapjack.openAccessibilitySettings){ EMITapjack.openAccessibilitySettings(); return; } }catch(e){}
+  toast('Needs the installed app'); });
+
+/* ---- Collected-data summary: one answer to "what does this app actually hold" ---- */
+const CollectedData=(function(){
+  const set=(id,v)=>{const el=$(id); if(el)el.textContent=String(v);};
+  function render(){
+    let wd='—',aps='—';
+    try{ const d=Wardrive.stats?Wardrive.stats():null; if(d){ wd=d.points; aps=d.aps; } }catch(e){}
+    if(wd==='—'){ const e1=$('wdPoints'),e2=$('wdAps');
+      if(e1)wd=e1.textContent; if(e2)aps=e2.textContent; }
+    set('cdWd',wd); set('cdAps',aps);
+    let wifi='—'; try{ wifi=(RF.lastWifi||[]).length; }catch(e){}
+    set('cdWifi',wifi);
+    let ble='—'; try{ ble=BleScan.seenCount!=null?BleScan.seenCount:'—'; }catch(e){}
+    if(ble==='—'){ const b=$('bleCount'); if(b)ble=b.textContent; }
+    set('cdBle',ble);
+    let vc='—'; try{ if(window.EMIVault&&EMIVault.count) vc=JSON.parse(EMIVault.count()).count; }catch(e){}
+    set('cdVault',vc);
+    let ns='—'; try{ if(NativeScan.last) ns=NativeScan.last.wifiScans; }catch(e){}
+    set('cdScans',ns);
+    const st=$('cdState'); if(st) st.textContent='local only';
+  }
+  return { render };
+})();
+
+/* Vault export + integrity. Routed through the same native writer as every other export, so
+   it lands in Downloads as a real file rather than through the <a download> path that silently
+   does nothing in a WebView. */
+function vaultStamp(){ const d=new Date(); const p=n=>String(n).padStart(2,'0');
+  return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'-'+p(d.getHours())+p(d.getMinutes()); }
+$('vaultJson').addEventListener('click',()=>{
+  if(!window.EMIVault||!EMIVault.exportJson){ toast('Vault export needs the installed app'); return; }
+  try{ const t=EMIVault.exportJson();
+    if(!t||t.length<10){ toast('Vault is empty'); return; }
+    saveExport(t,'emi-vault-'+vaultStamp()+'.json','application/json');
+  }catch(e){ toast('Vault export failed — '+(e&&e.message?e.message:'bridge error')); }
+});
+$('vaultCsv').addEventListener('click',()=>{
+  if(!window.EMIVault||!EMIVault.exportCsv){ toast('Vault export needs the installed app'); return; }
+  try{ const t=EMIVault.exportCsv();
+    // Header row only means no findings yet — say so rather than writing an empty file.
+    if(!t||t.split('\n').filter(x=>x.trim()).length<2){ toast('Vault has no findings yet'); return; }
+    saveExport(t,'emi-vault-'+vaultStamp()+'.csv','text/csv');
+  }catch(e){ toast('Vault export failed — '+(e&&e.message?e.message:'bridge error')); }
+});
+$('vaultVerify').addEventListener('click',()=>{ vaultRefresh(true); });
+// The Vault SHEET carries its own copies of the same three actions, because the durable record
+// is a different question from the live list and shouldn't require scrolling back to another
+// sheet to act on. Same handlers, so there is one implementation, not two that can drift.
+$('vaultJson2').addEventListener('click',()=>$('vaultJson').click());
+$('vaultCsv2').addEventListener('click',()=>$('vaultCsv').click());
+$('vaultVerify2').addEventListener('click',()=>{ vaultRefresh(true); });
+function vaultRefresh(announce){
+  const cEl=$('vaultCount'), hEl=$('vaultChain');
+  if(!window.EMIVault||!EMIVault.count){ if(cEl)cEl.textContent='—'; if(hEl)hEl.textContent='native only'; return; }
+  try{
+    const c=JSON.parse(EMIVault.count()); if(cEl)cEl.textContent=String(c.count!=null?c.count:'—');
+    const v=JSON.parse(EMIVault.verify());
+    if(hEl) hEl.textContent = v.ok ? 'intact' : 'BROKEN';
+    // mirror onto the Vault sheet
+    const m=(id,val)=>{const e=$(id); if(e)e.textContent=val;};
+    m('vaultCount2', String(c.count!=null?c.count:'—'));
+    m('vaultChain2', v.ok?'intact':'BROKEN');
+    m('vaultChain3', v.ok?'intact':'BROKEN');
+    try{
+      const rows=JSON.parse(EMIVault.read(400));
+      if(rows&&rows.length){
+        const ts=rows.map(r=>r.t).filter(Boolean);
+        const f=n=>new Date(n).toLocaleString();
+        m('vaultOldest', f(Math.min.apply(null,ts)));
+        m('vaultNewest', f(Math.max.apply(null,ts)));
+        const pv=$('vaultPreview');
+        if(pv){ pv.innerHTML='';
+          rows.slice(0,12).forEach(r=>{
+            const d=document.createElement('div');
+            d.style.cssText='font-size:10.5px;padding:6px 0;border-bottom:1px dashed var(--rule)';
+            // textContent: vault messages quote scanned SSIDs and /proc paths, which are
+            // attacker-influenceable strings and must never be parsed as markup.
+            d.textContent='#'+r.seq+'  '+new Date(r.t).toLocaleTimeString()+'  ['+(r.badge||'-')+']  '+
+              (r.msg||'').slice(0,140)+
+              (r.ctx?('   — '+[r.ctx.battery!=null?r.ctx.battery+'%':null,
+                r.ctx.charging?'charging':null, r.ctx.screenOn===false?'screen off':null,
+                r.ctx.net, r.ctx.masking?'masking':null].filter(Boolean).join(', ')):'');
+            pv.appendChild(d);
+          });
+        }
+      }
+    }catch(e){}
+    if(announce) toast(v.ok
+      ? ('Chain verified — '+(c.count||0)+' record'+((c.count===1)?'':'s')+' intact')
+      : ('Chain verification FAILED'+(v.reason?' — '+v.reason:'')));
+  }catch(e){ if(hEl)hEl.textContent='error'; if(announce)toast('Verify failed'); }
+}
 $('egScan').addEventListener('click',()=>{
   // Forces an immediate native scan rather than reading the cached result — for right after
   // you have attached or detached something and want to see it reflected now.

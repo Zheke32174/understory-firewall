@@ -33,6 +33,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var bridge: EmiBridge
     private lateinit var shizuku: ShizukuBridge
     private lateinit var tamperGuard: TamperGuard
+    private lateinit var tapjack: TapjackGuard
     private var pageLoaded = false
     private var wasMicGranted = false
 
@@ -142,6 +143,14 @@ class MainActivity : ComponentActivity() {
         // or suppress a finding.
         webView.addJavascriptInterface(
             EscalationBridge(MaskerService.ensureEscalationGuard(this)), "EMIEscalation")
+        // Tapjacking defence. protect() sets filterTouchesWhenObscured, which makes the
+        // FRAMEWORK discard any touch delivered while another window covers this one — the one
+        // place this app blocks rather than reports, because a tap you did not knowingly aim
+        // here should not land. It also counts them, so a defeated attack is visible instead
+        // of silent.
+        tapjack = TapjackGuard(this, SecureLog(this))
+        tapjack.protect(webView)
+        webView.addJavascriptInterface(tapjack, "EMITapjack")
         // Read-only view onto the SERVICE-owned native scan/detection engine. The page can
         // start it, stop it and look at it; it has no way to raise, edit, suppress or delete a
         // finding, because detection and recording happen on the far side of this boundary.
