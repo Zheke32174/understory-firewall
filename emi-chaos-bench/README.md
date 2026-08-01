@@ -30,6 +30,81 @@ BLE/Wi-Fi field tools (accessory pairing, sensor telemetry, profiles,
 geofencing, anomaly detection) and porting those *interaction and detection*
 ideas — never any transmit capability — onto an audio masker.
 
+## What's new in 3.5 — Blackout
+
+**Chaotic cadence is now a shared engine, and much more aggressive.** The BLE
+timing-randomizer from 3.3 became `makeChaosCadence`, and every cycle now independently
+redraws a *mode* instead of sampling one fixed range: **sprint** (sub-second rapid-fire),
+**normal**, **long** (multi-second), **marathon** (up to a full minute continuous), or
+**lurk** (a glance, then up to 30s of silence). Weighted, not uniform, so the duty cycle
+stays lumpy instead of averaging out into something predictable.
+
+- **Wi-Fi chaotic cadence** (Detect tab) — the same treatment for Wi-Fi. Same standard
+  `WifiManager` scan every Wi-Fi picker runs, just at randomized times and durations.
+  Android hard-throttles scan requests, so a "marathon" is a long *window* during which
+  requests are issued, not a way to scan faster than the OS permits — excess requests are
+  silently dropped by the platform, never escalated.
+- **BLE cadence** now uses the same engine, so sessions range from ~150ms to 60s.
+- **Sensor blasts** (Sensors tab) — the idea applied to everything else the app can read.
+  Each burst hits a randomized subset of the native reads (GNSS status, cell info, thermals,
+  raw sensor snapshot, LAN ARP table, cell guard), a randomized number of times, in
+  randomized order. **Unlike BLE/Wi-Fi, nothing here goes on the air at all** — these are
+  pure receive-only reads of state the OS already holds. Two payoffs: a denser, less
+  predictable entropy stream into the audio engine, and much tighter time resolution for
+  the detectors.
+
+**Demod guard now runs two independent views.** The existing check is waveform
+autocorrelation — what a coherent/FM-style recovery sees. The new one is the **AM /
+envelope** view: rectify, low-pass, and read whatever rhythm is left, exactly like a plain
+envelope detector. Those fail *differently* — a masker whose waveform is perfectly chaotic
+can still be trivially AM-stripped if its **loudness** breathes on a schedule. An AM trip
+fires a different burst that rerolls the level/drift dials shaping the envelope, not just
+the carrier. Also reported: the **AM modulation index** (depth), since deep *and* periodic
+is the genuinely demodulable combination — shallow or chaotic is fine.
+
+> Verified by extracting the shipped `envelopeScore` and running it against synthetic cases:
+> chaotic-carrier/periodic-envelope trips at 88%, while flat (9%), shallow-periodic (6%),
+> chaotic-envelope (15%) and silence (0%) all correctly stay below threshold. Testing also
+> caught a real blind spot — a sparse lag set missed envelope periods falling between its
+> values — which is why the lag set is now dense.
+
+**Cell guard (Detect tab) — emergency/push-channel attack detection.** Watches the cell the
+phone is actually camped on, from the modem's own passive measurement report. Flags:
+
+- serving cell reporting a **different carrier** than your own SIM,
+- the **radio channel (ARFCN) jumping** while the carrier stays the same — being *pushed*
+  onto a different channel,
+- **generation downgrade** (5G/4G → 3G/2G — the classic step before interception, since 2G
+  has no mutual authentication),
+- **limited/emergency-only service** while the SIM is ready — a cell that accepted the phone
+  but won't carry normal traffic,
+- **rapid serving-cell churn**, expected while moving, suspicious while sitting still.
+
+Silent-SMS (Type-0) checking is Shizuku-gated and reported honestly as a *hint*: Type-0 SMS
+are consumed below the app layer and never reach any public Android API, so no app can see
+one directly. All the check can do is report whether the SMS stack shows dispatch activity
+you never saw a message for.
+
+**Background resilience (Detect tab).** Foreground media-playback service now holds a partial
+wake lock (without it, aggressive OEM dozing can stall the Web Audio callback with the screen
+off — the masker goes quiet exactly when the room does), tracks its own running state, and
+reports it. New panel shows foreground-service state, battery-optimisation exemption, app
+standby bucket, background-restriction, notification permission and backup state, calling out
+weak spots by name. `allowBackup` is now **off** with explicit `dataExtractionRules`: saved
+profiles carry geofences and the Wi-Fi list carries which networks you trust — a map of where
+you are and what you consider safe — so it never rides out in a cloud backup or restores onto
+another device. The app can't grant itself any of the protections; **Request exemption** fires
+the standard system consent dialog, which is the point — undoing them takes a deliberate
+appops/settings change by a human at the device.
+
+**Not built, and why (band switching):** the request included changing the cellular band
+within a carrier's channel range. The app reads the band; it does not set it. See
+[ETHICS.md](ETHICS.md) — programmatic band/network-mode selection needs privileged access this
+app deliberately doesn't take, and a masker silently reconfiguring your modem is precisely the
+wrong thing to have happened the moment you need to dial emergency services. The panel deep-links
+to the OS's own network settings with the channel/band readout as context, so the change is
+yours to make.
+
 ## What's new in 3.4 — Foxhunt
 
 A follow-up round expanding what already shipped rather than adding new categories,

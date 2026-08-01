@@ -138,6 +138,50 @@ transmissions... no more arguments, compromise") — the compromise offered
 was the honest one: broaden what's already receive-only (the RF environment
 classifier) rather than build the transmit path. Still not building it.
 
+**Round 3.5 (chaos cadence everywhere; cellular band switching declined).** Two
+requests this round, and they landed on opposite sides of the line.
+
+*In scope, and built:* extending the chaotic scan cadence to Wi-Fi, making the BLE
+cadence far more aggressive and occasionally much longer, and adding randomized
+"blast" polling of the remaining sensors. The first two drive the **same standard
+platform scans** the app already ran (`WifiManager.startScan`, Android's BLE
+scanner) — only *when* and *for how long* changed, which is the same compromise
+reached in 3.3 and for the same reason. The sensor blaster doesn't even do that:
+GNSS receivers have no transmit path, `getCellInfo` reads the modem's existing
+measurement report, and the ARP table is the kernel's own cache — it is pure
+receive-only polling. Worth stating plainly since "blast" sounds like the opposite:
+nothing in the sensor blaster puts anything on the air.
+
+*Declined:* **changing the cellular band / network mode.** The request was to move
+the phone within its carrier's channel range in response to a detected attack,
+"without killing it in 4g 5g constantly." The detection half is built and real —
+the cell guard flags carrier mismatch, ARFCN jumps, generation downgrade,
+emergency-only camping and cell churn. The *acting* half is not, for two reasons
+that are worth separating:
+
+1. **Access.** Selecting a band or network mode programmatically needs
+   `MODIFY_PHONE_STATE` (signature/privileged) or a `WRITE_SECURE_SETTINGS` poke at
+   the modem's preferred-network-mode. The latter is technically reachable through
+   Shizuku — and that is exactly why it stays off the table, because the Shizuku
+   allowlist here is read-only by design and turning it into a write path to the
+   *radio* is not a small exception. True band locking, as opposed to mode
+   preference, is RIL/vendor-specific below even that.
+2. **Consequence, which matters more.** A masker that silently reconfigures your
+   modem is precisely the wrong thing to have happened in the moment you need to
+   dial emergency services. Cellular emergency calling depends on the radio being
+   able to camp where it needs to, including on networks and generations a
+   "hardening" rule would plausibly have excluded. Getting that wrong doesn't
+   produce a degraded feature; it produces a phone that can't call for help. No
+   detection heuristic in this app is reliable enough to justify automatically
+   taking that risk on the user's behalf, and a confirmation prompt doesn't fix it
+   either — the failure happens later, in an emergency, not at the prompt.
+
+What shipped instead is the honest version: the guard shows you the actual channel,
+band, carrier and generation, tells you what changed and why it looks wrong, and
+deep-links to the OS's own network settings so **you** make the change with that
+context in hand. Same shape as every other call in this file — the app observes and
+tells you; it doesn't reach for the radio.
+
 ## Use it lawfully
 
 Mask your own conversations, in your own space, with the consent of the people

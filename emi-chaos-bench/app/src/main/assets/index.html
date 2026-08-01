@@ -194,11 +194,21 @@
       <div class="body">
         <div class="grid">
           <div class="stat"><small>Pattern score</small><b id="dgScore">0%</b><div class="bar"><i id="dgBar"></i></div></div>
+          <div class="stat"><small>AM envelope score</small><b id="dgAm">0%</b><div class="bar"><i id="dgAmBar"></i></div></div>
+          <div class="stat"><small>AM depth</small><b id="dgDepth">0%</b></div>
+          <div class="stat"><small>Last trip</small><b id="dgKind">—</b></div>
         </div>
         <div class="muted">Watches the masker's own recent output for signs it's settling into a too-regular,
           more easily filtered-out pattern. If it holds steady for a few checks in a row, this fires an
           unprompted remodulation burst — reseeds every chaos core, hard-rerolls half the dials, spikes the
-          mash rate briefly — to keep the output from ever sitting still long enough to be learned.</div>
+          mash rate briefly — to keep the output from ever sitting still long enough to be learned.
+          <b>Two independent views now run:</b> the <b>pattern</b> score is what a coherent/FM-style recovery
+          sees (waveform autocorrelation), and the <b>AM envelope</b> score is what a plain envelope detector
+          sees — rectify, low-pass, read whatever rhythm is left. Those fail differently: a chaotic waveform
+          whose <i>loudness</i> still breathes on a schedule is trivially AM-strippable, so an AM trip fires a
+          different burst that rerolls the level/drift dials shaping the envelope, not just the carrier.
+          <b>AM depth</b> is the modulation index — a deep <i>and</i> periodic envelope is the genuinely
+          demodulable combination; shallow or chaotic is fine.</div>
       </div>
     </div>
     <div id="panel"></div>
@@ -247,6 +257,26 @@
           count, which constellations (GPS/GLONASS/Galileo/BeiDou/QZSS/...), and per-satellite signal strength
           (CN0, dB-Hz). Entirely receive-only: a GPS/GNSS receiver has no transmit path by design — it only ever
           listens to satellites, never talks back to them. Needs location permission and a native build.</div>
+      </div>
+    </div>
+    <div class="sect">
+      <div class="head"><span class="t">Sensor blasts</span><span class="tag" id="sbMode">idle</span>
+        <div class="sw" id="sbEn" aria-pressed="false"></div></div>
+      <div class="body">
+        <div class="grid">
+          <div class="stat"><small>Bursts</small><b id="sbCount">0</b></div>
+          <div class="stat"><small>Last set</small><b id="sbKinds">—</b></div>
+        </div>
+        <div class="row" style="margin-top:6px"><button class="btn" id="sbNow">Blast now</button></div>
+        <div class="muted">The chaotic-cadence idea applied to every remaining sensor: on each burst it hammers a
+          randomized subset of the native reads — GNSS satellite status, cell info, thermals, the raw sensor
+          snapshot, the LAN ARP table, the cell guard — a randomized number of times, in randomized order, then
+          goes quiet for a randomized interval (same sprint/long/marathon/lurk modes as the radios).
+          <b>Unlike the BLE and Wi-Fi cadences, nothing here goes on the air at all</b> — these are pure
+          receive-only reads of state the OS already holds (a GNSS receiver never transmits; cell info is the
+          modem's existing measurement report; the ARP table is the kernel's own cache). Two payoffs: a much
+          denser, less predictable entropy stream into the audio engine, and far tighter time resolution for the
+          detectors — a cell change that used to be caught on a slow polling cycle now gets sampled in bursts.</div>
       </div>
     </div>
     <div class="sect">
@@ -331,6 +361,8 @@
       <div class="body">
         <div class="row"><button class="btn acc" id="rfScan">Scan Wi-Fi</button>
           <span class="pill" id="rfState">idle</span>
+          <button class="chip" id="wifiChaotic" aria-pressed="false">Chaotic cadence</button>
+          <span class="pill" id="wifiCadMode">idle</span>
           <button class="btn" id="wifiExportLog">Export scan log CSV</button></div>
         <div class="list" id="wifiList" style="margin-top:8px"></div>
         <div class="muted" id="rfNote">Flags duplicate SSIDs on different BSSIDs, WPS-enabled and open/WEP networks,
@@ -341,7 +373,11 @@
           and assigned service UUIDs) and spam-flood detection run automatically off the existing BLE scan in the
           Link tab and report here too. Per-device GATT service inspection is available from each device's
           <b>Inspect</b> button on the Link tab. <b>Export scan log</b> writes every Wi-Fi sighting this session to
-          a CSV you keep — nothing is uploaded.</div>
+          a CSV you keep — nothing is uploaded. <b>Chaotic cadence</b> is the BLE feature applied here: the same
+          standard platform scan, fired at randomized times and durations (sprint/normal/long/marathon/lurk,
+          redrawn each cycle). Android hard-throttles scan requests, so a "marathon" is a long window during
+          which requests are issued, not a way to scan faster than the OS permits — excess requests are
+          silently dropped by the platform, never escalated.</div>
       </div>
     </div>
     <div class="sect">
@@ -442,6 +478,68 @@
       </div>
     </div>
     <div class="sect">
+      <div class="head"><span class="t">Cell guard</span><span class="tag" id="cgState">watching</span></div>
+      <div class="body">
+        <div class="grid">
+          <div class="stat"><small>Serving</small><b id="cgServing">—</b></div>
+          <div class="stat"><small>Operator</small><b id="cgOper">—</b></div>
+          <div class="stat"><small>Cells seen /3min</small><b id="cgChurn">0</b></div>
+          <div class="stat"><small>Neighbors</small><b id="cgNeighbors">0</b></div>
+          <div class="stat"><small>SMS stack</small><b id="cgSms">—</b></div>
+        </div>
+        <div class="row" style="margin-top:8px"><button class="btn" id="cgPoll">Check now</button>
+          <button class="btn" id="cgSms0">Silent-SMS check</button>
+          <button class="btn" id="cgBand">Network / band settings</button></div>
+        <div class="muted">Watches the cell the phone is actually camped on, the way the Wi-Fi panel watches
+          APs. Flags: the serving cell reporting a <b>different carrier</b> than your own SIM; the
+          <b>radio channel (ARFCN) jumping</b> while the carrier stays the same — being pushed onto a different
+          channel; <b>generation downgrade</b> (5G/4G → 3G/2G, the classic step before interception, since 2G has
+          no mutual authentication); <b>limited/emergency-only service</b> while the SIM is ready — a cell that
+          accepted the phone but won't carry normal traffic; and <b>rapid serving-cell churn</b>, which is
+          expected while moving but suspicious while sitting still.
+          <br><br>
+          <b>Silent-SMS check</b> needs Shizuku and is a hint, not a detection: Type-0 ("silent") SMS are consumed
+          below the app layer and <i>never</i> reach any public Android API, so no app can see one directly. All
+          this can do is report whether the SMS stack shows dispatch activity you never saw a message for.
+          <br><br>
+          <b>On changing the band:</b> this app reads the channel/band, it does not set it. Selecting a band or
+          network mode programmatically needs privileged access this app deliberately doesn't take, and a masker
+          silently reconfiguring your modem is exactly the wrong thing to have happened the moment you need to
+          dial emergency services. The button above opens the OS's own network settings so you make that call,
+          with the readout here as context. See ETHICS.md.</div>
+      </div>
+    </div>
+    <div class="sect">
+      <div class="head"><span class="t">Background resilience</span><span class="tag" id="rsTag">—</span></div>
+      <div class="body">
+        <div class="grid">
+          <div class="stat"><small>Foreground svc</small><b id="rsFg">—</b></div>
+          <div class="stat"><small>Battery exempt</small><b id="rsBatt">—</b></div>
+          <div class="stat"><small>Standby bucket</small><b id="rsBucket">—</b></div>
+          <div class="stat"><small>BG restricted</small><b id="rsRestrict">—</b></div>
+          <div class="stat"><small>Notifications</small><b id="rsNotif">—</b></div>
+          <div class="stat"><small>Backup</small><b id="rsBackup">—</b></div>
+        </div>
+        <div class="row" style="margin-top:8px"><button class="btn" id="rsRefresh">Refresh</button>
+          <button class="btn acc" id="rsFix">Request exemption</button>
+          <button class="btn" id="rsAppSettings">App settings</button></div>
+        <div class="muted">How well-protected this process currently is against being silently killed or
+          throttled while masking with the screen off. A media-playback <b>foreground service</b> plus a partial
+          wake lock keeps the Web Audio graph scheduled; <b>battery exemption</b> stops aggressive OEM dozing from
+          stalling it anyway; the <b>standby bucket</b> is how throttled the OS currently considers this app
+          (active → working_set → frequent → rare → restricted).
+          <br><br>
+          <b>Backup</b> is deliberately off: saved profiles carry geofences, and the Wi-Fi list carries which
+          networks you trust — that's a map of where you are and what you consider safe, so it never rides out in
+          a cloud backup or restores onto another device.
+          <br><br>
+          The app cannot grant itself any of this — <b>Request exemption</b> fires the standard system consent
+          dialog, and everything else lives behind the OS's own settings screens, which is the point: once set,
+          turning this app's protections back off takes a deliberate appops/settings change by a human at the
+          device, not something another app can do quietly.</div>
+      </div>
+    </div>
+    <div class="sect">
       <div class="head"><span class="t">Anomaly score</span><span class="tag">sensor fusion</span></div>
       <div class="body">
         <div class="gauge" id="anomGauge" style="--gv:0"><b id="anomVal">0</b><small>0-100</small></div>
@@ -472,6 +570,7 @@
         <div class="row"><button class="btn acc" id="bleScan">Scan</button>
           <button class="btn" id="bleStop">Stop</button>
           <button class="chip" id="bleChaotic" aria-pressed="false">Chaotic cadence</button>
+          <span class="pill" id="bleCadMode">idle</span>
           <button class="btn" id="bleExportLog">Export scan log CSV</button></div>
         <div class="list" id="bleList" style="margin-top:8px"><div class="muted">No devices yet. Scan to discover companion sensor pucks, remote triggers and beacons.</div></div>
         <div class="muted">A paired accessory can feed its RSSI / sensor values into the modulation matrix
@@ -479,9 +578,12 @@
           <b>Chaotic cadence</b> cycles the same standard active scan on/off at randomized intervals instead of one
           continuous session — real transmission (BLE scanning sends scan-request packets, standard protocol,
           standard API), just noisier in timing. It never advertises a fake identity or anything outside normal
-          discovery. <b>Foxhunt</b> on a device below repeatedly re-scans and shows an RSSI trend (warmer/colder) so
-          you can walk toward or away from it. <b>Export scan log</b> writes every sighting this session to a CSV
-          you keep — nothing is uploaded.</div>
+          discovery. Each cycle independently redraws a mode — <b>sprint</b> (sub-second rapid-fire),
+          <b>normal</b>, <b>long</b> (multi-second), <b>marathon</b> (up to a full minute continuous) or
+          <b>lurk</b> (a glance, then a long silence) — so it stays lumpy instead of averaging into a predictable
+          duty cycle. <b>Foxhunt</b> on a device below repeatedly re-scans and shows an RSSI trend
+          (warmer/colder) so you can walk toward or away from it. <b>Export scan log</b> writes every sighting
+          this session to a CSV you keep — nothing is uploaded.</div>
       </div>
     </div>
     <div class="sect">
@@ -1596,6 +1698,7 @@ const DemodGuard=(function(){
   const LAGS=[53,127,241,401]; // samples; a spread of short/medium periods, deliberately not tied to any one module's own rate
   const WIN=480;
   let en=true, next=0, streak=0, lastScore=0, cooldown=0, burstFlash=0;
+  let lastAmScore=0, amStreak=0, lastDepth=0, lastKind='—';
   function periodicity(){
     const base=(capW-WIN-8+CAP*4)%CAP;
     let energy=0; for(let i=0;i<WIN;i++){ const s=cap[(base+i)%CAP]; energy+=s*s; }
@@ -1609,25 +1712,99 @@ const DemodGuard=(function(){
     }
     return cl(best,0,1);
   }
-  function burst(){
+  /* ---- AM / envelope-domain view -------------------------------------------------
+     The check above looks at the waveform itself, which is what a coherent/FM-style
+     recovery sees. An AM (envelope) detector doesn't care about the waveform at all —
+     it rectifies and low-passes, and reads whatever is left. So a masker whose *waveform*
+     is chaotic can still be trivially AM-demodulated if its AMPLITUDE ENVELOPE has a
+     steady rhythm: the carrier scrambles, the loudness pattern doesn't, and a $2 envelope
+     detector strips the pattern straight back out.
+
+     So: build the envelope the same way an envelope detector would (rectify + one-pole
+     low-pass), decimate it, then run a *mean-removed* autocovariance over it. Removing the
+     mean matters — an envelope is all-positive, so a raw autocorrelation on it would read
+     ~1.0 for literally any signal and the detector would be useless.
+
+     Also reported: the AM modulation index (max-min)/(max+min), i.e. how deep the envelope
+     swings. Deep + periodic is the genuinely demodulable combination; deep + chaotic is
+     fine, and shallow is fine either way. */
+  // Lag set is deliberately dense and covers short periods: a sparse set has blind spots
+  // between its values (found in testing — a rectified tone whose envelope ripple period
+  // landed at 4 decimated samples read as "clean" against lags starting at 5). Nine lags
+  // over ~200 decimated samples is ~1800 multiply-adds once every 1.5s, i.e. free.
+  const ENV_WIN=1600, ENV_DEC=8, ENV_LAGS=[3,4,6,9,13,17,23,31,41,53];
+  const envBuf=new Float32Array(Math.floor(ENV_WIN/ENV_DEC));
+  function envelopeScore(){
+    const base=(capW-ENV_WIN-8+CAP*4)%CAP;
+    // rectify + one-pole LPF, sampling every ENV_DEC-th smoothed value
+    let lp=0; const a=0.15; let n=0;
+    for(let i=0;i<ENV_WIN;i++){
+      const s=Math.abs(cap[(base+i)%CAP]);
+      lp+=a*(s-lp);
+      if(i%ENV_DEC===0 && n<envBuf.length) envBuf[n++]=lp;
+    }
+    if(n<ENV_LAGS[ENV_LAGS.length-1]+8) return {score:0,depth:0};
+    let mean=0; for(let i=0;i<n;i++) mean+=envBuf[i]; mean/=n;
+    if(mean<1e-5) return {score:0,depth:0}; // silence
+    let varSum=0, mn=Infinity, mx=0;
+    for(let i=0;i<n;i++){ const d=envBuf[i]-mean; varSum+=d*d; if(envBuf[i]<mn)mn=envBuf[i]; if(envBuf[i]>mx)mx=envBuf[i]; }
+    if(varSum<1e-9) return {score:0,depth:0}; // perfectly flat envelope carries nothing to strip
+    const depth=(mx+mn)>1e-9?cl((mx-mn)/(mx+mn),0,1):0;
+    let best=0;
+    for(const lag of ENV_LAGS){
+      if(lag>=n) continue;
+      let corr=0, cnt=0;
+      for(let i=0;i+lag<n;i++){ corr+=(envBuf[i]-mean)*(envBuf[i+lag]-mean); cnt++; }
+      if(!cnt) continue;
+      // normalise by the variance over the SAME number of samples that fed corr
+      let vs=0; for(let i=0;i<cnt;i++){ const d=envBuf[i]-mean; vs+=d*d; }
+      if(vs<1e-9) continue;
+      const norm=Math.abs(corr)/vs;
+      if(norm>best) best=norm;
+    }
+    return {score:cl(best,0,1),depth};
+  }
+  function burst(kind){
+    lastKind=kind;
     seedChaos();
     const pool=MASH.slice(); for(let i=pool.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [pool[i],pool[j]]=[pool[j],pool[i]]; }
     pool.slice(0, Math.ceil(pool.length*0.5)).forEach(randCtrl);
     flushDirty();
     const savedPps=P.mPps; setSpeed(cl(savedPps*6,20,600));
     setTimeout(()=>setSpeed(savedPps), 2500);
-    burstFlash=1; streak=0; cooldown=8000;
-    Alerts.push(1,`Demod guard: output pattern held steady for a while — fired an aggressive remodulation burst to break it up.`,'demod');
-    haptic('clip'); toast('Remodulating — pattern looked too steady');
+    // An AM-flavoured trip means the ENVELOPE was the predictable part, so a waveform-only
+    // reroll wouldn't necessarily fix it. Kick the level/drift dials specifically — those are
+    // what shape the envelope — and briefly jolt the drift rate so loudness stops breathing
+    // on a schedule.
+    if(kind==='AM'){
+      ['lv','dr','dd','mJit','mFum'].forEach(k=>{ if(CTRL[k]) randCtrl(k); });
+      MOD.forEach(m=>{ if(!m.tog||!P[m.tog]) return;
+        const lk='L_'+m.id; if(CTRL[lk]&&Math.random()<0.6) randCtrl(lk); });
+      flushDirty();
+    }
+    burstFlash=1; streak=0; amStreak=0; cooldown=8000;
+    Alerts.push(1, kind==='AM'
+      ? `Demod guard (AM): the output's amplitude envelope settled into a steady rhythm — an envelope/AM detector could strip that even though the waveform itself is chaotic. Fired an envelope-targeted remodulation burst.`
+      : `Demod guard: output pattern held steady for a while — fired an aggressive remodulation burst to break it up.`,'demod');
+    haptic('clip'); toast(kind==='AM'?'Remodulating — envelope looked AM-strippable':'Remodulating — pattern looked too steady');
   }
   function tick(now){
     if(!en || !running || cooldown>0){ if(cooldown>0)cooldown-=16; return; }
     if(now<next) return; next=now+1500;
     lastScore=periodicity();
+    const am=envelopeScore();
+    lastAmScore=am.score; lastDepth=am.depth;
     if(lastScore>0.72) streak++; else streak=Math.max(0,streak-1);
-    if(streak>=3) burst();
+    // AM trips on periodic envelope AND enough modulation depth to be worth stripping —
+    // a shallow envelope carries almost nothing even if its rhythm is perfectly regular.
+    if(am.score>0.62 && am.depth>0.25) amStreak++; else amStreak=Math.max(0,amStreak-1);
+    if(streak>=3) burst('pattern');
+    else if(amStreak>=3) burst('AM');
   }
-  return { tick, set enabled(v){en=v;}, get enabled(){return en;}, get score(){return lastScore;}, get flash(){const f=burstFlash;burstFlash*=0.8;return f;} };
+  return { tick, set enabled(v){en=v;}, get enabled(){return en;},
+    get score(){return lastScore;}, get amScore(){return lastAmScore;},
+    get depth(){return lastDepth;}, get lastKind(){return lastKind;},
+    get flash(){const f=burstFlash;burstFlash*=0.8;return f;} };
 })();
 
 /* ============ SENSORS ============ */
@@ -1726,6 +1903,58 @@ const Haptics=(function(){
     set intensity(v){intensity=v;}, setOn(k,v){on[k]=v;}, test(){ pattern([0,20,40,20,40,60]); } };
 })();
 function haptic(k){ Haptics.fire(k); }
+
+/* ============ CHAOTIC SCAN CADENCE ENGINE ============
+   Shared by the BLE scan (Link tab), the Wi-Fi scan (Detect tab) and the sensor blaster.
+   It does NOT invent any new radio activity: it drives the SAME standard platform scan each
+   subsystem already performs, and only randomizes *when* and *for how long* it runs.
+
+   Each cycle independently draws a mode, so the pattern never settles into one rhythm:
+     sprint   — very short bursts, back-to-back (rapid-fire)
+     normal   — the original ~0.3-2.5s on / 0.4-4s off band
+     long     — multi-second sustained sessions
+     marathon — up to a full minute of continuous scanning ("much longer at random")
+     lurk     — a brief look, then a long silence
+   Modes are weighted, not uniform, so it stays lumpy rather than averaging out to a
+   predictable duty cycle. See ETHICS.md for why timing chaos is in scope and fabricated
+   transmission (beacon advertising) still isn't. */
+const CADENCE_MODES=[
+  {k:'sprint',   w:0.22, on:[150,600],     off:[120,500]},
+  {k:'normal',   w:0.30, on:[300,2500],    off:[400,4000]},
+  {k:'long',     w:0.22, on:[4000,15000],  off:[1000,6000]},
+  {k:'marathon', w:0.13, on:[15000,60000], off:[2000,12000]},
+  {k:'lurk',     w:0.13, on:[200,900],     off:[8000,30000]}
+];
+function pickCadenceMode(){
+  let r=Math.random(), acc=0;
+  for(const m of CADENCE_MODES){ acc+=m.w; if(r<=acc) return m; }
+  return CADENCE_MODES[1];
+}
+function makeChaosCadence(label,startFn,stopFn,onMode){
+  let on=false, t1=null, t2=null, mode=null, cycles=0;
+  function clear(){ if(t1){clearTimeout(t1);t1=null;} if(t2){clearTimeout(t2);t2=null;} }
+  function step(){
+    if(!on) return;
+    mode=pickCadenceMode(); cycles++;
+    if(onMode) try{ onMode(mode.k); }catch(e){}
+    try{ startFn(); }catch(e){}
+    t1=setTimeout(()=>{
+      if(!on) return;
+      try{ stopFn(); }catch(e){}
+      t2=setTimeout(step, rnd(mode.off[0],mode.off[1]));
+    }, rnd(mode.on[0],mode.on[1]));
+  }
+  return {
+    set enabled(v){
+      if(v===on) return;
+      on=v; clear();
+      if(v){ step(); } else { try{ stopFn(); }catch(e){} mode=null; }
+    },
+    get enabled(){ return on; },
+    get mode(){ return mode?mode.k:'idle'; },
+    get cycles(){ return cycles; }
+  };
+}
 
 /* ============ ACCESSORIES (BLE + WiFi companion) ============ */
 const Accessories=(function(){
@@ -1840,18 +2069,17 @@ const Accessories=(function(){
   // any BLE app does for discovery) — made noisier/more randomized in timing, as asked for.
   // It does NOT advertise fabricated identities or emit anything outside the normal
   // discovery protocol — see ETHICS.md for why that line stays where it is.
+  //
+  // Driven by the shared cadence engine above, so sessions now range from sub-second
+  // rapid-fire up to full-minute marathons, with the mode redrawn every cycle.
   function bleStopScan(){ if(window.EMIBridge&&EMIBridge.bleStop)try{EMIBridge.bleStop();}catch(e){} }
-  let chaoticOn=false, chaoticTimer=null;
-  function chaoticStep(){
-    if(!chaoticOn) return;
-    scan();
-    setTimeout(()=>{ if(!chaoticOn)return; bleStopScan();
-      chaoticTimer=setTimeout(chaoticStep, rnd(400,4000)); }, rnd(300,2500));
-  }
+  const bleCadence=makeChaosCadence('ble',scan,bleStopScan,m=>{
+    const el=$('bleCadMode'); if(el)el.textContent=m;
+  });
   function setChaoticScan(v){
-    chaoticOn=v; if(chaoticTimer){clearTimeout(chaoticTimer);chaoticTimer=null;}
-    if(v){ toast('Chaotic BLE scan cadence on'); chaoticStep(); }
-    else bleStopScan();
+    bleCadence.enabled=v;
+    if(v) toast('Chaotic BLE cadence on — sprint/long/marathon/lurk, redrawn each cycle');
+    const el=$('bleCadMode'); if(el&&!v)el.textContent='idle';
   }
   function push(d){ try{ d.tag=RF.classifyBle(d); }catch(e){}
     const existing=devices.find(x=>x.id===d.id);
@@ -1912,6 +2140,7 @@ const Accessories=(function(){
     bondedRender, foxhuntToggle,
     exportScanLog(){ if(!scanLog.length){toast('Nothing scanned yet');return;} downloadFile(scanLogToCsv(),'emi-ble-scan-log.csv','text/csv'); },
     get lastSpectrum(){return lastSpectrum;}, get devices(){return devices;}, get foxhuntId(){return foxhuntId;},
+    get cadenceMode(){return bleCadence.mode;}, get cadenceCycles(){return bleCadence.cycles;},
     gattResult(json){
       let d=null;
       try{ const r=JSON.parse(json);
@@ -2309,6 +2538,21 @@ const RF=(function(){
     $('rfState').textContent=lastWifi.length?lastWifi.length+' networks':'idle';
     try{ Wardrive.ingestWifi(lastWifi); }catch(e){}
   }
+  // Chaotic Wi-Fi cadence — the BLE feature, applied to Wi-Fi. Same shared engine, same
+  // invariant: this drives the SAME standard platform scan (WifiManager.startScan, the one
+  // every Wi-Fi picker in Android runs), only at randomized times and durations. Android
+  // throttles background scan requests hard (typically 4 per 2 minutes for foreground apps),
+  // so a "marathon" here is a long window during which requests are issued, not a magic way
+  // to scan faster than the OS allows — over-requesting is silently dropped by the platform,
+  // never escalated. Nothing is transmitted beyond an ordinary scan.
+  const wifiCadence=makeChaosCadence('wifi',()=>{ wifiScanNow(); },()=>{},m=>{
+    const el=$('wifiCadMode'); if(el)el.textContent=m;
+  });
+  function setChaoticWifi(v){
+    wifiCadence.enabled=v;
+    if(v) toast('Chaotic Wi-Fi cadence on — standard scans, randomized timing');
+    const el=$('wifiCadMode'); if(el&&!v)el.textContent='idle';
+  }
   // BLE tracker fingerprinting — extends the existing Accessories BLE scan, called from there.
   const TRACKER_MFG={76:'Apple (Find My?)',117:'Samsung (SmartTag?)'};
   // Bluetooth SIG-assigned 16-bit service UUIDs worth recognising by name. Full form is
@@ -2364,9 +2608,261 @@ const RF=(function(){
       it.append(b,s); list.appendChild(it); });
     el.appendChild(list);
   }
-  return { wifiScanNow, classifyBle, renderAccKinds, wellKnownUuid, toggleTrust,
+  return { wifiScanNow, classifyBle, renderAccKinds, wellKnownUuid, toggleTrust, setChaoticWifi,
+    get wifiCadenceMode(){return wifiCadence.mode;},
     exportWifiLog(){ if(!wifiScanLog.length){toast('Nothing scanned yet');return;} downloadFile(wifiLogToCsv(),'emi-wifi-scan-log.csv','text/csv'); },
     get lastWifi(){return lastWifi;}, get ACCESSORY_KINDS(){return ACCESSORY_KINDS;} };
+})();
+
+/* ============ SENSOR SCAN BLASTER ============
+   The chaotic-cadence idea applied to every remaining sensor the app can read. On each burst
+   it hammers the native read surface — GNSS satellite status, cell info, thermals, raw sensor
+   snapshot, LAN ARP table — and folds the results into the entropy feed and the anomaly
+   engine, then goes quiet for a randomized interval.
+
+   All of these are RECEIVE-ONLY reads of state the OS already has: GNSS receivers never
+   transmit, `getCellInfo` reads the modem's existing measurement report, thermals are
+   sysfs/HardwareProperties reads, and the ARP table is the kernel's own cache. Unlike the
+   BLE/Wi-Fi cadences (which drive a real, standard scan transmission), NOTHING here puts
+   anything on the air at all — it's pure polling. The value is twofold: a much denser,
+   less predictable entropy stream into the audio engine, and far tighter time resolution
+   on the detectors (a cell change that used to be caught on a ~45-tick cycle now gets
+   sampled in bursts). */
+const SensorBlast=(function(){
+  let burstN=0, lastKinds=[];
+  function readOne(kind){
+    try{
+      if(!window.EMIBridge) return false;
+      if(kind==='gnss' && EMIBridge.getGnssStatus){
+        const g=JSON.parse(EMIBridge.getGnssStatus()||'{}');
+        if(g.count!=null) Sensors.feed({alt:cl(g.count/24,0,1)*2-1});
+        return true;
+      }
+      if(kind==='cell' && EMIBridge.getCellInfo){
+        const c=JSON.parse(EMIBridge.getCellInfo()||'{}');
+        if(typeof c.generation==='number') Sensors.feed({net:cl(c.generation/5,0,1)*2-1});
+        return true;
+      }
+      if(kind==='thermal' && EMIBridge.getThermals){
+        const t=JSON.parse(EMIBridge.getThermals()||'{}');
+        if(typeof t.battery==='number') Sensors.feed({baro:cl((t.battery-20)/25,0,1)*2-1});
+        return true;
+      }
+      if(kind==='sensors' && EMIBridge.getSensors){
+        const s=JSON.parse(EMIBridge.getSensors()||'{}');
+        Sensors.feed(s); return true;
+      }
+      if(kind==='lan' && EMIBridge.getLanDevices){
+        const l=JSON.parse(EMIBridge.getLanDevices()||'[]');
+        if(Array.isArray(l)) Sensors.feed({rtt:cl(l.length/12,0,1)*2-1});
+        return true;
+      }
+      if(kind==='cellguard' && EMIBridge.getCellGuardStatus){ CellGuard.poll(); return true; }
+    }catch(e){}
+    return false;
+  }
+  // One "blast" = a randomized subset of the read kinds, fired in a randomized order, a
+  // randomized number of times. Deliberately not a fixed round-robin — a predictable poll
+  // pattern is exactly what the rest of this app exists to avoid.
+  function blast(){
+    const kinds=['gnss','cell','thermal','sensors','lan','cellguard'];
+    for(let i=kinds.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [kinds[i],kinds[j]]=[kinds[j],kinds[i]]; }
+    const take=Math.max(1,Math.round(rnd(1,kinds.length)));
+    const chosen=kinds.slice(0,take);
+    const reps=Math.max(1,Math.round(rnd(1,4)));
+    let ok=0;
+    for(let r=0;r<reps;r++) chosen.forEach(k=>{ if(readOne(k)) ok++; });
+    burstN++; lastKinds=chosen;
+    const el=$('sbKinds'); if(el)el.textContent=chosen.join(', ');
+    const cn=$('sbCount'); if(cn)cn.textContent=String(burstN);
+    return ok;
+  }
+  const cadence=makeChaosCadence('sensors',blast,()=>{},m=>{
+    const el=$('sbMode'); if(el)el.textContent=m;
+  });
+  return {
+    set enabled(v){ cadence.enabled=v;
+      if(v) toast('Sensor blasts on — receive-only polling, randomized bursts');
+      const el=$('sbMode'); if(el&&!v)el.textContent='idle'; },
+    get enabled(){ return cadence.enabled; },
+    get mode(){ return cadence.mode; }, get bursts(){ return burstN; },
+    get lastKinds(){ return lastKinds; }, blastNow:blast
+  };
+})();
+
+/* ============ CELL GUARD — emergency/push-channel attack detection ============
+   Watches the serving cell the way the Wi-Fi panel watches APs: not to change anything, but
+   to notice when something moves the phone somewhere it shouldn't be.
+
+   WHAT IT WATCHES (all from the passive `getCellGuardStatus` read — the modem's own
+   measurement report, no transmission, no probing):
+     - carrier change: serving cell's MCC/MNC no longer matches the SIM's own operator, i.e.
+       the phone got captured by a cell claiming a different network.
+     - cell churn: serving cell identity (CI/PCI) changing far faster than movement explains
+       — the pattern a forced re-selection / repeated detach produces.
+     - band/channel jump: the ARFCN (the actual radio channel number) moving while the
+       carrier stays the same — being *pushed* onto a different channel.
+     - generation downgrade: 5G/4G -> 3G/2G, the classic downgrade-before-intercept step,
+       since 2G has no mutual authentication.
+     - emergency-only / limited service: registered to a cell that won't carry normal
+       traffic, which is what a phone looks like when it's camped on something that only
+       wants signalling.
+     - silent-SMS (Type-0) heuristic: ONLY via the optional Shizuku read-only dump. A
+       normal app cannot see Type-0 SMS at all — they're consumed below the app layer and
+       never delivered to any public API. What's checkable is the framework's own SMS
+       bookkeeping moving with no user-visible message. That's a hint, not a detection.
+
+   WHAT IT DELIBERATELY DOES NOT DO: change the band, lock a channel, or set the preferred
+   network mode. See ETHICS.md — that needs privileged access this app doesn't take, and a
+   masker silently reconfiguring the modem is precisely what you don't want in the moment
+   someone needs to dial emergency services. The band readout plus a one-tap deep link to
+   the OS's own network settings puts that decision where it belongs: with the user. */
+const CellGuard=(function(){
+  let last=null, hist=[], alerts=0, lastPoll=0, smsHint='—';
+  const CHURN_WIN=180000; // 3 min
+  function fmtServing(s){
+    if(!s) return '—';
+    const g=s.gen?('G'+s.gen):'?';
+    return g+' · ch '+(s.arfcn!=null?s.arfcn:'?')+(s.bands&&s.bands.length?(' · b'+s.bands.join('/')):'');
+  }
+  function poll(){
+    if(!(window.EMIBridge&&EMIBridge.getCellGuardStatus)) return;
+    const now=Date.now();
+    if(now-lastPoll<1500) return; lastPoll=now;
+    let d=null;
+    try{ d=JSON.parse(EMIBridge.getCellGuardStatus()||'{}'); }catch(e){ return; }
+    if(!d || d.error){ const st=$('cgState'); if(st)st.textContent=d&&d.error?d.error:'unavailable'; return; }
+    const s=d.serving||null;
+
+    if(s){
+      hist.push({t:now,ci:s.ci!=null?s.ci:s.nci,pci:s.pci,arfcn:s.arfcn,gen:s.gen});
+      while(hist.length&&now-hist[0].t>CHURN_WIN) hist.shift();
+    }
+    // carrier mismatch: serving cell's PLMN vs the SIM's own operator
+    if(s && s.mcc && s.mnc && d.simOperatorNumeric){
+      const servingPlmn=String(s.mcc)+String(s.mnc);
+      const simPlmn=String(d.simOperatorNumeric);
+      if(simPlmn && servingPlmn && servingPlmn!==simPlmn && !flagged('plmn')){
+        flag('plmn'); alerts++;
+        Alerts.push(3,`Serving cell reports network ${servingPlmn} but the SIM's own operator is ${simPlmn} — the phone is camped on a cell claiming a different carrier. Roaming can explain this; so can a fake base station.`,'cell-plmn');
+      }
+    }
+    if(last){
+      const prev=last;
+      const ciNow=s?(s.ci!=null?s.ci:s.nci):null, ciPrev=prev.ci!=null?prev.ci:prev.nci;
+      // band / channel jump on the same carrier
+      if(s&&prev.arfcn!=null&&s.arfcn!=null&&s.arfcn!==prev.arfcn){
+        const samePlmn=(String(s.mcc||'')+String(s.mnc||''))===(String(prev.mcc||'')+String(prev.mnc||''));
+        if(samePlmn){ alerts++;
+          Alerts.push(2,`Radio channel changed on the same carrier: ARFCN ${prev.arfcn} → ${s.arfcn}${s.gen!==prev.gen?` (${prev.gen}G → ${s.gen}G)`:''}. Normal during handover/movement — worth a look if you're stationary.`,'cell-band'); }
+      }
+      // generation downgrade
+      if(s&&prev.gen>=4&&s.gen>0&&s.gen<=2){ alerts++;
+        Alerts.push(3,`Cellular downgraded ${prev.gen}G → ${s.gen}G. 2G has no mutual authentication — a forced downgrade is the classic step before interception.`,'cell-downgrade'); }
+      // isolated / emergency-only camp
+      if(d.emergencyOnly&&!flagged('emg')){ flag('emg'); alerts++;
+        Alerts.push(3,`Modem appears to be in limited/emergency-only service while the SIM is ready — a cell accepted the phone but won't carry normal traffic.`,'cell-emergency'); }
+    }
+    // churn rate — many distinct serving cells in a short window
+    const uniq=new Set(hist.map(h=>String(h.ci)+'/'+h.pci)).size;
+    if(uniq>=6&&!flagged('churn')){ flag('churn'); alerts++;
+      Alerts.push(2,`Serving cell changed ${uniq} times in the last 3 minutes. Expected if you're moving; if you're sitting still it can mean repeated forced re-selection.`,'cell-churn'); }
+
+    last=s?Object.assign({},s):last;
+    render(d,uniq);
+  }
+  const flags={};
+  function flag(k){ flags[k]=Date.now(); }
+  function flagged(k){ // one alert per finding per 10 min, so a persistent condition doesn't spam
+    if(!flags[k]) return false;
+    if(Date.now()-flags[k]>600000){ delete flags[k]; return false; }
+    return true;
+  }
+  function render(d,uniq){
+    const s=d.serving||null;
+    const set=(id,v)=>{ const el=$(id); if(el)el.textContent=v; };
+    set('cgServing',fmtServing(s));
+    set('cgOper',d.operator||'—');
+    set('cgChurn',String(uniq!=null?uniq:0));
+    set('cgNeighbors',String((d.neighbors||[]).length));
+    set('cgSms',smsHint);
+    set('cgState',d.emergencyOnly?'limited service':'watching');
+  }
+  // Silent-SMS heuristic, Shizuku-gated and honest about what it can/can't see.
+  function checkSilentSms(){
+    if(!(window.EMIShizuku&&EMIShizuku.runDiagnostic)){ smsHint='needs Shizuku'; render({},null); return; }
+    try{
+      const out=EMIShizuku.runDiagnostic('sms_service')||'';
+      if(!out||/^error:/.test(out)){ smsHint='unavailable'; }
+      else{
+        // Look for the framework's own SMS dispatch bookkeeping. This cannot see a Type-0
+        // message itself — nothing at app level can — it can only report that the SMS stack
+        // shows recent activity, which is meaningful only when you received nothing visible.
+        const m=/(\d+)\s+(?:SMS|sms)[^\n]*(?:dispatch|received|delivered)/i.exec(out);
+        smsHint=m?('stack activity: '+m[1]):'no counters exposed';
+        Alerts.push(1,'Silent-SMS check ran. Note: Type-0 (silent) SMS never reach app-level APIs on Android — this only reports whether the SMS stack shows activity you did not see a message for. Treat as a hint, never proof.','sms0');
+      }
+    }catch(e){ smsHint='error'; }
+    const el=$('cgSms'); if(el)el.textContent=smsHint;
+  }
+  return { poll, checkSilentSms, get alerts(){return alerts;},
+    openBandSettings(){
+      if(window.EMIBridge&&EMIBridge.openNetworkModeSettings){
+        const ok=EMIBridge.openNetworkModeSettings();
+        toast(ok?'Opened network settings — change the band/mode there':'Could not open network settings');
+      } else toast('Native bridge unavailable');
+    } };
+})();
+
+/* ============ BACKGROUND RESILIENCE ============
+   Read-only introspection of this app's own protection state, plus the two user-consent
+   entry points (battery-exemption dialog, app settings page). The app can't grant itself any
+   of this — that's the design: once the user sets it, undoing it requires a deliberate
+   appops/settings change at the device rather than something another app can do quietly. */
+const Resilience=(function(){
+  let last=null;
+  function set(id,v,ok){ const el=$(id); if(!el)return; el.textContent=v;
+    el.style.color = ok===undefined ? '' : (ok?'':'var(--warn,#b45309)'); }
+  function refresh(quiet){
+    if(!(window.EMIBridge&&EMIBridge.getResilienceStatus)){
+      const t=$('rsTag'); if(t)t.textContent='browser preview';
+      if(!quiet) toast('Native bridge unavailable');
+      return null;
+    }
+    let s=null;
+    try{ s=JSON.parse(EMIBridge.getResilienceStatus()||'{}'); }catch(e){ return null; }
+    last=s;
+    set('rsFg', s.foregroundService?'running':'stopped', !!s.foregroundService);
+    set('rsBatt', s.batteryExempt?'exempt':'optimised', !!s.batteryExempt);
+    set('rsBucket', s.standbyBucketName||'—', s.standbyBucket>0&&s.standbyBucket<=20);
+    set('rsRestrict', s.bgRestricted?'restricted':'no', !s.bgRestricted);
+    set('rsNotif', s.notificationsAllowed?'allowed':'blocked', !!s.notificationsAllowed);
+    set('rsBackup', s.allowBackup?'ON (unexpected)':'off', !s.allowBackup);
+    // "Hardened" = nothing the OS could use to quietly stop or throttle the masker is set
+    // against us. Anything short of that gets called out rather than glossed.
+    const weak=[];
+    if(!s.batteryExempt) weak.push('battery optimisation');
+    if(s.bgRestricted) weak.push('background restricted');
+    if(s.standbyBucket>=40) weak.push('standby bucket '+s.standbyBucketName);
+    if(!s.notificationsAllowed) weak.push('notifications blocked');
+    const t=$('rsTag'); if(t){ t.textContent=weak.length?(weak.length+' weak'):'hardened';
+      t.className='tag'+(weak.length?' pill':''); }
+    if(weak.length && !quiet) toast('Weak spots: '+weak.join(', '));
+    return s;
+  }
+  return { refresh,
+    requestExemption(){
+      if(window.EMIBridge&&EMIBridge.requestBatteryExemption){
+        const ok=EMIBridge.requestBatteryExemption();
+        toast(ok?'Confirm the exemption in the system dialog':'Could not open the exemption dialog');
+        setTimeout(()=>refresh(true),4000);
+      } else toast('Native bridge unavailable');
+    },
+    openAppSettings(){
+      if(window.EMIBridge&&EMIBridge.openAppSettings) EMIBridge.openAppSettings();
+      else toast('Native bridge unavailable');
+    },
+    get last(){return last;} };
 })();
 
 /* ============ SENSOR-FUSION ANOMALY ENGINE (+ thermal, + cell/IMSI-catcher heuristics) ============
@@ -2805,11 +3301,17 @@ function draw(now){
     const dgS=$('dgScore'),dgB=$('dgBar'),dgT=$('dgTag');
     if(dgS){ const sc=DemodGuard.score; dgS.textContent=Math.round(sc*100)+'%'; if(dgB)dgB.style.width=(sc*100)+'%';
       if(dgT)dgT.textContent=DemodGuard.enabled?(running?'watching':'idle'):'off'; }
+    const dgA=$('dgAm'),dgAB=$('dgAmBar'),dgD=$('dgDepth'),dgK=$('dgKind');
+    if(dgA){ const am=DemodGuard.amScore; dgA.textContent=Math.round(am*100)+'%'; if(dgAB)dgAB.style.width=(am*100)+'%'; }
+    if(dgD) dgD.textContent=Math.round(DemodGuard.depth*100)+'%';
+    if(dgK) dgK.textContent=DemodGuard.lastKind||'—';
     if(DemodGuard.flash>0.4){ const dl=$('dgTag'); if(dl){dl.textContent='remodulating'; dl.className='tag pill ok';}
       setTimeout(()=>{ const el=$('dgTag'); if(el)el.className='tag'; },900); }
+    const bcm=$('bleCadMode'); if(bcm&&Accessories.cadenceMode!=='idle')bcm.textContent=Accessories.cadenceMode;
+    const wcm=$('wifiCadMode'); if(wcm&&RF.wifiCadenceMode!=='idle')wcm.textContent=RF.wifiCadenceMode;
   }
   Mic.tick();
-  if(--anomCd<=0){ anomCd=45; Anomaly.tick(); Accessories.meshRender(); } // ~throttled, native-bridge-backed reads
+  if(--anomCd<=0){ anomCd=45; Anomaly.tick(); Accessories.meshRender(); CellGuard.poll(); } // ~throttled, native-bridge-backed reads
   const dp=$('page-detect'); if(dp&&dp.classList.contains('on')) drawSpectrum();
   requestAnimationFrame(draw);
 }
@@ -2905,7 +3407,25 @@ document.querySelectorAll('[data-specsrc]').forEach(b=>b.addEventListener('click
 /* RF passive scan */
 $('rfScan').addEventListener('click',()=>RF.wifiScanNow());
 $('wifiExportLog').addEventListener('click',()=>RF.exportWifiLog());
+$('wifiChaotic').addEventListener('click',()=>{ const b=$('wifiChaotic'),v=b.getAttribute('aria-pressed')!=='true';
+  b.setAttribute('aria-pressed',String(v)); RF.setChaoticWifi(v); });
 $('tgRecheck').addEventListener('click',()=>Anomaly.recheckIntegrity());
+
+/* sensor blasts */
+$('sbEn').addEventListener('click',()=>{ const b=$('sbEn'),v=b.getAttribute('aria-pressed')!=='true';
+  b.setAttribute('aria-pressed',String(v)); SensorBlast.enabled=v; });
+$('sbNow').addEventListener('click',()=>{ const n=SensorBlast.blastNow(); toast('Blast: '+n+' read'+(n===1?'':'s')); });
+
+/* cell guard */
+$('cgPoll').addEventListener('click',()=>{ CellGuard.poll(); toast('Cell guard polled'); });
+$('cgSms0').addEventListener('click',()=>CellGuard.checkSilentSms());
+$('cgBand').addEventListener('click',()=>CellGuard.openBandSettings());
+
+/* background resilience */
+$('rsRefresh').addEventListener('click',()=>Resilience.refresh());
+$('rsFix').addEventListener('click',()=>Resilience.requestExemption());
+$('rsAppSettings').addEventListener('click',()=>Resilience.openAppSettings());
+Resilience.refresh(true);
 
 /* camera visual scan */
 $('camEn').addEventListener('click',()=>{ Cam.enabled?Cam.disable():Cam.enable(); });

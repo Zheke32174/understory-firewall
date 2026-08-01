@@ -27,7 +27,20 @@ class ShizukuUserService : IShizukuDiagService.Stub() {
             // This entry only reports whether the node exists and what its permission
             // bits look like, so the UI can say "diag access looks possible here" —
             // it is a hint, not a detector.
-            "diag_probe" to arrayOf("sh", "-c", "ls -la /dev/diag* 2>&1 || echo 'no /dev/diag node'")
+            "diag_probe" to arrayOf("sh", "-c", "ls -la /dev/diag* 2>&1 || echo 'no /dev/diag node'"),
+            // SMS service state. This is the only angle a non-privileged app has on
+            // "silent"/Type-0 SMS: those messages are consumed by the modem and framework and
+            // NEVER surface to app-layer SMS APIs, so the app genuinely cannot see one
+            // directly. What this dump does show is the framework's own SMS dispatch
+            // bookkeeping — counters/history that can tick without any user-visible message
+            // arriving. That mismatch is a heuristic worth surfacing, not proof of a silent
+            // ping. Read-only dumpsys, same as every other entry here.
+            "sms_service" to arrayOf("dumpsys", "isms"),
+            // Carrier/subscription state — which network the modem thinks it's on, plus
+            // emergency-number and carrier-config state used by the cell guard's
+            // "same carrier?" check across a suspicious cell change.
+            "subscription" to arrayOf("dumpsys", "telephony.registry", "--all"),
+            "carrier_config" to arrayOf("dumpsys", "carrier_config")
         )
     }
 

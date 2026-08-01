@@ -31,6 +31,15 @@ import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.app.ActivityManager
+import android.app.usage.UsageStatsManager
+import android.net.Uri
+import android.os.PowerManager
+import android.provider.Settings
+import android.telephony.CellIdentityGsm
+import android.telephony.CellIdentityLte
+import android.telephony.CellIdentityNr
+import android.telephony.CellIdentityWcdma
 import android.telephony.CellInfoGsm
 import android.telephony.CellInfoLte
 import android.telephony.CellInfoNr
@@ -256,6 +265,184 @@ class EmiBridge(private val ctx: Context, private val web: WebView) : SensorEven
             o.put("error", "unavailable")
         }
         return o.toString()
+    }
+
+    // ---- Cell guard: serving-cell identity + channel/band telemetry (receive-only) -------
+    // Everything here comes from TelephonyManager.allCellInfo — the same passive read the
+    // IMSI-catcher heuristic already uses, just not thrown away after counting. The extra
+    // fields (cell id, PCI, TAC, ARFCN/EARFCN/NRARFCN, band list, operator MCC/MNC) are what
+    // let the JS side notice *which* channel the phone was moved to and whether the carrier
+    // stayed the same — the signature of a forced re-selection onto an attacker's cell.
+    //
+    // This method does not, and will not, CHANGE any of it. Selecting a band or network mode
+    // programmatically needs MODIFY_PHONE_STATE (privileged) or a WRITE_SECURE_SETTINGS poke
+    // at the modem's preferred-network-mode; both are outside this app, and a masker silently
+    // reconfiguring the radio is exactly the failure mode you don't want when someone needs to
+    // dial emergency services. `openNetworkModeSettings()` below hands that decision to the
+    // user, with the readout here as context. See ETHICS.md.
+    @JavascriptInterface
+    fun getCellGuardStatus(): String {
+        val o = JSONObject()
+        if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            o.put("error", "no_location_permission"); return o.toString()
+        }
+        try {
+            val tm = ctx.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+            @Suppress("DEPRECATION") val cells = tm.allCellInfo ?: emptyList()
+            val neighbors = JSONArray()
+            var serving: JSONObject? = null
+            for (c in cells) {
+                val e = JSONObject()
+                val gen: Int
+                when (c) {
+                    is CellInfoNr -> {
+                        gen = 5
+                        (c.cellIdentity as? CellIdentityNr)?.let { id ->
+                            e.put("nci", id.nci); e.put("pci", id.pci); e.put("tac", id.tac)
+                            e.put("arfcn", id.nrarfcn)
+                            e.put("mcc", id.mccString ?: ""); e.put("mnc", id.mncString ?: "")
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                e.put("bands", JSONArray(id.bands.toList()))
+                            }
+                        }
+                    }
+                    is CellInfoLte -> {
+                        gen = 4
+                        val id = c.cellIdentity
+                        e.put("ci", id.ci); e.put("pci", id.pci); e.put("tac", id.tac)
+                        e.put("arfcn", id.earfcn)
+                        e.put("mcc", id.mccString ?: ""); e.put("mnc", id.mncString ?: "")
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            e.put("bands", JSONArray(id.bands.toList()))
+                        }
+                    }
+                    is CellInfoWcdma -> {
+                        gen = 3
+                        val id = c.cellIdentity
+                        e.put("ci", id.cid); e.put("pci", id.psc); e.put("tac", id.lac)
+                        e.put("arfcn", id.uarfcn)
+                        e.put("mcc", id.mccString ?: ""); e.put("mnc", id.mncString ?: "")
+                    }
+                    is CellInfoGsm -> {
+                        gen = 2
+                        val id = c.cellIdentity
+                        e.put("ci", id.cid); e.put("pci", id.bsic); e.put("tac", id.lac)
+                        e.put("arfcn", id.arfcn)
+                        e.put("mcc", id.mccString ?: ""); e.put("mnc", id.mncString ?: "")
+                    }
+                    else -> gen = 0
+                }
+                e.put("gen", gen)
+                e.put("dbm", try { c.cellSignalStrength.dbm } catch (_: Exception) { 0 })
+                if (c.isRegistered && serving == null) serving = e else neighbors.put(e)
+            }
+            if (serving != null) o.put("serving", serving)
+            o.put("neighbors", neighbors)
+            o.put("operator", tm.networkOperatorName ?: "")
+            o.put("operatorNumeric", tm.networkOperator ?: "")
+            o.put("simOperatorNumeric", tm.simOperator ?: "")
+            // Whether the modem is currently parked somewhere emergency-only ("limited service"):
+            // a real signature of a cell that accepted the phone but won't carry normal traffic.
+            o.put("emergencyOnly", try {
+                @Suppress("DEPRECATION") (tm.networkOperator.isNullOrEmpty() && tm.simState == TelephonyManager.SIM_STATE_READY)
+            } catch (_: Exception) { false })
+            o.put("dataState", try { @Suppress("DEPRECATION") tm.dataState } catch (_: Exception) { -1 })
+        } catch (_: SecurityException) {
+            o.put("error", "security_exception")
+        } catch (_: Exception) {
+            o.put("error", "unavailable")
+        }
+        return o.toString()
+    }
+
+    /** Opens the OS's own network-mode / mobile-network settings so the USER can change
+     *  band/network preference themselves. The app never writes it. */
+    @JavascriptInterface
+    fun openNetworkModeSettings(): Boolean {
+        return try {
+            val i = Intent(Settings.ACTION_NETWORK_OPERATOR_SETTINGS)
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ctx.startActivity(i); true
+        } catch (_: Exception) {
+            try {
+                val i2 = Intent(Settings.ACTION_WIRELESS_SETTINGS)
+                i2.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                ctx.startActivity(i2); true
+            } catch (_: Exception) { false }
+        }
+    }
+
+    // ---- Background resilience / self-protection state (read-only introspection) ---------
+    // Reports how well-protected this process currently is against being silently killed or
+    // throttled: foreground service, battery-optimisation exemption, app-standby bucket,
+    // notification permission, and build-level flags. Reporting only — the one action offered
+    // (`requestBatteryExemption`) is the standard user-consent system dialog.
+    @JavascriptInterface
+    fun getResilienceStatus(): String {
+        val o = JSONObject()
+        try {
+            val pm = ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager
+            o.put("batteryExempt", if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && pm != null)
+                pm.isIgnoringBatteryOptimizations(ctx.packageName) else true)
+
+            val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+            o.put("bgRestricted", if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && am != null)
+                am.isBackgroundRestricted else false)
+
+            val usm = ctx.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
+            val bucket = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && usm != null)
+                try { usm.appStandbyBucket } catch (_: Exception) { -1 } else -1
+            o.put("standbyBucket", bucket)
+            o.put("standbyBucketName", when (bucket) {
+                10 -> "active"; 20 -> "working_set"; 30 -> "frequent"
+                40 -> "rare"; 45 -> "restricted"; else -> "unknown"
+            })
+
+            o.put("foregroundService", MaskerService.isRunning)
+            o.put("notificationsAllowed",
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+                    ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+                else true)
+
+            val ai = ctx.applicationInfo
+            o.put("debuggable", (ai.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0)
+            o.put("allowBackup", (ai.flags and android.content.pm.ApplicationInfo.FLAG_ALLOW_BACKUP) != 0)
+            o.put("sdkInt", Build.VERSION.SDK_INT)
+        } catch (_: Exception) {
+            o.put("error", "unavailable")
+        }
+        return o.toString()
+    }
+
+    /** Fires the standard system dialog asking the user to exempt this app from battery
+     *  optimisation. User-consented; the app cannot grant this to itself. */
+    @JavascriptInterface
+    fun requestBatteryExemption(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return false
+        return try {
+            val i = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+            i.data = Uri.parse("package:${ctx.packageName}")
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ctx.startActivity(i); true
+        } catch (_: Exception) {
+            try {
+                val i2 = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                i2.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                ctx.startActivity(i2); true
+            } catch (_: Exception) { false }
+        }
+    }
+
+    /** Opens this app's own system settings page (permissions / special app access), the
+     *  screen where an appops-level change would have to be made deliberately by a human. */
+    @JavascriptInterface
+    fun openAppSettings(): Boolean {
+        return try {
+            val i = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            i.data = Uri.parse("package:${ctx.packageName}")
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ctx.startActivity(i); true
+        } catch (_: Exception) { false }
     }
 
     // ---- GNSS satellite status (real satellite telemetry, receive-only) -----------------

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Audio playback in the background -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -31,6 +32,14 @@
          spotting hidden-camera/mic IR LEDs, since many phone sensors have weak IR-cut
          filtering). No frame is ever recorded, saved, or transmitted. -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Background resilience: lets the app ASK (via the standard system dialog — it cannot
+         grant this to itself) to be exempt from battery optimisation, so aggressive OEM dozing
+         can't silently stall the masking audio with the screen off. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Read-only: lets the resilience panel report this app's own app-standby bucket, i.e.
+         how throttled the OS currently considers it. Self-introspection only. -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
 
     <uses-feature android:name="android.hardware.audio.output" android:required="true" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
@@ -52,8 +61,14 @@
         <package android:name="moe.shizuku.privileged.api" />
     </queries>
 
+    <!-- allowBackup=false / no cross-device restore: the app's saved profiles, trusted-network
+         list and geofences describe where you are and what you consider safe. Letting that ride
+         out in a cloud backup, or be restored onto another device, is a worse leak than losing
+         it. dataExtractionRules likewise opts out of both cloud backup and device transfer. -->
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"

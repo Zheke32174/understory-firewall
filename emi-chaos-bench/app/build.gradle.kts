@@ -11,8 +11,8 @@ android {
         applicationId = "com.ant.emichaosbg"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
-        versionName = "3.4-foxhunt"
+        versionCode = 8
+        versionName = "3.5-blackout"
     }
 
     buildTypes {
