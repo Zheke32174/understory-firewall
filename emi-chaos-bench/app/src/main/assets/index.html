@@ -140,6 +140,7 @@
   .kv{display:flex;justify-content:space-between;font-size:10.5px;padding:4px 0;border-bottom:1px dashed var(--rule)}
   .kv:last-child{border-bottom:none}
   .kv b{color:var(--ink)}
+.thrash{height:3px;width:6px;margin-top:8px;border-radius:2px;background:#5fd4c4;opacity:.55}
 </style>
 </head>
 <body>
@@ -267,6 +268,10 @@
           <div class="stat"><small>Bursts</small><b id="ssCount">0</b></div>
           <div class="stat"><small>Mode</small><b id="ssMode">idle</b></div>
         </div>
+        <!-- The layout-thrash target. Real node, really in the layout, so writing its width
+             and then reading offsetWidth forces the synchronous reflow that is half of the
+             original Bluetooth-off stutter. Doubles as a visible tell that bursts are firing. -->
+        <div id="ssThrash" class="thrash"></div>
         <div class="muted">The sound-and-app stutter that happened when the BLE chaotic cadence ran with
           <b>Bluetooth switched off</b> — restored as its own function, and now identical whether Bluetooth is on
           or off.
@@ -1184,7 +1189,10 @@ const MOD=[
  {id:'wg',title:'Wind gust',tog:'e_wg',defOff:true,ctrls:[
    R('L_wg','Level',0,1,.01,'pct',.28), R('wgRate','Cycle',.02,.6,.01,'/s',.12),
    R('wgSwell','Swell',0,1,.01,'pct',.6), R('wgTone','Tone',.005,.3,.005,'pct',.05) ]},
- {id:'ms',title:'Metallic strike',tog:'e_ms',defOff:true,ctrls:[
+ // tog is e_mst, NOT e_ms: e_ms belongs to the Auto-masher, declared far above. Sharing the
+ // key made this module (built later, and defOff) overwrite P.e_ms to false, which silently
+ // switched the Auto-masher off by default while its own switch still rendered as pressed.
+ {id:'ms',title:'Metallic strike',tog:'e_mst',defOff:true,ctrls:[
    R('L_ms','Level',0,1,.01,'pct',.3), R('msRate','Strikes',.2,20,.2,'/s',2),
    R('msRing','Ring',5,200,1,'q',40,15,150), R('msBase','Base',100,2000,20,'hz',500),
    R('msSpread','Spread',0,1,.01,'pct',.3) ]},
@@ -1391,6 +1399,15 @@ const PLZ=5; let plY1=new Float64Array(PLZ),plY2=new Float64Array(PLZ),plC=new F
 let rdPh=0,rdT=-1,rdCd=0,rdF=800;
 let pkPh=0,pkClk=0,pkBit=0,pkFrame=0,pkCd=0;
 let usPh=new Float64Array(6),usF=new Float64Array(6);
+// Set only by Mic's ultrasonic null probe (see MIC VOICE DETECTION). It mutes the pilot
+// bank — and nothing else — for a few hundred ms so the microphone can be read while this
+// app is provably silent above 18kHz. Never touched by the UI, a profile or the masher.
+//
+// It is a DEADLINE rather than a flag on purpose. A flag would stay set if the probe's
+// owner stopped being ticked half way through — mic disabled, page hidden, tab throttled —
+// and the pilots would go off for the rest of the session with nothing left to turn them
+// back on. A deadline cannot outlive its own window.
+let usSelfMuteUntil=0;
 let sbPh=0,sbWob=0;
 let mrPh=0,mrRp=0;
 let rlSpk=0,rlCd=0,rlBounce=0;
@@ -1870,6 +1887,9 @@ function proc(e){
   const aR=chz(P.aRate), bR=chz(P.bRate);
   const cvOn=!!P.e_cv, cR=chz(P.cRate), dR=chz(P.dRate), eR=chz(P.eRate), fR=chz(P.fRate);
   const spN=P.spN|0, cwN=P.cwS|0, hmH=P.hmH|0, usN=P.usN|0;
+  // Per-buffer, not per-sample: the null probe's window is hundreds of ms, so buffer
+  // granularity is far finer than it needs and costs one comparison instead of n.
+  const usMuted=usSelfMuteUntil>0&&procT0<usSelfMuteUntil;
   const arP=P.arR*E*(1/300), arSh=lerp(.5,.985,P.arS);
   const vmOn=P.e_vm, vmN=P.vmTalk|0; let vC=null; if(vmOn)vC=bpCoef(P.vmLo,Math.max(P.vmLo+50,P.vmHi));
   const vfOn=P.e_vf&&P.vfAmt>0, vfAmt=P.vfAmt; let fC=null; if(vfOn)fC=bpCoef(P.vfLo,Math.max(P.vfLo+50,P.vfHi));
@@ -1982,7 +2002,7 @@ function proc(e){
       if(pkFrame>0){ pkClk+=P.pkB/sr; if(pkClk>=1){pkClk-=1; pkBit=Math.random()<.5?1:0; pkFrame--;}
         pkPh+=P.pkC*fmF/sr; if(pkPh>=1)pkPh-=(pkPh|0); mono+=(pkBit?1:0)*Math.sin(TAU*pkPh)*P.L_pk; } }
 
-    if(P.e_us){ let z=0; for(let k=0;k<usN;k++){ usPh[k]+=usF[k]/sr; if(usPh[k]>=1)usPh[k]-=(usPh[k]|0);
+    if(P.e_us&&!usMuted){ let z=0; for(let k=0;k<usN;k++){ usPh[k]+=usF[k]/sr; if(usPh[k]>=1)usPh[k]-=(usPh[k]|0);
         z+=Math.sin(TAU*usPh[k]); } mono+=(z/Math.max(1,usN))*P.L_us; }
 
     if(P.e_sb){ sbWob+=(0.3+P.sbW*3)/sr; if(sbWob>=1)sbWob-=1; const fm=1+P.sbW*0.3*Math.sin(TAU*sbWob);
@@ -2082,7 +2102,7 @@ function proc(e){
         mono=mono*0.15+cap[idx]*0.9*P.L_gl;
         glAge++; if(glAge>=glLenSamp) glActive=false; } }
 
-    if(P.e_ms){ // Metallic strike: inharmonic modal resonators, struck-metal character
+    if(P.e_mst){ // Metallic strike: inharmonic modal resonators, struck-metal character
       if(--msCd<=0){ msCd=Math.max(1,Math.round(sr/Math.max(.1,P.msRate)));
         for(let s=0;s<MS_N;s++){ const f=P.msBase*MS_RATIOS[s]*(1+rnd(-1,1)*P.msSpread*0.05);
           const w=TAU*f/sr, rr=cl(1-(Math.PI*f/P.msRing)/sr,.9,.99995);
@@ -3245,7 +3265,22 @@ const ScanStutter=(function(){
         }
       }
     }catch(e){}
-    // 2) DOM churn — the other half of the original main-thread load.
+    // 2) DOM churn — the other half of the original main-thread load, and the half that was
+    // missing. The BLE-off investigation found TWO collision sources, not one: the synchronous
+    // bridge round-trips above, and the scan panel writing to the DOM every cycle. A style
+    // WRITE followed by a READ of a layout property forces a SYNCHRONOUS reflow — the browser
+    // must lay the page out right then, on the main thread, in the same window the audio
+    // callback needs. That is what actually collided with the audio. A toast alone was not it:
+    // toasts are async and cost no forced layout.
+    //
+    // Bounded deliberately: the loop is capped by severity, the node is a 1px bar of its own
+    // so nothing the user reads moves, and the whole burst is far too short to risk an ANR.
+    const churn=1+Math.round(intensity*6);
+    const host=$('ssThrash');
+    if(host){ for(let i=0;i<churn;i++){
+      host.style.width=(6+((bursts+i)%36))+'px';   // write
+      void host.offsetWidth;                        // read → forced synchronous reflow
+    } }
     if(Math.random()<0.5) toast('scan…');
     // 3) Assert the audible glitch so it does not depend on device bridge speed.
     if(Math.random()<0.6) holdSamples=Math.round(rnd(40,300+intensity*900));
@@ -3581,14 +3616,16 @@ const Profiles=(function(){
     'Waveform lab':seedFrom({e_wv:true,L_wv:.6,wvSpread:.7,wvDetune:.6,e_nf:false,lv:.26}),
     'Storm front':seedFrom({e_wg:true,e_cnr:true,e_sb:true,L_wg:.6,L_cnr:.5,L_sb:.4,lv:.3}),
     'Chaos vector overdrive':seedFrom({e_cv:true,cAmt:.8,dAmt:.7,eAmt:.6,fAmt:.7,cDest:'freq',dDest:'doppler',eDest:'formant',fDest:'glitch',lv:.28,mStr:.7}),
-    'Insect hive':seedFrom({e_ic:true,e_ms:true,e_fm:true,L_ic:.5,L_ms:.4,L_fm:.4,lv:.3}),
+    'Insect hive':seedFrom({e_ic:true,e_mst:true,e_fm:true,L_ic:.5,L_ms:.4,L_fm:.4,lv:.3}),
     'Submarine':seedFrom({e_sb:true,e_pll:true,e_cw:true,L_sb:.6,L_pll:.4,L_cw:.4,drive:2.4,lv:.3}),
     'Radio silence':seedFrom({e_vm:true,vmD:.7,L_vm:.5,e_nf:true,L_nf:.3,e_sw:false,e_ar:false,drive:1.8,lv:.18,mStr:.2,mPps:3}),
     'Shepard spiral':seedFrom({e_shp:true,e_gr:true,e_cf:true,L_shp:.6,L_gr:.4,L_cf:.5,lv:.28}),
     'Feedback chamber':seedFrom({e_fb:true,e_rz:true,e_pl:true,L_fb:.35,L_rz:.5,L_pl:.4,drive:3.2,lv:.3}),
     'Total chaos':seedFrom({e_cv:true,e_wv:true,e_ps:true,e_fd:true,e_pd:true,e_duo:true,e_shp:true,e_gr:true,
-      e_fb:true,e_gl:true,e_ic:true,e_ms:true,e_cnr:true,e_wg:true,e_tl:true,e_cf:true,e_chr:true,e_fm:true,
-      e_pll:true,e_ft:true,drive:4,lv:.35,mStr:.8,mPps:30})
+      e_fb:true,e_gl:true,e_ic:true,e_mst:true,e_cnr:true,e_wg:true,e_tl:true,e_cf:true,e_chr:true,e_fm:true,
+      // e_ms (the masher) is named explicitly here: this profile sets mStr/mPps, so it always
+      // meant to drive the masher as well as the metallic-strike source the old shared key hit.
+      e_pll:true,e_ft:true,e_ms:true,drive:4,lv:.35,mStr:.8,mPps:30})
   };
   function seedFrom(over){ return {over}; }
   function snapshot(){ const s={p:{},tog:{},mm:MODMATRIX.map(r=>({src:r.src,dst:r.dst,depth:r.depth})),
@@ -3694,9 +3731,24 @@ const Scene=(function(){
 
 /* ============ ALERT LOG (shared by RF / Anomaly / mesh ingestion) ============ */
 const Alerts=(function(){
-  const log=[]; const MAXLOG=60;
+  /* MAXLOG was 60 and repeats were logged as separate entries. On device that emptied the
+     log of everything else within about ninety seconds: a scan that saw three APs sharing an
+     SSID pushed three byte-identical alerts in the same millisecond, and the periodic
+     hidden/WPS/open counts re-pushed on every scan cycle. Distinct one-off findings — the
+     ones actually worth reading — were evicted by the repeats of a single recurring one.
+
+     Repeats are COALESCED, not dropped. A recurrence updates the existing entry's count and
+     timestamp and moves it back to the top, so the log still shows every distinct finding,
+     still shows that a finding is recurring, and still shows how often and how recently. No
+     detection is discarded — the count is the evidence that it kept happening. */
+  const log=[]; const MAXLOG=200, COALESCE_MS=120000;
   function push(sev,msg,badge){ // sev: 1=info, 2=warn, 3=crit — heuristic, not certified detection
-    log.unshift({t:Date.now(),sev,msg,badge}); if(log.length>MAXLOG)log.length=MAXLOG;
+    const now=Date.now();
+    const i=log.findIndex(a=>a.msg===msg&&a.badge===badge&&now-a.t<COALESCE_MS);
+    if(i>=0){ const e=log[i]; e.n=(e.n||1)+1; e.t=now; e.sev=Math.max(e.sev,sev);
+      if(i>0){ log.splice(i,1); log.unshift(e); }
+      render(); if(sev>=2) haptic('clip'); return; }
+    log.unshift({t:now,sev,msg,badge,n:1}); if(log.length>MAXLOG)log.length=MAXLOG;
     render(); if(sev>=2) haptic('clip');
   }
   function render(){
@@ -3708,7 +3760,8 @@ const Alerts=(function(){
       const d=document.createElement('div'); d.className='alert sev-'+a.sev;
       const t=document.createElement('span'); t.className='t';
       try{ t.textContent=new Date(a.t).toLocaleTimeString(); }catch(e){ t.textContent=''; }
-      const m=document.createElement('span'); m.className='m'; m.textContent=a.msg;
+      const m=document.createElement('span'); m.className='m';
+      m.textContent=a.msg+((a.n>1)?'  ×'+a.n:'');
       d.append(t,m);
       if(a.badge){ const b=document.createElement('span'); b.className='badge'+(a.sev>=3?' crit':a.sev>=2?' warn':''); b.textContent=a.badge; d.appendChild(b); }
       el.appendChild(d);
@@ -3725,6 +3778,92 @@ const Mic=(function(){
   let actx=null,stream=null,src=null,an=null,freqBuf=null,enabled=false,mode='off';
   let vadFloor=0.02, vadHold=0, vadActive=false, ultraFlag=false, ultraHist=[], savedLv=null;
   const SPEECH_LO=250, SPEECH_HI=3500, ULTRA_LO=18000;
+
+  /* ---- ULTRASONIC SOURCE ATTRIBUTION (null probe) -------------------------------------
+     The ultrasonic check below looks for sustained, modulated energy above 18kHz. This
+     app's own "Ultrasonic pilots" source emits 1-6 tones drawn from 17-21kHz, and the
+     output rack then sweeps and ring-mods them — which is, to that check, the same shape
+     as an injected carrier. On device it fired every few seconds for as long as the masker
+     ran.
+
+     Two wrong ways to answer that. Muting the check while pilots are on blinds it during
+     exactly the sessions this app exists for — and an attacker has every reason to sit in
+     the band we are already filling. Declaring the alerts false and dropping them is worse:
+     nothing here can actually establish that, and a detector that quietly discards what it
+     can't explain is no longer a detector.
+
+     So the app measures it instead. When a candidate appears while we are emitting above
+     18kHz, the pilot bank alone is muted for ~450ms and the band is read again. Ultrasound
+     that survives our own silence is not ours. Muting inaudible tones is imperceptible and
+     costs no masking: speech masking lives at 250-3500Hz and is untouched.
+
+     The alert is raised either way, every time. The probe only changes what the alert can
+     tell you — whether the energy outlived our own output, or whether it could not be
+     separated from it. Nothing is ever discarded on the strength of this. */
+  const PROBE_MS=450, PROBE_SETTLE=150, PROBE_COOLDOWN=15000, PROBE_SURVIVE=0.55;
+  let probe=null, lastProbeEnd=-1e9;
+
+  /** True when this app is putting energy into the detector's own band right now. */
+  function selfEmittingUltra(){
+    if(!running||!P.e_us||!(P.L_us>0)||!(P.lv>0)) return false;
+    const n=P.usN|0;
+    for(let k=0;k<n;k++) if(usF[k]>=ULTRA_LO) return true;
+    return false;
+  }
+  function ultraAlert(sev,attribution){
+    Alerts.push(sev,'Ultrasonic band (≥18kHz) shows sustained, modulated energy — possible '+
+      'inaudible-command injection (DolphinAttack/SurfingAttack-style). '+attribution,'sonic-demod');
+  }
+  /** Raise a candidate, probing first when our own output could account for it. */
+  function ultraRaise(level,usEl){
+    const now=perfNow();
+    if(!selfEmittingUltra()){
+      ultraAlert(3,'This app was emitting nothing above 18kHz at the time, so the energy is '+
+        'external to it. Heuristic only — verify manually.');
+      if(usEl)usEl.textContent='⚠ external';
+      return;
+    }
+    if(now-lastProbeEnd<PROBE_COOLDOWN){
+      ultraAlert(2,'This app was also emitting ultrasonic pilots at the time and a null probe '+
+        'ran too recently to repeat, so the two could not be separated on this detection.');
+      if(usEl)usEl.textContent='⚠ unseparated';
+      return;
+    }
+    // The deadline is set a little past the probe's own window so the last sample is still
+    // taken in silence, and so the pilots come back on their own if this probe is abandoned.
+    probe={start:now,base:level,sum:0,n:0,el:usEl}; usSelfMuteUntil=now+PROBE_MS+200;
+    if(usEl)usEl.textContent='probing…';
+  }
+  /** Advances an in-flight probe. Returns true while the probe owns the band. */
+  function probeStep(now,level){
+    if(!probe) return false;
+    if(now<probe.start+PROBE_SETTLE) return true;   // analyser still bleeding the pre-mute tail
+    if(now<probe.start+PROBE_MS){ probe.sum+=level; probe.n++; return true; }
+    usSelfMuteUntil=0; lastProbeEnd=now;
+    const p=probe; probe=null;
+    const during=p.n?p.sum/p.n:0;
+    // Ratio, not difference: absolute level depends on mic gain and distance to the speaker.
+    const survived=p.base>0?during/p.base:0;
+    const pct=(survived*100).toFixed(0);
+    if(survived>PROBE_SURVIVE){
+      ultraAlert(3,`It held at ${pct}% of its level through a ${PROBE_MS}ms window in which `+
+        `this app muted its own ultrasonic pilots — so it is not this app's output.`);
+      if(p.el)p.el.textContent='⚠ external';
+    } else {
+      ultraAlert(2,`With this app's own ultrasonic pilots muted for ${PROBE_MS}ms the band fell `+
+        `to ${pct}% of its level. That is consistent with this app's own emission — and equally `+
+        `with a source that is intermittent or that tracks our output. Not separated.`);
+      if(p.el)p.el.textContent='⚠ unseparated';
+    }
+    return true;
+  }
+  /** Shared by the WebView and native paths. */
+  function ultraEvaluate(level,modulated,usEl){
+    if(probeStep(perfNow(),level)) return;
+    if(modulated&&!ultraFlag){ ultraFlag=true; ultraRaise(level,usEl); }
+    else if(!modulated&&ultraFlag){ ultraFlag=false; }
+    if(!ultraFlag&&usEl) usEl.textContent=(level*100).toFixed(0)+'%';
+  }
   // Persistent diagnostic snapshot, replacing "read the toast before it vanishes." Filled in
   // on every enable() attempt, success or failure, so a report of "still broken, different
   // message" can be answered from what actually happened instead of another guess.
@@ -3871,12 +4010,9 @@ const Mic=(function(){
       const lvEl=$('micLv'); if(lvEl)lvEl.textContent=(level*100).toFixed(0)+'%';
       const bar=$('micBar'); if(bar)bar.style.width=(cl(level,0,1)*100)+'%';
       const vd=$('micVad'); if(vd)vd.textContent=vadActive?'speech':'quiet';
-      const us=$('micUs');
-      const ul=cl(d.ultra||0,0,1);
-      if(us) us.textContent=ul>0.35?'⚠ possible':(ul*100).toFixed(0)+'%';
-      if(ul>0.35 && !ultraFlag){ ultraFlag=true;
-        Alerts.push(2,'Ultrasonic band (≥18kHz) shows sustained energy — possible inaudible-command injection. Heuristic only. (native analyser)','sonic-demod'); }
-      else if(ul<=0.35) ultraFlag=false;
+      // Same attribution path as the WebView branch — the native analyser reports a single
+      // band level rather than bins, but the null probe works on the level just as well.
+      ultraEvaluate(cl(d.ultra||0,0,1),cl(d.ultra||0,0,1)>0.35,$('micUs'));
       reactive(level,vadActive);
       return;
     }
@@ -3901,16 +4037,14 @@ const Mic=(function(){
     const usLoBin=Math.min(freqBuf.length-1,Math.floor(ULTRA_LO/binHz));
     let usum=0,un=0; for(let i=usLoBin;i<freqBuf.length;i++){usum+=freqBuf[i];un++;}
     const usLevel=un?(usum/un)/255:0;
+    // A probe reads the band with our pilots muted; feeding those samples into the history
+    // would drag the running mean down and mask the very thing being measured.
+    if(probeStep(perfNow(),usLevel)) { reactive(level,vadActive); return; }
     ultraHist.push(usLevel); if(ultraHist.length>40)ultraHist.shift();
     if(ultraHist.length>=20){
       const mean=ultraHist.reduce((a,b)=>a+b,0)/ultraHist.length;
       let vr=0; ultraHist.forEach(v=>vr+=(v-mean)*(v-mean)); vr/=ultraHist.length;
-      const modulated=mean>0.12 && Math.sqrt(vr)>mean*0.35;
-      const usEl=$('micUs');
-      if(modulated && !ultraFlag){ ultraFlag=true; if(usEl)usEl.textContent='⚠ possible';
-        Alerts.push(2,'Ultrasonic band (≥18kHz) shows sustained, modulated energy — possible inaudible-command injection (DolphinAttack/SurfingAttack-style). Heuristic only, verify manually.','sonic-demod'); }
-      else if(!modulated && ultraFlag){ ultraFlag=false; }
-      if(!ultraFlag && usEl)usEl.textContent=(usLevel*100).toFixed(0)+'%';
+      ultraEvaluate(mean,mean>0.12&&Math.sqrt(vr)>mean*0.35,$('micUs'));
     }
     reactive(level,vadActive);
   }
@@ -4022,8 +4156,18 @@ const RF=(function(){
       else if(prev.ssid!==r.ssid && !isTrusted){ r.flags.push('ssid-changed'); }
       r.flag=r.flags[0]||null; // single badge shown inline; full list still available
     });
-    list.forEach(r=>{ if((r.flags||[]).includes('dup-vendor')) Alerts.push(2,`Wi-Fi SSID "${r.ssid}" broadcast from multiple vendor MAC prefixes — possible rogue/evil-twin AP.`,'rogue-ap');
-      if((r.flags||[]).includes('ssid-changed')) Alerts.push(2,`BSSID ${r.bssid} changed which SSID it broadcasts — possible spoofed AP.`,'rogue-ap'); });
+    // Aggregated per SSID, not per record: dup-vendor is by definition a property of the
+    // SSID's whole group, so emitting it once per member produced N byte-identical alerts in
+    // the same millisecond. Reporting the count and the prefixes says strictly more.
+    const dupBySsid=new Map();
+    list.forEach(r=>{ if((r.flags||[]).includes('dup-vendor')){
+      if(!dupBySsid.has(r.ssid)) dupBySsid.set(r.ssid,new Set());
+      dupBySsid.get(r.ssid).add((r.bssid||'').slice(0,8).toLowerCase()); } });
+    dupBySsid.forEach((prefixes,ssid)=>Alerts.push(2,`Wi-Fi SSID "${ssid}" broadcast from ${prefixes.size} `+
+      `different vendor MAC prefixes (${[...prefixes].join(', ')}) — possible rogue/evil-twin AP. Large `+
+      `carrier and mesh deployments also look like this; Trust the BSSID to stop flagging one you know.`,'rogue-ap'));
+    list.forEach(r=>{ if((r.flags||[]).includes('ssid-changed'))
+      Alerts.push(2,`BSSID ${r.bssid} changed which SSID it broadcasts — possible spoofed AP.`,'rogue-ap'); });
     if(hidden>3) Alerts.push(1,`${hidden} hidden-SSID networks visible nearby.`,'wifi');
     if(wpsCount>0) Alerts.push(1,`${wpsCount} nearby network${wpsCount===1?'':'s'} advertise WPS — a known-weak pairing mode (WPS PIN brute-force).`,'wps');
     if(openCount>0) Alerts.push(1,`${openCount} nearby network${openCount===1?'':'s'} are open or WEP-secured — traffic there isn't protected by the network itself.`,'open-net');
@@ -4352,8 +4496,22 @@ const CellGuard=(function(){
       // band / channel jump on the same carrier
       if(s&&prev.arfcn!=null&&s.arfcn!=null&&s.arfcn!==prev.arfcn){
         const samePlmn=(String(s.mcc||'')+String(s.mnc||''))===(String(prev.mcc||'')+String(prev.mnc||''));
-        if(samePlmn){ alerts++;
-          Alerts.push(2,`Radio channel changed on the same carrier: ARFCN ${prev.arfcn} → ${s.arfcn}${s.gen!==prev.gen?` (${prev.gen}G → ${s.gen}G)`:''}. Normal during handover/movement — worth a look if you're stationary.`,'cell-band'); }
+        // EARFCN (LTE) and NR-ARFCN (5G) are DIFFERENT numbering spaces — 5230 and 391230 are
+        // not near or far from each other, they are not comparable at all. Reporting a
+        // cross-RAT move as "channel changed" invited reading an ordinary LTE↔NR anchor
+        // switch as a forced retune. Both are still reported; they are just no longer
+        // described as the same event.
+        const bandTxt=s.bands&&s.bands.length?` (band ${s.bands.join('/')})`:'';
+        if(samePlmn&&s.gen===prev.gen){ alerts++;
+          Alerts.push(2,`Radio channel changed on the same carrier and same ${s.gen}G radio: `+
+            `ARFCN ${prev.arfcn} → ${s.arfcn}${bandTxt}. Normal during handover/movement — worth a `+
+            `look if you're stationary.`,'cell-band'); }
+        else if(samePlmn){ alerts++;
+          Alerts.push(1,`Radio changed generation on the same carrier: ${prev.gen}G → ${s.gen}G `+
+            `(${prev.gen>=5?'NR-ARFCN':'EARFCN'} ${prev.arfcn} → ${s.gen>=5?'NR-ARFCN':'EARFCN'} `+
+            `${s.arfcn}${bandTxt}). Those two channel numbers are in different numbering spaces, so `+
+            `this is a RAT change rather than a retune — routine on 5G non-standalone, which `+
+            `re-anchors between LTE and NR constantly.`,'cell-rat'); }
       }
       // generation downgrade
       if(s&&prev.gen>=4&&s.gen>0&&s.gen<=2){ alerts++;
