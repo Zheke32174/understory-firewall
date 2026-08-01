@@ -1,6 +1,12 @@
-# understory-firewall
+# Godwall (understory-firewall)
 
-**Understory Net Audit** — an offline egress dashboard for a Tailscale user. In the default Companion mode it observes, explains, and one-tap-routes you to the network controls you already have (tunnel posture, Android's per-app data restrictions, system Private DNS, and which apps hold remote-admin power) — **it never takes the VPN slot and blocks nothing**. Real per-app packet blocking exists only in an opt-in, default-off **Standalone mode** that refuses to start whenever any other VPN is present. DNS hardening is DoT via the OS's own Private DNS; egress canaries prove on the wire what your DNS/exit actually is. (No dnscrypt bundling and no overlay routing — both were removed as unshippable; see `docs/design-v2/firewall.md`.)
+> **Rename:** this project is now **Godwall**. The repo slug and Gradle module names stay
+> `understory-firewall` / `:firewall` for build stability — renaming the packages would break the
+> suite signing-pin (`Tamper.EXPECTED_CERT_SHA256`) and every consumer — so the rebrand is at the
+> user-facing layer (`app_name` → "Godwall"). The counter-surveillance app that ships alongside
+> it, **EMI Chaos Bench**, lives in `emi-chaos-bench/`.
+
+**Godwall** — an offline egress dashboard for a Tailscale user. In the default Companion mode it observes, explains, and one-tap-routes you to the network controls you already have (tunnel posture, Android's per-app data restrictions, system Private DNS, and which apps hold remote-admin power) — **it never takes the VPN slot and blocks nothing**. Real per-app packet blocking exists only in an opt-in, default-off **Standalone mode** that refuses to start whenever any other VPN is present. DNS hardening is DoT via the OS's own Private DNS; egress canaries prove on the wire what your DNS/exit actually is. (No dnscrypt bundling and no overlay routing — both were removed as unshippable; see `docs/design-v2/firewall.md`.)
 
 Status: **alpha** (functional; working the release-blockers list in understory-common).
 
