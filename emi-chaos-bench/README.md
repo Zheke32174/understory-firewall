@@ -30,6 +30,53 @@ BLE/Wi-Fi field tools (accessory pairing, sensor telemetry, profiles,
 geofencing, anomaly detection) and porting those *interaction and detection*
 ideas — never any transmit capability — onto an audio masker.
 
+## What's new in 3.4 — Foxhunt
+
+A follow-up round expanding what already shipped rather than adding new categories,
+per explicit request: "do another round, see where you can improve what's already
+there, expand on these BLE functions, on the other already existing ones."
+
+**BLE (Link tab), expanded around the existing scan/GATT-inspect feature — no new
+transmit capability, same standard active scan as before:**
+- **Bonded devices panel** — lists Bluetooth devices already paired to the phone at the
+  OS level (`BluetoothManager.adapter.bondedDevices`, read-only) with an "Add to list"
+  button that folds one into the scan list without needing it back in discovery range.
+- **RSSI history + sparkline** — every device's last ~24 RSSI readings, shown inline as
+  a compact bar sparkline. Previously a re-seen device's RSSI silently never updated.
+- **Foxhunt mode** — a per-device "Foxhunt" toggle that repeatedly re-runs the same scan
+  and shows a live warmer/colder trend from the last two readings, for walking toward
+  or away from a specific accessory. No new transmission — it's the existing scan on a
+  tighter, single-device-focused cadence.
+- **BLE scan log CSV export** — every sighting this session (time, name, address, RSSI,
+  classification tag), exportable as a file you control, mirroring the wardriving export.
+
+**Wi-Fi (Detect tab), expanded around the existing rogue-AP heuristics:**
+- **Trusted-network allowlist** — a "Trust" button per scanned network, keyed by BSSID
+  and persisted locally. Trusting a network silences the impersonation-style heuristics
+  for it (Karma/multi-SSID, SSID-changed) since a network you've vouched for by its
+  BSSID can't be spoofing itself; it does **not** silence WPS/open/WEP warnings, since
+  those describe the network's own security posture, not whether it's the real one.
+- **Wi-Fi scan log CSV export** — every scan-result sighting this session, same pattern
+  as the BLE export above.
+
+**Profiles (Profiles tab): geofenced auto-activation actually works now.** The UI copy
+has claimed since 3.x that "geo-fenced auto-activation triggers when GPS enters a
+profile's saved location radius," but `Scene.geoCheck()` was a no-op stub — the geo
+data was saved on profile save, never read back. Implemented for real: gated by the
+same Scene-scheduler switch as time-based cycling, computes haversine distance from
+each GPS fix to every saved profile's stored point, auto-loads the nearest match on
+entry, and won't re-trigger every GPS tick while sitting still inside one fence (only
+on entry, or re-entry after leaving).
+
+**App integrity: manual recheck.** The integrity check (signature/debugger/Frida/root)
+previously only ran on a slow automatic cadence. A **Recheck now** button forces an
+immediate check — useful right after attaching or detaching a debugger/hooking tool —
+and re-arms the one-shot alert guard so a finding that clears and later reappears
+alerts again instead of staying silenced by the first sighting.
+
+**Still not built, same reasons as every prior round:** BLE beacon advertising, GNSS
+spoofing/transmission, any real RF jam/transmit path. See [ETHICS.md](ETHICS.md).
+
 ## What's new in 3.3 — Ghost
 
 **Found while reading code for this round, not requested — fixed anyway:** `builtinSnap()`

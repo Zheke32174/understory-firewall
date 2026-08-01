@@ -294,6 +294,10 @@
         <div class="muted">getUserMedia audio is analysed in-process (speech-band RMS + zero-crossing) purely to
           detect <b>presence</b> of speech — raw audio is never recorded, stored or sent anywhere. Feeds the
           modulation matrix as sensor <b>mic</b>.</div>
+        <div class="row" style="margin-top:8px"><button class="btn" id="micDiag">Diagnostics</button>
+          <button class="btn" id="micDiagCopy">Copy</button></div>
+        <textarea id="micDiagBox" readonly style="display:none;min-height:90px"
+          placeholder="Tap Diagnostics after a failed mic attempt — this shows the exact error, permission state, and context Claude needs to fix it, instead of a toast that disappears."></textarea>
       </div>
     </div>
     <div class="sect">
@@ -326,13 +330,18 @@
       <div class="head"><span class="t">RF passive scan</span><span class="tag">Wi-Fi + BLE, read-only</span></div>
       <div class="body">
         <div class="row"><button class="btn acc" id="rfScan">Scan Wi-Fi</button>
-          <span class="pill" id="rfState">idle</span></div>
+          <span class="pill" id="rfState">idle</span>
+          <button class="btn" id="wifiExportLog">Export scan log CSV</button></div>
         <div class="list" id="wifiList" style="margin-top:8px"></div>
         <div class="muted" id="rfNote">Flags duplicate SSIDs on different BSSIDs, WPS-enabled and open/WEP networks,
-          same-BSSID-multiple-SSID (Karma/rogue-AP), sudden strong new APs, and hidden networks. BLE tracker
-          fingerprinting (AirTag / SmartTag / Tile-style, via manufacturer data and assigned service UUIDs) and
-          spam-flood detection run automatically off the existing BLE scan in the Link tab and report here too.
-          Per-device GATT service inspection is available from each device's <b>Inspect</b> button on the Link tab.</div>
+          same-BSSID-multiple-SSID (Karma/rogue-AP), sudden strong new APs, and hidden networks. Tap <b>Trust</b> on
+          a network you recognise (home/work router) to silence its rogue-AP-style flags — trust is per-BSSID,
+          stored locally, and never suppresses the "open/WEP" or "WPS" warnings, just the ones that assume the AP
+          might be an impostor. BLE tracker fingerprinting (AirTag / SmartTag / Tile-style, via manufacturer data
+          and assigned service UUIDs) and spam-flood detection run automatically off the existing BLE scan in the
+          Link tab and report here too. Per-device GATT service inspection is available from each device's
+          <b>Inspect</b> button on the Link tab. <b>Export scan log</b> writes every Wi-Fi sighting this session to
+          a CSV you keep — nothing is uploaded.</div>
       </div>
     </div>
     <div class="sect">
@@ -422,10 +431,14 @@
           <div class="stat"><small>Frida</small><b id="tgFrida">—</b></div>
           <div class="stat"><small>Root</small><b id="tgRoot">—</b></div>
         </div>
+        <div class="row" style="margin-top:8px"><button class="btn" id="tgRecheck">Recheck now</button>
+          <span class="pill" id="tgLastCheck">not checked yet</span></div>
         <div class="muted" id="tgNote">Checks this APK's own signing certificate, and looks for the common
           traces of a debugger, Frida instrumentation, or root — the same category of check banking and DRM
           apps ship. Detect-and-report only: nothing here blocks the app, alters behavior, or touches your
-          data — it only informs this readout. Native build only; no signal in a browser preview.</div>
+          data — it only informs this readout. Native build only; no signal in a browser preview. Runs
+          automatically in the background on a slow cadence (it rarely changes); <b>Recheck now</b> forces an
+          immediate check, e.g. right after you've attached/detached a debugger or hooking tool.</div>
       </div>
     </div>
     <div class="sect">
@@ -458,14 +471,27 @@
       <div class="body">
         <div class="row"><button class="btn acc" id="bleScan">Scan</button>
           <button class="btn" id="bleStop">Stop</button>
-          <button class="chip" id="bleChaotic" aria-pressed="false">Chaotic cadence</button></div>
+          <button class="chip" id="bleChaotic" aria-pressed="false">Chaotic cadence</button>
+          <button class="btn" id="bleExportLog">Export scan log CSV</button></div>
         <div class="list" id="bleList" style="margin-top:8px"><div class="muted">No devices yet. Scan to discover companion sensor pucks, remote triggers and beacons.</div></div>
         <div class="muted">A paired accessory can feed its RSSI / sensor values into the modulation matrix
           (<b>entropy</b>), or act as a remote <b>start/stop trigger</b>. BLE is used to read accessories, never to jam.
           <b>Chaotic cadence</b> cycles the same standard active scan on/off at randomized intervals instead of one
           continuous session — real transmission (BLE scanning sends scan-request packets, standard protocol,
           standard API), just noisier in timing. It never advertises a fake identity or anything outside normal
-          discovery.</div>
+          discovery. <b>Foxhunt</b> on a device below repeatedly re-scans and shows an RSSI trend (warmer/colder) so
+          you can walk toward or away from it. <b>Export scan log</b> writes every sighting this session to a CSV
+          you keep — nothing is uploaded.</div>
+      </div>
+    </div>
+    <div class="sect">
+      <div class="head"><span class="t">Bonded devices</span><span class="tag">already paired, read-only</span></div>
+      <div class="body">
+        <div class="row"><button class="btn" id="bondedRefresh">Refresh</button></div>
+        <div class="list" id="bondedList" style="margin-top:8px"><div class="muted">Devices already paired to this
+          phone at the OS level. Reads Android's own bond list — no new pairing or connection is made.</div></div>
+        <div class="muted">"Add to list" copies a bonded device into the scan list above so it can feed entropy or
+          act as a trigger, without needing to be back in discovery range.</div>
       </div>
     </div>
     <div class="sect">
@@ -1706,17 +1732,38 @@ const Accessories=(function(){
   const devices=[]; let ws=null, wsUrl=''; let bleSrc='—';
   const roster=new Map(); // mesh node_id -> {kind,lastSeen,lastAnomaly}
   let lastSpectrum=null; // {node_id, bins:[...], sampleRate}
+  const scanLog=[]; // every sighting this session, for CSV export — {t,name,id,address,rssi,tag}
+  let foxhuntId=null, foxhuntTimer=null;
+  function sparkline(hist){
+    if(!hist||hist.length<2) return '';
+    const blocks='▁▂▃▄▅▆▇█';
+    const min=Math.min(...hist), max=Math.max(...hist), range=Math.max(1,max-min);
+    return hist.map(v=>blocks[Math.min(blocks.length-1,Math.floor((v-min)/range*(blocks.length-1)))]).join('');
+  }
+  function trend(hist){
+    if(!hist||hist.length<2) return 'no signal yet';
+    const d=hist[hist.length-1]-hist[hist.length-2];
+    if(d>2) return '↑ warmer';
+    if(d<-2) return '↓ colder';
+    return '→ steady';
+  }
   function render(){ const list=$('bleList'); if(!devices.length){ list.innerHTML='<div class="muted">No devices yet. Scan to discover companion sensor pucks, remote triggers and beacons.</div>'; $('blamp').classList.remove('on'); return; }
     list.innerHTML=''; let anyLink=false;
     devices.forEach((d,i)=>{ if(d.connected)anyLink=true;
       const it=document.createElement('div');it.className='item';
       const nm=document.createElement('div');nm.className='n';nm.textContent=d.name||('device '+(i+1));
-      const rssi=document.createElement('span');rssi.className='rssi';rssi.textContent=(d.rssi!=null?d.rssi+'dBm':'');
+      const rssi=document.createElement('span');rssi.className='rssi';
+      rssi.textContent=(d.rssi!=null?d.rssi+'dBm':'')+(d.hist&&d.hist.length>1?' '+sparkline(d.hist):'');
       const role=document.createElement('button');role.className='pill'+(d.connected?' ok':'');role.textContent=d.role;
       role.onclick=()=>{ d.role=d.role==='entropy'?'trigger':d.role==='trigger'?'telemetry':'entropy'; render(); };
       const con=document.createElement('button');con.className='btn';con.style.padding='5px 8px';con.textContent=d.connected?'Drop':'Link';
       con.onclick=()=>{ d.connected=!d.connected; if(d.connected&&d.role==='entropy')linkEntropy(d); render(); toast((d.connected?'Linked ':'Dropped ')+(d.name||'device')); };
       it.append(nm,rssi,role,con);
+      const fox=document.createElement('button');fox.className='btn'+(foxhuntId===d.id?' acc':'');fox.style.padding='5px 8px';
+      fox.textContent=foxhuntId===d.id?'Tracking…':'Foxhunt';
+      fox.onclick=()=>{ foxhuntToggle(d.id); };
+      it.appendChild(fox);
+      if(foxhuntId===d.id){ const tr=document.createElement('span'); tr.className='badge'; tr.textContent=trend(d.hist); it.appendChild(tr); }
       if(window.EMIBridge&&EMIBridge.bleInspectGatt&&(d.address||d.id)){
         const gi=document.createElement('button');gi.className='btn';gi.style.padding='5px 8px';
         gi.textContent=d.gatt?d.gatt.services+' svc':'Inspect';
@@ -1727,6 +1774,49 @@ const Accessories=(function(){
       list.appendChild(it);
     });
     $('blamp').classList.toggle('on',anyLink);
+  }
+  // Foxhunt: repeatedly re-run the SAME scan (native active scan when available, same as the
+  // Scan button) and let push()/nativeReport() update the tracked device's RSSI history, then
+  // render() shows a warmer/colder trend from the last two readings. No new transmission kind —
+  // just the existing scan run on a tighter, continuous cadence for one device.
+  function foxhuntToggle(id){
+    if(foxhuntId===id){ foxhuntStop(); return; }
+    foxhuntStop(); foxhuntId=id; toast('Foxhunt: tracking '+id); foxhuntStep();
+  }
+  function foxhuntStop(){ if(!foxhuntId)return; foxhuntId=null; if(foxhuntTimer){clearTimeout(foxhuntTimer);foxhuntTimer=null;} render(); }
+  function foxhuntStep(){
+    if(!foxhuntId) return;
+    scan();
+    foxhuntTimer=setTimeout(()=>{ if(!foxhuntId)return; bleStopScan(); foxhuntStep(); }, rnd(1200,2200));
+  }
+  function logScan(d){ scanLog.push({t:Date.now(),name:d.name||'',id:d.id||'',address:d.address||'',rssi:d.rssi!=null?d.rssi:'',tag:d.tag||''});
+    if(scanLog.length>2000) scanLog.shift(); }
+  function csvEsc(s){ s=String(s==null?'':s); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
+  function scanLogToCsv(){
+    const rows=['time,name,id,address,rssi,tag'];
+    scanLog.forEach(r=>rows.push([new Date(r.t).toISOString(),csvEsc(r.name),csvEsc(r.id),csvEsc(r.address),r.rssi,csvEsc(r.tag)].join(',')));
+    return rows.join('\n');
+  }
+  function downloadFile(text,filename,mime){
+    try{ const blob=new Blob([text],{type:mime}); const url=URL.createObjectURL(blob);
+      const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click();
+      setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },1000);
+    }catch(e){ toast('Export failed — '+(e&&e.message?e.message:'unknown error')); }
+  }
+  function bondedRender(){
+    const list=$('bondedList'); if(!list)return;
+    if(!(window.EMIBridge&&EMIBridge.getBondedDevices)){ list.innerHTML='<div class="muted">Native bridge unavailable — bonded-device lookup needs the Android app shell.</div>'; return; }
+    let arr=[];
+    try{ arr=JSON.parse(EMIBridge.getBondedDevices()); }catch(e){}
+    if(!arr.length){ list.innerHTML='<div class="muted">No paired Bluetooth devices found, or the Bluetooth permission hasn\'t been granted yet.</div>'; return; }
+    list.innerHTML='';
+    arr.forEach(d=>{ const it=document.createElement('div'); it.className='item';
+      const nm=document.createElement('div'); nm.className='n'; nm.textContent=d.name||d.address;
+      const addr=document.createElement('span'); addr.className='rssi'; addr.textContent=d.address;
+      const add=document.createElement('button'); add.className='btn'; add.style.padding='5px 8px'; add.textContent='Add to list';
+      add.onclick=()=>{ push({name:d.name,rssi:null,role:'entropy',connected:false,id:d.address,address:d.address}); toast('Added '+(d.name||d.address)); };
+      it.append(nm,addr,add); list.appendChild(it);
+    });
   }
   function linkEntropy(d){ // map RSSI drift into a spare sensor channel
     if(d.rssi!=null) Sensors.feed({net:cl((d.rssi+90)/60,0,1)*2-1}); }
@@ -1764,7 +1854,15 @@ const Accessories=(function(){
     else bleStopScan();
   }
   function push(d){ try{ d.tag=RF.classifyBle(d); }catch(e){}
-    if(devices.find(x=>x.id===d.id)) { render(); return; } devices.push(d); render(); }
+    const existing=devices.find(x=>x.id===d.id);
+    if(existing){
+      if(d.rssi!=null){ existing.hist=existing.hist||[]; existing.hist.push(d.rssi); if(existing.hist.length>24)existing.hist.shift(); existing.rssi=d.rssi; }
+      if(d.name)existing.name=d.name;
+      if(d.gatt&&!existing.gatt)existing.gatt=d.gatt;
+      logScan(existing); render(); return;
+    }
+    d.hist=d.rssi!=null?[d.rssi]:[];
+    devices.push(d); logScan(d); render(); }
   function nativeReport(json){ try{ const arr=JSON.parse(json);
       arr.forEach(d=>push({name:d.name,rssi:d.rssi,role:'entropy',connected:false,id:d.id||d.address,address:d.address,mfg:d.mfg,svcUuids:d.svcUuids})); }catch(e){} }
   // WiFi companion / mesh uplink — single WS connection speaking the small mesh protocol:
@@ -1811,7 +1909,9 @@ const Accessories=(function(){
   function broadcast(obj){ if(ws&&ws.readyState===1){try{ws.send(JSON.stringify(obj));}catch(e){}} }
   return { scan, stop:bleStopScan, setChaoticScan,
     render, nativeReport, wsConnect, wsDisconnect, broadcast, meshRender,
-    get lastSpectrum(){return lastSpectrum;}, get devices(){return devices;},
+    bondedRender, foxhuntToggle,
+    exportScanLog(){ if(!scanLog.length){toast('Nothing scanned yet');return;} downloadFile(scanLogToCsv(),'emi-ble-scan-log.csv','text/csv'); },
+    get lastSpectrum(){return lastSpectrum;}, get devices(){return devices;}, get foxhuntId(){return foxhuntId;},
     gattResult(json){
       let d=null;
       try{ const r=JSON.parse(json);
@@ -1913,16 +2013,39 @@ const Profiles=(function(){
   function exportAll(){ const out={profiles:store}; $('ioBox').value=JSON.stringify(out,null,1); toast('Exported '+Object.keys(store).length+' profiles'); return $('ioBox').value; }
   function importText(){ try{ const o=JSON.parse($('ioBox').value); if(o.profiles){ Object.assign(store,o.profiles); persist(); renderList(); toast('Imported'); } else toast('No profiles field'); }catch(e){ toast('Bad JSON'); } }
   function init(){ try{ store=JSON.parse(localStorage.getItem(KEY)||'{}'); }catch(e){ store={}; } renderList(); }
-  return { init, load, save, del, exportAll, importText, renderList,
+  // Saved (non-builtin) profiles with a geofence attached — {name,lat,lon,r(km)} — read by
+  // Scene.geoCheck below. Only user-saved profiles carry .geo (set by snapshot() when GPS was
+  // live at save time); builtins never do.
+  function geoCandidates(){ const out=[];
+    for(const name in store){ const s=store[name]; if(s&&s.geo) out.push({name,lat:s.geo.lat,lon:s.geo.lon,r:s.geo.r||0.15}); }
+    return out; }
+  return { init, load, save, del, exportAll, importText, renderList, geoCandidates,
     set morph(v){morph=v;}, get morph(){return morph;}, get names(){return Object.keys(BUILTIN).concat(Object.keys(store));} };
 })();
 
 /* ============ SCENE scheduler + geofence ============ */
 const Scene=(function(){
-  let en=false, period=45000, next=0, idx=0;
+  let en=false, period=45000, next=0, idx=0, geoActive=null;
   function tick(now){ if(!en)return; if(now>=next){ const names=Profiles.names; if(names.length){ idx=(idx+1)%names.length; Profiles.load(names[idx]); } next=now+period; } }
-  function geoCheck(lat,lon){ /* geofence check handled in Profiles snapshot geo; lightweight */ }
-  return { tick, geoCheck, set enabled(v){en=v; next=perfNow()+period;}, get enabled(){return en;}, set period(ms){period=ms;} };
+  function haversineKm(lat1,lon1,lat2,lon2){
+    const R=6371, toRad=d=>d*Math.PI/180;
+    const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
+    const a=Math.sin(dLat/2)**2+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+    return R*2*Math.asin(Math.sqrt(a));
+  }
+  // Gated by the same Scene switch as the time-based cycler (one "Scene scheduler" toggle
+  // covers both, per the UI copy). Loads the profile whose saved geofence you've just entered;
+  // clears the "currently inside" marker on exit so re-entering the same fence re-triggers it,
+  // but doesn't reload every GPS tick while sitting still inside one.
+  function geoCheck(lat,lon){
+    if(!en||lat==null||lon==null) return;
+    const cands=Profiles.geoCandidates();
+    let hit=null;
+    for(const c of cands){ if(haversineKm(lat,lon,c.lat,c.lon)<=c.r){ hit=c.name; break; } }
+    if(hit && hit!==geoActive){ geoActive=hit; Profiles.load(hit); toast('Geofence: entered '+hit); }
+    else if(!hit) geoActive=null;
+  }
+  return { tick, geoCheck, set enabled(v){en=v; next=perfNow()+period; geoActive=null;}, get enabled(){return en;}, set period(ms){period=ms;} };
 })();
 
 /* ============ ALERT LOG (shared by RF / Anomaly / mesh ingestion) ============ */
@@ -1958,9 +2081,21 @@ const Mic=(function(){
   let actx=null,stream=null,src=null,an=null,freqBuf=null,enabled=false,mode='off';
   let vadFloor=0.02, vadHold=0, vadActive=false, ultraFlag=false, ultraHist=[], savedLv=null;
   const SPEECH_LO=250, SPEECH_HI=3500, ULTRA_LO=18000;
+  // Persistent diagnostic snapshot, replacing "read the toast before it vanishes." Filled in
+  // on every enable() attempt, success or failure, so a report of "still broken, different
+  // message" can be answered from what actually happened instead of another guess.
+  let lastDiag=null;
+  function nativePermState(){
+    try{ if(window.EMIBridge&&EMIBridge.getMicPermissionState) return JSON.parse(EMIBridge.getMicPermissionState()); }catch(e){}
+    return null;
+  }
   async function enable(){
     if(enabled) return;
+    const diag={t:new Date().toISOString(),secureContext:window.isSecureContext,ua:navigator.userAgent,
+      nativeBridge:!!window.EMIBridge, nativePerm:nativePermState(), attempts:[]};
+    lastDiag=diag;
     if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+      diag.outcome='no-getUserMedia';
       toast(window.isSecureContext===false
         ? 'Mic needs a secure context — open this as the installed app, not a bare file preview.'
         : 'getUserMedia unavailable on this browser/WebView.');
@@ -1972,10 +2107,12 @@ const Mic=(function(){
     // retry with a bare {audio:true} before giving up, so a picky constraint negotiation
     // doesn't masquerade as a permission problem.
     for(const constraints of [{audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}},{audio:true}]){
-      try{ stream=await navigator.mediaDevices.getUserMedia(constraints); lastErr=null; break; }
-      catch(e){ lastErr=e; }
+      try{ stream=await navigator.mediaDevices.getUserMedia(constraints); lastErr=null;
+        diag.attempts.push({constraints,ok:true}); break; }
+      catch(e){ lastErr=e; diag.attempts.push({constraints,ok:false,name:e&&e.name,message:e&&e.message}); }
     }
     if(lastErr){
+      diag.outcome='getUserMedia-failed';
       // Surface the real DOMException name — a bare "permission denied" toast used to hide
       // whether this was a fresh OS denial, a stale in-page cache from an attempt that raced
       // the OS permission dialog (see MainActivity.kt for the native-side fix), or something
@@ -1995,8 +2132,13 @@ const Mic=(function(){
       an=actx.createAnalyser(); an.fftSize=2048; an.smoothingTimeConstant=0.4;
       src.connect(an); // analysis tap only — never connected onward to any destination
       freqBuf=new Uint8Array(an.frequencyBinCount);
-    }catch(e){ toast('Mic analyser failed'); disable(); return; }
+    }catch(e){ diag.outcome='analyser-failed'; diag.analyserError=e&&e.message; toast('Mic analyser failed'); disable(); return; }
+    diag.outcome='ok';
     enabled=true; $('micEn').setAttribute('aria-pressed','true'); toast('Mic VAD on — local analysis only');
+  }
+  function diagnostics(){
+    if(!lastDiag) return 'No mic attempt yet this session — tap the Mic switch first, then Diagnostics.';
+    return JSON.stringify(lastDiag,null,1);
   }
   function disable(){
     enabled=false;
@@ -2058,7 +2200,7 @@ const Mic=(function(){
   }
   function setMode(m){ mode=m; }
   function spectrumData(){ return an?{buf:freqBuf,sampleRate:actx.sampleRate,fftSize:an.fftSize}:null; }
-  return { enable, disable, tick, setMode, get enabled(){return enabled;}, get vadActive(){return vadActive;}, spectrumData };
+  return { enable, disable, tick, setMode, diagnostics, get enabled(){return enabled;}, get vadActive(){return vadActive;}, spectrumData };
 })();
 
 /* ============ RF PASSIVE SCAN (Wi-Fi + BLE anomaly heuristics) ============
@@ -2070,6 +2212,28 @@ const RF=(function(){
   const bssidSsids=new Map(); // bssid -> Set(ssid) ever seen from it — Karma-style multi-SSID-per-BSSID
   const bleAddrWindow=[]; // {addr,t} for spam-flood rate detection
   const trackerSeen=new Map(); // mfgDataHash -> {firstSeen,addrs:Set}
+  const TRUST_KEY='emi.wifi.trusted.v1';
+  let trusted=new Set(); try{ trusted=new Set(JSON.parse(localStorage.getItem(TRUST_KEY)||'[]')); }catch(e){}
+  function persistTrust(){ try{ localStorage.setItem(TRUST_KEY,JSON.stringify([...trusted])); }catch(e){} }
+  function toggleTrust(bssid){ if(!bssid)return; if(trusted.has(bssid))trusted.delete(bssid); else trusted.add(bssid);
+    persistTrust(); wifiHeuristics(lastWifi); wifiRender(lastWifi); }
+  const wifiScanLog=[]; // every scan-result sighting this session — {t,ssid,bssid,level,caps,flags}
+  function logWifi(list){ const t=Date.now();
+    list.forEach(r=>{ wifiScanLog.push({t,ssid:r.ssid||'',bssid:r.bssid||'',level:r.level,caps:r.caps||'',flags:(r.flags||[]).join('|')}); });
+    if(wifiScanLog.length>4000) wifiScanLog.splice(0,wifiScanLog.length-4000);
+  }
+  function csvEsc(s){ s=String(s==null?'':s); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
+  function wifiLogToCsv(){
+    const rows=['time,ssid,bssid,level,caps,flags'];
+    wifiScanLog.forEach(r=>rows.push([new Date(r.t).toISOString(),csvEsc(r.ssid),csvEsc(r.bssid),r.level!=null?r.level:'',csvEsc(r.caps),csvEsc(r.flags)].join(',')));
+    return rows.join('\n');
+  }
+  function downloadFile(text,filename,mime){
+    try{ const blob=new Blob([text],{type:mime}); const url=URL.createObjectURL(blob);
+      const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click();
+      setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },1000);
+    }catch(e){ toast('Export failed — '+(e&&e.message?e.message:'unknown error')); }
+  }
   function wifiRender(list){
     const el=$('wifiList'); if(!el)return;
     if(!list.length){ el.innerHTML='<div class="muted">No scan yet.</div>'; return; }
@@ -2079,6 +2243,12 @@ const RF=(function(){
       const nm=document.createElement('div'); nm.className='n'; nm.textContent=r.ssid||'(hidden)';
       const lv=document.createElement('span'); lv.className='rssi'; lv.textContent=r.level+'dBm';
       it.append(nm,lv);
+      const isTrusted=r.bssid&&trusted.has(r.bssid);
+      if(r.bssid){
+        const tb=document.createElement('button'); tb.className='pill'+(isTrusted?' ok':''); tb.style.cursor='pointer';
+        tb.textContent=isTrusted?'Trusted':'Trust'; tb.onclick=()=>toggleTrust(r.bssid);
+        it.appendChild(tb);
+      }
       (r.flags||[]).forEach(f=>{ const b=document.createElement('span');
         b.className='badge'+(f==='karma'?' crit':' warn'); b.textContent=f; it.appendChild(b); });
       el.appendChild(it);
@@ -2090,6 +2260,7 @@ const RF=(function(){
     let hidden=0, wpsCount=0, openCount=0;
     list.forEach(r=>{
       r.flag=null; r.flags=[];
+      const isTrusted=r.bssid&&trusted.has(r.bssid);
       const caps=(r.caps||'').toUpperCase();
       if(caps.includes('WPS')){ r.flags.push('wps'); wpsCount++; }
       const secured=/WPA|RSN|WEP/.test(caps);
@@ -2098,20 +2269,26 @@ const RF=(function(){
       if(!r.ssid){ hidden++; return; }
       // Karma signature: the SAME physical radio (BSSID) has advertised more than one
       // distinct SSID — a legitimate AP's BSSID normally maps to exactly one SSID.
-      if(r.bssid){
+      // Trusted BSSIDs are exempted from this and the two checks below — they're spoofing/
+      // impersonation heuristics, and a network you've explicitly vouched for by its BSSID
+      // can't be impersonating itself. WPS/open/WEP above are left alone: those are properties
+      // of the network itself, not a claim about whether it's the real one.
+      if(r.bssid && !isTrusted){
         if(!bssidSsids.has(r.bssid)) bssidSsids.set(r.bssid,new Set());
         const set=bssidSsids.get(r.bssid); const wasNew=!set.has(r.ssid); set.add(r.ssid);
         if(set.size>1){ r.flags.unshift('karma'); if(wasNew) Alerts.push(3,`BSSID ${r.bssid} has now advertised ${set.size} different SSIDs (${[...set].join(', ')}) — classic Karma/rogue-AP signature.`,'karma'); }
       }
-      const grp=bySsid.get(r.ssid);
-      if(grp.length>1){
-        const prefixes=new Set(grp.map(g=>(g.bssid||'').slice(0,8).toLowerCase()));
-        if(prefixes.size>1){ r.flags.push('dup-vendor'); }
+      if(!isTrusted){
+        const grp=bySsid.get(r.ssid);
+        if(grp.length>1){
+          const prefixes=new Set(grp.map(g=>(g.bssid||'').slice(0,8).toLowerCase()));
+          if(prefixes.size>1){ r.flags.push('dup-vendor'); }
+        }
       }
       const prev=seenBSSID.get(r.bssid);
       if(!prev){ seenBSSID.set(r.bssid,{ssid:r.ssid,first:Date.now(),level:r.level});
         if(r.level>-50 && seenBSSID.size>3){ r.flags.push('new-strong'); } }
-      else if(prev.ssid!==r.ssid){ r.flags.push('ssid-changed'); }
+      else if(prev.ssid!==r.ssid && !isTrusted){ r.flags.push('ssid-changed'); }
       r.flag=r.flags[0]||null; // single badge shown inline; full list still available
     });
     list.forEach(r=>{ if((r.flags||[]).includes('dup-vendor')) Alerts.push(2,`Wi-Fi SSID "${r.ssid}" broadcast from multiple vendor MAC prefixes — possible rogue/evil-twin AP.`,'rogue-ap');
@@ -2128,7 +2305,7 @@ const RF=(function(){
         lastWifi=arr.map(r=>({ssid:r.ssid,bssid:r.bssid,level:r.level,freq:r.freq,caps:r.caps}));
       } else { $('rfState').textContent='no native scan (browser)'; lastWifi=[]; }
     }catch(e){ lastWifi=[]; }
-    wifiHeuristics(lastWifi); wifiRender(lastWifi);
+    wifiHeuristics(lastWifi); wifiRender(lastWifi); logWifi(lastWifi);
     $('rfState').textContent=lastWifi.length?lastWifi.length+' networks':'idle';
     try{ Wardrive.ingestWifi(lastWifi); }catch(e){}
   }
@@ -2187,7 +2364,9 @@ const RF=(function(){
       it.append(b,s); list.appendChild(it); });
     el.appendChild(list);
   }
-  return { wifiScanNow, classifyBle, renderAccKinds, wellKnownUuid, get lastWifi(){return lastWifi;}, get ACCESSORY_KINDS(){return ACCESSORY_KINDS;} };
+  return { wifiScanNow, classifyBle, renderAccKinds, wellKnownUuid, toggleTrust,
+    exportWifiLog(){ if(!wifiScanLog.length){toast('Nothing scanned yet');return;} downloadFile(wifiLogToCsv(),'emi-wifi-scan-log.csv','text/csv'); },
+    get lastWifi(){return lastWifi;}, get ACCESSORY_KINDS(){return ACCESSORY_KINDS;} };
 })();
 
 /* ============ SENSOR-FUSION ANOMALY ENGINE (+ thermal, + cell/IMSI-catcher heuristics) ============
@@ -2268,21 +2447,29 @@ const Anomaly=(function(){
     }catch(e){}
   }
   let tgCd=0;
-  function pollTamperGuard(){
-    if(--tgCd>0) return; tgCd=20; // rarely changes -- poll much less often than everything else
+  function pollTamperGuard(force){
+    if(!force){ if(--tgCd>0) return; } tgCd=20; // rarely changes -- poll much less often than everything else
+    const lc=$('tgLastCheck');
     try{
-      if(!window.EMITamper||!EMITamper.getIntegrityStatus){ const t=$('tgTag'); if(t)t.textContent='browser preview'; return; }
+      if(!window.EMITamper||!EMITamper.getIntegrityStatus){ const t=$('tgTag'); if(t)t.textContent='browser preview';
+        if(force){ toast('No native bridge — integrity check needs the installed app'); } return; }
       const s=JSON.parse(EMITamper.getIntegrityStatus()||'{}');
       const sig=$('tgSig'); if(sig)sig.textContent=s.signatureOk?'ok':'mismatch';
       const dbg=$('tgDbg'); if(dbg)dbg.textContent=s.debuggerAttached?'attached':'none';
       const fr=$('tgFrida'); if(fr)fr.textContent=s.fridaSuspicion?'suspicious':'clean';
       const rt=$('tgRoot'); if(rt)rt.textContent=s.rootSuspicion?'suspicious':'clean';
       const tag=$('tgTag'); if(tag){ tag.textContent=s.clean?'clean':'flagged'; tag.className='tag'+(s.clean?'':' pill'); }
+      if(lc)lc.textContent='checked '+new Date().toLocaleTimeString();
+      // A forced recheck re-arms the flagged-note guard so a finding that clears and later
+      // reappears (e.g. a debugger detached then reattached) alerts again instead of staying
+      // silenced by the one-shot dataset flag set the first time it was seen.
+      if(force){ const note=$('tgNote'); if(note && s.clean) delete note.dataset.flagged;
+        toast(s.clean?'Integrity check: clean':'Integrity check: flagged — see findings'); }
       if(!s.clean && Array.isArray(s.findings) && s.findings.length){
         const note=$('tgNote'); if(note && !note.dataset.flagged){ note.dataset.flagged='1';
           Alerts.push(1,'App integrity check flagged: '+s.findings.join('; '),'tamper'); }
       }
-    }catch(e){}
+    }catch(e){ if(force)toast('Integrity check failed'); }
   }
   function pollRfClassifier(){
     try{
@@ -2316,7 +2503,7 @@ const Anomaly=(function(){
     if(score>65 && armed){ armed=false; setTimeout(()=>armed=true,20000);
       Alerts.push(3,`Anomaly score ${score.toFixed(0)}/100 — multiple fused signals elevated at once.`,'fusion'); haptic('clip'); }
   }
-  return { tick, get score(){return score;} };
+  return { tick, recheckIntegrity(){ pollTamperGuard(true); }, get score(){return score;} };
 })();
 
 /* ============ CAMERA VISUAL SCAN (in-process only; nothing recorded/saved) ============
@@ -2696,11 +2883,18 @@ $('bleScan').addEventListener('click',()=>Accessories.scan());
 $('bleStop').addEventListener('click',()=>Accessories.stop());
 $('bleChaotic').addEventListener('click',()=>{ const b=$('bleChaotic'),v=b.getAttribute('aria-pressed')!=='true';
   b.setAttribute('aria-pressed',String(v)); Accessories.setChaoticScan(v); });
+$('bleExportLog').addEventListener('click',()=>Accessories.exportScanLog());
+$('bondedRefresh').addEventListener('click',()=>Accessories.bondedRender());
+Accessories.bondedRender();
 $('wsConn').addEventListener('click',()=>Accessories.wsConnect($('wsUrl').value.trim()));
 $('wsDisc').addEventListener('click',()=>Accessories.wsDisconnect());
 
 /* mic VAD + reactive masking + ultrasonic-demod check */
 $('micEn').addEventListener('click',()=>{ Mic.enabled?Mic.disable():Mic.enable(); });
+$('micDiag').addEventListener('click',()=>{ const b=$('micDiagBox'); b.style.display='block'; b.value=Mic.diagnostics(); });
+$('micDiagCopy').addEventListener('click',()=>{ const b=$('micDiagBox'); if(b.style.display==='none'){b.style.display='block';b.value=Mic.diagnostics();}
+  try{ navigator.clipboard.writeText(b.value); toast('Copied — paste it back to Claude'); }
+  catch(e){ b.select(); toast('Select + copy manually'); } });
 document.querySelectorAll('[data-vad]').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('[data-vad]').forEach(x=>x.setAttribute('aria-pressed','false'));
   b.setAttribute('aria-pressed','true'); Mic.setMode(b.dataset.vad); }));
@@ -2710,6 +2904,8 @@ document.querySelectorAll('[data-specsrc]').forEach(b=>b.addEventListener('click
 
 /* RF passive scan */
 $('rfScan').addEventListener('click',()=>RF.wifiScanNow());
+$('wifiExportLog').addEventListener('click',()=>RF.exportWifiLog());
+$('tgRecheck').addEventListener('click',()=>Anomaly.recheckIntegrity());
 
 /* camera visual scan */
 $('camEn').addEventListener('click',()=>{ Cam.enabled?Cam.disable():Cam.enable(); });

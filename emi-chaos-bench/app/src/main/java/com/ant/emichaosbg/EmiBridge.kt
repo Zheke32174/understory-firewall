@@ -329,6 +329,25 @@ class EmiBridge(private val ctx: Context, private val web: WebView) : SensorEven
      * isn't proof of anything (legitimate accessibility tools and camera/mic apps exist) —
      * same "heuristic, look closer" framing as everywhere else in this bridge.
      */
+
+    /** Ground truth for the mic diagnostics panel: whether Android itself currently holds
+     *  RECORD_AUDIO granted, independent of whatever getUserMedia() just did. If this says
+     *  true but getUserMedia() still failed, that's WebView's own per-origin denial cache
+     *  (see MainActivity.kt's onResume reload fix) or a WebView-level constraint issue, not
+     *  a real Android permission problem — this reading is what tells the two apart. */
+    @JavascriptInterface
+    fun getMicPermissionState(): String {
+        val o = JSONObject()
+        o.put("recordAudioGranted", ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+        o.put("sdkInt", Build.VERSION.SDK_INT)
+        o.put("device", "${Build.MANUFACTURER} ${Build.MODEL}")
+        try {
+            val wv = android.webkit.WebView.getCurrentWebViewPackage()
+            if (wv != null) o.put("webviewProvider", "${wv.packageName} ${wv.versionName}")
+        } catch (_: Exception) {}
+        return o.toString()
+    }
+
     @JavascriptInterface
     fun getCompromiseIndicators(): String {
         val o = JSONObject()
@@ -376,6 +395,29 @@ class EmiBridge(private val ctx: Context, private val web: WebView) : SensorEven
     }
 
     // ---- BLE scan (read-only enumeration, with tracker-fingerprint data) -
+
+    /** Already-paired devices — a plain read of the adapter's own bond list, not a scan.
+     *  No new permission beyond BLUETOOTH_CONNECT (already requested for scanning). */
+    @JavascriptInterface
+    fun getBondedDevices(): String {
+        val arr = JSONArray()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            ContextCompat.checkSelfPermission(ctx, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
+        ) return arr.toString()
+        try {
+            val bm = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager ?: return arr.toString()
+            val bonded = bm.adapter?.bondedDevices ?: emptySet()
+            for (d in bonded) {
+                val o = JSONObject()
+                o.put("address", d.address)
+                o.put("name", d.name ?: "device")
+                o.put("bondState", "bonded")
+                arr.put(o)
+            }
+        } catch (_: SecurityException) {
+        } catch (_: Exception) {}
+        return arr.toString()
+    }
 
     @JavascriptInterface
     fun bleScan() {
