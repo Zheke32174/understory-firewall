@@ -26,11 +26,13 @@ class SecurityScreen(ctx: Context) : ScrollView(ctx) {
     private val tjVals: List<TextView>
     private val netVals: List<TextView>
     private val cellVals: List<TextView>
+    private val wvVals: List<TextView>
     private val escList: LinearLayout
     private val escTag: TextView
     private val tjTag: TextView
     private val netTag: TextView
     private val cellTag: TextView
+    private val wvTag: TextView
 
     init {
         setBackgroundColor(Nx.BG)
@@ -92,12 +94,44 @@ class SecurityScreen(ctx: Context) : ScrollView(ctx) {
             "would turn it off.\n\n" +
             "Accessibility services can read every screen and inject gestures — the most " +
             "powerful thing an app on Android can hold, and the usual home of stalkerware. " +
-            "Enabled ones are listed so an unexpected entry is obvious. THIS APP DOES NOT " +
-            "REQUEST ONE: the capability it would grant is exactly what this app exists to warn " +
-            "you about, and holding it would make this the most dangerous app on your device. " +
-            "That is also why you will not find this app listed in the overlay or accessibility " +
-            "screens — it asks for neither."))
+            "Enabled ones are listed so an unexpected entry is obvious.\n\n" +
+            "THIS APP NOW APPEARS IN BOTH LISTS, and it did not before. That change is worth " +
+            "stating plainly rather than leaving you to find it:\n\n" +
+            "· Appear on top — the permission is DECLARED so the app is listed and can be " +
+            "granted or refused like anything else. Nothing here draws an overlay on its own, " +
+            "and the permission cannot be self-granted; only you can grant it, from that screen.\n\n" +
+            "· Accessibility — 'Detect apps drawing on top of this one'. Optional, off until you " +
+            "enable it. It exists because detecting an overlay from inside the app is not " +
+            "reliably possible any other way: the window list belongs to the window manager. It " +
+            "reads window METADATA ONLY — type, layer, position, size. It never reads screen " +
+            "content, never sees what you type, and never blocks a touch.\n\n" +
+            "Judge it the way you should judge any accessibility service, including this one: an " +
+            "enabled service CAN be granted content access by the system, so the guarantee rests " +
+            "on the code, which is in OverlayWatch.kt and calls no content API at all. If you do " +
+            "not want that trade, leave it off — everything else on this screen works without it."))
         root.addView(tjCard)
+
+        // ---- WebView provider ----
+        val wvCard = Nx.card(ctx)
+        val (wvHead, wvT) = Nx.header(ctx, "WebView provider"); wvTag = wvT
+        wvCard.addView(wvHead)
+        val wvBody = Nx.column(ctx).apply { setPadding(Nx.dp(ctx, 8), 0, Nx.dp(ctx, 8), Nx.dp(ctx, 8)) }
+        wvVals = Nx.statGrid(ctx, wvBody, 3, listOf("Package", "Version", "Channel"))
+        wvCard.addView(wvBody)
+        wvCard.addView(Nx.body(ctx,
+            "Which WebView implementation is rendering the Masker screen. It matters twice.\n\n" +
+            "FOR SECURITY: the WebView provider is swappable, and whatever provides it executes " +
+            "every piece of script this app runs and parses every hostile string it meets — " +
+            "network names, device names, cell identifiers. A provider that is not the expected " +
+            "one, or one months out of date, is a larger change to this app's attack surface " +
+            "than anything in its own code. Stock is com.google.android.webview (or " +
+            "com.android.webview on AOSP builds).\n\n" +
+            "FOR DEVELOPMENT: to debug or instrument the WebView, install a Dev-channel " +
+            "WebView — the package is com.google.android.webview.dev — then choose it under " +
+            "Developer options > WebView implementation. Only channels you have installed appear " +
+            "in that list. This card is how you confirm the switch actually took effect, which " +
+            "the Developer options screen alone does not tell you."))
+        root.addView(wvCard)
 
         // ---- LAN ----
         val netCard = Nx.card(ctx)
@@ -167,6 +201,15 @@ class SecurityScreen(ctx: Context) : ScrollView(ctx) {
                 val cs = MaskerService.ensureCellSecurity(c)
                 JSONObject(if (force) cs.scan() else cs.cached())
             }.getOrNull()
+            // WebView provider. getCurrentWebViewPackage() is a PackageManager lookup, so it
+            // belongs off the main thread with everything else here.
+            out["wv"] = runCatching {
+                val p = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O)
+                    android.webkit.WebView.getCurrentWebViewPackage() else null
+                JSONObject()
+                    .put("pkg", p?.packageName ?: "")
+                    .put("ver", p?.versionName ?: "")
+            }.getOrNull()
             out
         }, { out ->
             out["esc"]?.let { o ->
@@ -187,10 +230,33 @@ class SecurityScreen(ctx: Context) : ScrollView(ctx) {
             }
             out["tj"]?.let { o ->
                 val blocked = o.optInt("filteredTouches", 0)
-                tjTag.text = if (blocked > 0) "$blocked obscured" else "monitoring"
+                // The dedicated detector's own state leads, because it is the one that can
+                // actually see overlays; the counters below are the ambient view.
+                val watching = com.ant.emichaosbg.OverlayWatch.connected
+                tjTag.text = when {
+                    blocked > 0 -> "$blocked obscured"
+                    watching -> "overlay detection ON"
+                    else -> "overlay detection off"
+                }
                 tjVals[0].text = blocked.toString()
                 tjVals[1].text = o.optInt("overlayCount", 0).toString()
                 tjVals[2].text = o.optInt("a11yCount", 0).toString()
+            }
+            out["wv"]?.let { o ->
+                val pkg = o.optString("pkg")
+                wvVals[0].text = if (pkg.isBlank()) "unknown" else pkg.substringAfterLast('.')
+                wvVals[1].text = o.optString("ver").substringBefore('.').ifBlank { "—" }
+                val channel = when {
+                    pkg.endsWith(".dev") -> "DEV"
+                    pkg.endsWith(".beta") -> "beta"
+                    pkg.endsWith(".canary") -> "canary"
+                    pkg == "com.google.android.webview" -> "stable"
+                    pkg == "com.android.webview" -> "AOSP"
+                    pkg.isBlank() -> "—"
+                    else -> "other"
+                }
+                wvVals[2].text = channel
+                wvTag.text = if (pkg.isBlank()) "not reported" else o.optString("ver").ifBlank { channel }
             }
             out["net"]?.let { o ->
                 if (o.optBoolean("ok", true)) {
