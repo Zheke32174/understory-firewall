@@ -26,11 +26,20 @@
     <!-- READ_PHONE_STATE is used ONLY to read cell-tower generation/neighbor-count for the
          on-device IMSI-catcher heuristic panel (2G-downgrade / isolated-cell detection). -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <!-- Camera is used ONLY for the optional visual scan: live frames are analysed in-process
+         for bright point-source hotspots in a darkened room (a known DIY technique for
+         spotting hidden-camera/mic IR LEDs, since many phone sensors have weak IR-cut
+         filtering). No frame is ever recorded, saved, or transmitted. -->
+    <uses-permission android:name="android.permission.CAMERA" />
 
     <uses-feature android:name="android.hardware.audio.output" android:required="true" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
     <uses-feature android:name="android.hardware.sensor.gyroscope" android:required="false" />
     <uses-feature android:name="android.hardware.sensor.compass" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.barometer" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.light" android:required="false" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
     <uses-feature android:name="android.hardware.wifi" android:required="false" />

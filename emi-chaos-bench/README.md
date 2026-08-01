@@ -23,6 +23,36 @@ BLE/Wi-Fi field tools (accessory pairing, sensor telemetry, profiles,
 geofencing, anomaly detection) and porting those *interaction and detection*
 ideas — never any transmit capability — onto an audio masker.
 
+## What's new in 3.1
+
+- **Fixed a real mic-permission bug**: `MainActivity` used to load the WebView before the
+  async permission round-trip finished, so a mic-toggle tap that raced the OS dialog could
+  get denied once and stay denied for the rest of that page's life (WebView caches the
+  per-origin decision). Now the page doesn't load until permissions are settled, and the
+  app reloads the WebView if mic permission is granted late (e.g. via Settings) to give it
+  a clean shot. `Mic.enable()` also surfaces the real `DOMException` name instead of a
+  generic "denied" toast.
+- **Camera visual scan** — `getUserMedia(video)`, analysed frame-by-frame in-process (never
+  recorded/saved): looks for bright point-source "hotspots" in an otherwise dark frame, a
+  known DIY technique for spotting hidden-camera/mic IR LEDs (many phone sensors have weak
+  IR-cut filtering).
+- **LAN device inventory** — reads `/proc/net/arp` (the kernel's own table, no root, no
+  spoofing) to list who's on your currently-connected network.
+- **Wardriving** — GPS-tagged local log of Wi-Fi/BLE sightings, GPX/CSV export. Local-only;
+  nothing uploads automatically.
+- **BLE GATT inspection** — briefly connects to a picked device and reads its GATT service
+  UUIDs for device-type fingerprinting (recognises a handful of SIG-assigned UUIDs,
+  including Tile's).
+- **Deeper Wi-Fi heuristics** — WPS-enabled and open/WEP network flags, plus Karma/rogue-AP
+  detection (same BSSID advertising multiple different SSIDs).
+- **On-device indicators** — accessibility-service count, count of other apps holding
+  mic/camera/location permission, and battery drain rate: a different class of signal than
+  RF (something already on this phone, not nearby).
+- Barometer and ambient-light sensors added to the modulation matrix and anomaly fusion.
+- See [ETHICS.md](ETHICS.md) for what was explicitly requested and declined this round
+  (MITM/ARP-poisoning/packet-sniffing/exploit-module capability referencing Intercepter-NG
+  and cSploit) and why.
+
 ## What's new in 3.0 — Detect
 
 | Area | What it does |

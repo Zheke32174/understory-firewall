@@ -63,6 +63,38 @@ Bluetooth, Wi-Fi, GPS, cellular and the motion sensors are used **read-only**:
 - Every anomaly signal here (cell downgrade, magnetometer deviation, thermal
   delta, BLE tracker rotation, ultrasonic modulation) is a **heuristic**, not
   a certified detector. Treat a high score as "go look closer," not proof.
+- The **camera** (optional, off by default) is analysed frame-by-frame,
+  in-process, for bright point sources in a darkened room — a DIY technique
+  for spotting hidden-camera/mic IR LEDs. No frame is ever recorded, saved,
+  or transmitted; only a hotspot count leaves the analysis function.
+- **LAN device inventory** reads `/proc/net/arp` — the kernel's own ARP
+  table, populated passively by normal traffic on the network you're
+  already connected to. This is a read, not ARP spoofing/poisoning: nothing
+  is sent, no other device's traffic is touched, redirected, or intercepted.
+- **Wardriving** logs GPS-tagged Wi-Fi/BLE sightings locally, exportable as
+  GPX/CSV. Nothing is uploaded anywhere automatically — export is a manual,
+  explicit action producing a file you control.
+- **On-device indicators** (accessibility-service count, count of other apps
+  holding mic/camera/location permission) are plain, unprivileged
+  `PackageManager`/`AccessibilityManager` queries — counts only, never able
+  to see what another app actually does. Not proof of anything on their own.
+
+## What was asked for and declined, and why
+
+During development, three additional apps were held up as references for
+"similar abilities": **WiGLE** (passive Wi-Fi/BLE/cell wardriving — genuinely
+in scope, and its GPS-tagged-logging idea is what the Wardriving feature
+above is built from) alongside **Intercepter-NG** and **cSploit**, both of
+which require root and whose defining capabilities are **ARP
+poisoning/spoofing, man-in-the-middle interception, credential and packet
+sniffing of *other devices'* traffic, active port-scanning of arbitrary
+hosts, and exploit modules**. Those were not built, and won't be, for the
+same reason the "radiate" request wasn't built: they cross from *observing
+what's already reaching this device* into *actively acting on other
+people's devices or traffic without their participation*. That line — read,
+don't act — is the one invariant every feature in this app is built to keep
+on the right side of, no matter how the request for the next feature is
+framed.
 
 ## Use it lawfully
 

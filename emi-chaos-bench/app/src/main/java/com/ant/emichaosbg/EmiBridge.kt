@@ -1,7 +1,11 @@
 package com.ant.emichaosbg
 
 import android.Manifest
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.bluetooth.BluetoothGatt
+import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
 import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
@@ -31,6 +35,7 @@ import android.telephony.CellInfoNr
 import android.telephony.CellInfoWcdma
 import android.telephony.SignalStrength
 import android.telephony.TelephonyManager
+import android.view.accessibility.AccessibilityManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.core.content.ContextCompat
@@ -82,6 +87,8 @@ class EmiBridge(private val ctx: Context, private val web: WebView) : SensorEven
             reg(Sensor.TYPE_LINEAR_ACCELERATION)
             reg(Sensor.TYPE_MAGNETIC_FIELD)
             reg(Sensor.TYPE_ROTATION_VECTOR)
+            reg(Sensor.TYPE_PRESSURE)
+            reg(Sensor.TYPE_LIGHT)
         }
     }
 
@@ -122,6 +129,16 @@ class EmiBridge(private val ctx: Context, private val web: WebView) : SensorEven
                 snap["mag"] = (o[0] / Math.PI) // -1..1 heading
                 snap["ox"] = (o[0] / Math.PI); snap["oy"] = (o[1] / (Math.PI / 2)); snap["oz"] = (o[2] / (Math.PI / 2))
             }
+            Sensor.TYPE_PRESSURE -> {
+                // deviation from standard sea-level pressure (1013.25 hPa), ±50hPa -> ±1;
+                // JS tracks its own rolling baseline for anomaly purposes (raw altitude/
+                // weather changes are normal — a sudden step is the interesting part)
+                snap["baro"] = n(e.values[0] - 1013.25f, 50f)
+            }
+            Sensor.TYPE_LIGHT -> {
+                val lux = e.values[0].toDouble().coerceAtLeast(0.0)
+                snap["light"] = max(-1.0, min(1.0, (Math.log10(lux + 1.0) / 5.0) * 2 - 1)) // log scale, ~1..100000 lux
+            }
         }
     }
 
@@ -157,8 +174,10 @@ class EmiBridge(private val ctx: Context, private val web: WebView) : SensorEven
     // ---- thermal + cell heuristics (read-only entropy / anomaly inputs) -
 
     private var lastCellGen = 5 // start optimistic; only ever flags a real observed drop
+    private var lastBatteryPct = -1.0
+    private var lastBatteryReadAt = 0L
 
-    /** Battery temperature (always available, no permission) + best-effort CPU zone temps. */
+    /** Battery temperature + drain rate (always available, no permission) + best-effort CPU zone temps. */
     @JavascriptInterface
     fun getThermals(): String {
         val o = JSONObject()
@@ -166,6 +185,23 @@ class EmiBridge(private val ctx: Context, private val web: WebView) : SensorEven
             val batIntent = ctx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
             val tenthsC = batIntent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1) ?: -1
             if (tenthsC >= 0) o.put("batteryC", tenthsC / 10.0)
+            val level = batIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale = batIntent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+            val plugged = (batIntent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
+            if (level >= 0 && scale > 0) {
+                val pct = level * 100.0 / scale
+                o.put("batteryPct", pct)
+                o.put("charging", plugged)
+                val now = System.currentTimeMillis()
+                if (!plugged && lastBatteryPct >= 0 && now > lastBatteryReadAt) {
+                    val minutes = (now - lastBatteryReadAt) / 60000.0
+                    if (minutes > 0.05) {
+                        val ratePerHour = (lastBatteryPct - pct) / minutes * 60.0
+                        o.put("drainPctPerHour", ratePerHour)
+                    }
+                }
+                lastBatteryPct = pct; lastBatteryReadAt = now
+            }
         } catch (_: Exception) {}
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -217,6 +253,38 @@ class EmiBridge(private val ctx: Context, private val web: WebView) : SensorEven
         } catch (_: Exception) {
             o.put("error", "unavailable")
         }
+        return o.toString()
+    }
+
+    /**
+     * On-device compromise indicators — a DIFFERENT class of signal than RF: not "is
+     * something nearby listening" but "is something already on this phone doing so."
+     * Both reads are plain, unprivileged PackageManager/AccessibilityManager queries — no
+     * special permission, no ability to see WHAT other apps do, just counts. A high count
+     * isn't proof of anything (legitimate accessibility tools and camera/mic apps exist) —
+     * same "heuristic, look closer" framing as everywhere else in this bridge.
+     */
+    @JavascriptInterface
+    fun getCompromiseIndicators(): String {
+        val o = JSONObject()
+        try {
+            val am = ctx.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager
+            val enabled = am?.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+            o.put("accessibilityServices", enabled?.size ?: 0)
+            if (enabled != null && enabled.isNotEmpty()) {
+                val names = JSONArray()
+                enabled.forEach { names.put(it.resolveInfo?.serviceInfo?.packageName ?: "?") }
+                o.put("accessibilityServiceNames", names)
+            }
+        } catch (_: Exception) { o.put("accessibilityServices", -1) }
+        try {
+            val pm = ctx.packageManager
+            fun countHolding(vararg perms: String): Int =
+                pm.getPackagesHoldingPermissions(perms, 0).size
+            o.put("appsWithMicAccess", countHolding(Manifest.permission.RECORD_AUDIO))
+            o.put("appsWithCameraAccess", countHolding(Manifest.permission.CAMERA))
+            o.put("appsWithLocationAccess", countHolding(Manifest.permission.ACCESS_FINE_LOCATION))
+        } catch (_: Exception) {}
         return o.toString()
     }
 
@@ -293,6 +361,93 @@ class EmiBridge(private val ctx: Context, private val web: WebView) : SensorEven
         }
     }
 
+    // ---- LAN device inventory ("who's on my network") --------------------
+    // Reads /proc/net/arp — the kernel's own ARP table, populated passively by normal
+    // network traffic on the currently-connected LAN. This is NOT ARP spoofing/poisoning:
+    // nothing is sent, nothing is injected, no other device's traffic is touched or
+    // redirected. It only reads what the OS already knows about who has recently
+    // communicated on this network — the same category of read as `ip neigh` or `arp -a`.
+
+    @JavascriptInterface
+    fun getLanDevices(): String {
+        val arr = JSONArray()
+        try {
+            val lines = java.io.File("/proc/net/arp").readLines()
+            for (line in lines.drop(1)) {
+                val parts = line.trim().split(Regex("\\s+"))
+                if (parts.size < 6) continue
+                val ip = parts[0]; val flags = parts[2]; val mac = parts[3]; val dev = parts[5]
+                if (flags != "0x2") continue // 0x2 = ATF_COMPLETE — a real, resolved entry
+                if (mac == "00:00:00:00:00:00") continue
+                val o = JSONObject()
+                o.put("ip", ip); o.put("mac", mac); o.put("iface", dev)
+                arr.put(o)
+            }
+        } catch (_: Exception) { /* some OEM builds restrict /proc/net/arp — degrade to empty */ }
+        return arr.toString()
+    }
+
+    // ---- BLE GATT inspection (device-type fingerprinting) ----------------
+    // Briefly connects to a device the user picked from the scan list, reads its GATT
+    // service/characteristic UUIDs, then disconnects. This is a normal BLE GATT client
+    // connection (the same thing any companion app does to talk to a device) — it reads
+    // the device's advertised capability tree, it does not read/write application data,
+    // pair, bond, or send any command beyond service discovery.
+
+    private var activeGatt: BluetoothGatt? = null
+    private var gattTarget: String? = null
+
+    @JavascriptInterface
+    fun bleInspectGatt(address: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            ContextCompat.checkSelfPermission(ctx, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
+        ) { postJs(gattResultJs(address, null, "no_permission")); return }
+        main.post {
+            try {
+                activeGatt?.let { try { it.close() } catch (_: Exception) {} }
+                val bm = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+                val device = bm?.adapter?.getRemoteDevice(address)
+                if (device == null) { postJs(gattResultJs(address, null, "device_not_found")); return@post }
+                gattTarget = address
+                activeGatt = device.connectGatt(ctx, false, gattCallback)
+            } catch (e: SecurityException) {
+                postJs(gattResultJs(address, null, "security_exception"))
+            } catch (e: Exception) {
+                postJs(gattResultJs(address, null, e.message ?: "connect_failed"))
+            }
+        }
+    }
+
+    private val gattCallback = object : BluetoothGattCallback() {
+        override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+            if (newState == BluetoothProfile.STATE_CONNECTED) {
+                try { gatt.discoverServices() } catch (_: SecurityException) {}
+            } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                try { gatt.close() } catch (_: Exception) {}
+                if (activeGatt === gatt) activeGatt = null
+            }
+        }
+        override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+            val arr = JSONArray()
+            try {
+                for (svc in gatt.services) {
+                    val so = JSONObject(); so.put("uuid", svc.uuid.toString())
+                    val chars = JSONArray(); for (c in svc.characteristics) chars.put(c.uuid.toString())
+                    so.put("characteristics", chars); arr.put(so)
+                }
+            } catch (_: SecurityException) {}
+            postJs(gattResultJs(gattTarget ?: "", arr, null))
+            try { gatt.disconnect() } catch (_: Exception) {}
+        }
+    }
+
+    private fun gattResultJs(address: String, services: JSONArray?, error: String?): String {
+        val o = JSONObject().put("address", address)
+        if (services != null) o.put("services", services)
+        if (error != null) o.put("error", error)
+        return "window.__emiGattResult && window.__emiGattResult(${JSONObject.quote(o.toString())})"
+    }
+
     // ---- haptics --------------------------------------------------------
 
     @JavascriptInterface
@@ -326,5 +481,6 @@ class EmiBridge(private val ctx: Context, private val web: WebView) : SensorEven
 
     fun shutdown() {
         stopSensors(); bleStop(); setForeground(false)
+        try { activeGatt?.close() } catch (_: Exception) {}
     }
 }
