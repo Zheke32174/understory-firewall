@@ -216,6 +216,8 @@
           <input id="ssAmt" type="range" min="0" max="1" step="0.01" value="0.75"></div></div>
         <div class="row"><div class="cell full">
           <button class="btn" id="ssOver" aria-pressed="false">Overdrive</button></div></div>
+        <div class="row"><div class="cell full">
+          <button class="btn" id="ssJolt" aria-pressed="false">Screen jolt — OFF</button></div></div>
         <div class="anvil" id="ssThrash"></div>
         <div class="grid">
           <div class="stat"><small>Bursts</small><b id="ssCount">0</b></div>
@@ -362,10 +364,10 @@
     </div>
     <div class="sect">
       <div class="head"><span class="t">Screen chaos</span><span class="tag" id="sxState">off</span>
-        <div class="sw" id="sxEn" aria-pressed="true"></div></div>
+        <div class="sw" id="sxEn" aria-pressed="false"></div></div>
       <div class="body">
-        <div class="row"><div class="cell full"><small>Amount <span id="sxAmtR">100%</span></small>
-          <input id="sxAmt" type="range" min="0" max="1" step="0.01" value="1"></div></div>
+        <div class="row"><div class="cell full"><small>Amount <span id="sxAmtR">60%</span></small>
+          <input id="sxAmt" type="range" min="0" max="1" step="0.01" value="0.6"></div></div>
         <div class="muted">Drives brightness, colour temperature, saturation and a slight hue drift off the same
           chaos cores as the audio. Every axis is clamped to a deliberately conservative window — brightness only
           ever dims to 72% of your own setting and never brightens past it, saturation stays within ±10%, hue
@@ -1969,6 +1971,11 @@ function proc(e){
   schedule(procT0);
   const saved=applyModIn();
   const L=e.outputBuffer.getChannelData(0), Rr=e.outputBuffer.getChannelData(1), n=L.length, E=P.en;
+  // Drive the DOM hammer's audible glitch off the AUDIO clock, not off setTimeout. This is
+  // what makes the stutter keep running with the app backgrounded, the screen off, or the app
+  // swiped away onto the headless WebView — the audio callback is still being serviced there,
+  // while page timers are throttled or suspended outright.
+  if(ssOn) ScanStutter.audioTick(n, (actx&&actx.sampleRate)||48000);
   const aR=chz(P.aRate), bR=chz(P.bRate);
   const cvOn=!!P.e_cv, cR=chz(P.cRate), dR=chz(P.dRate), eR=chz(P.eRate), fR=chz(P.fRate);
   const spN=P.spN|0, cwN=P.cwS|0, hmH=P.hmH|0, usN=P.usN|0;
@@ -3351,6 +3358,9 @@ const ScanStutter=(function(){
   let holdSamples=0, dropSamples=0;
   // Rolling one-second readouts.
   let opWin=0, opT=0, lastReflow=0, lastMs=0, lastOps=0, lastDuty=0, lastGap=20;
+  // Audio-clock scheduling state — see audioTick(). Kept separate from the setTimeout path on
+  // purpose: one drives sound and survives backgrounding, the other drives the DOM and cannot.
+  let audioClock=0, nextGlitchAt=0, glitches=0;
   // The anvil: real, laid-out cells. Built once, lazily, into #ssThrash.
   const CELLS=28; let anvil=null, cells=null, phase=0, appEl=null, deepEl=null;
   function buildAnvil(){
@@ -3381,7 +3391,12 @@ const ScanStutter=(function(){
          reason.)
        - STRUCTURAL: padding/width writes on the root force real relayout of every panel, which
          is what actually costs main-thread time and starves the audio callback. */
-  let readSink=0;
+  /* The whole-screen jolt ships OFF. I turned it on for everyone and it made the app unusable
+     — the screen never came back to rest and could not be read or reliably tapped. The
+     hammer's actual work (whole-document relayout, main-thread starvation, the audible
+     stutter) does not depend on it, so the default is now: hammer on, screen left alone.
+     Turn "Screen jolt" on deliberately if you want the display thrown around too. */
+  let readSink=0, jolt=false, joltPending=false, joltEnabled=false;
   function reflowOp(host,k){
     const n=cells.length;
     const base=(phase+k)|0;
@@ -3389,20 +3404,25 @@ const ScanStutter=(function(){
 
     // --- WHOLE-SCREEN write: jolts the entire app and invalidates the whole document ---
     if(appEl){
-      // Amplitudes are large on purpose. The first pass used ±4px at full severity, which
-      // measured as "the whole app is moving" and read on a phone as nothing at all. These
-      // reach ±16px of throw, ~3.5deg of skew and ±1.5% of scale at maximum — a jolt you
-      // cannot mistake for a rendering artefact.
-      const dx=(((base*7)%9)-4)*shake*4;
-      const dy=(((base*5)%7)-3)*shake*3.2;
-      const sk=(((base*3)%5)-2)*shake*1.8;
-      const sc=1+((((base*11)%5)-2)*0.008*shake);
-      const rot=(((base*13)%7)-3)*shake*0.25;
-      appEl.style.transform=`translate(${dx.toFixed(2)}px,${dy.toFixed(2)}px) `+
-        `skewX(${sk.toFixed(2)}deg) rotate(${rot.toFixed(2)}deg) scale(${sc.toFixed(4)})`;
-      // Structural writes — relayout of every section, not merely a repaint of the root.
-      appEl.style.paddingLeft=((base*3)%13)+'px';
-      appEl.style.paddingRight=((base*5)%13)+'px';
+      // STRUCTURAL write — every op. This is the actual hammer: it invalidates layout for
+      // every section, which is what costs main-thread time, janks the UI and starves the
+      // audio callback. Small values, because the damage is the relayout, not the offset.
+      appEl.style.paddingLeft=((base*3)%7)+'px';
+      appEl.style.paddingRight=((base*5)%7)+'px';
+      // VISIBLE jolt — only on bursts flagged for it, and ALWAYS cleared when the burst ends
+      // (see the reset in pulse()). Applying it on every burst at ~50 bursts/s left the app
+      // permanently transformed: it never returned to neutral, so it read as a broken screen
+      // rather than as a disruption, and the text could not be read or reliably tapped. A
+      // glitch has to end for it to register as a glitch.
+      if(jolt){
+        const dx=(((base*7)%9)-4)*shake*4;
+        const dy=(((base*5)%7)-3)*shake*3.2;
+        const sk=(((base*3)%5)-2)*shake*1.8;
+        const sc=1+((((base*11)%5)-2)*0.008*shake);
+        const rot=(((base*13)%7)-3)*shake*0.25;
+        appEl.style.transform=`translate(${dx.toFixed(2)}px,${dy.toFixed(2)}px) `+
+          `skewX(${sk.toFixed(2)}deg) rotate(${rot.toFixed(2)}deg) scale(${sc.toFixed(4)})`;
+      }
     }
 
     // --- anvil write: the local readout, still real geometry ---
@@ -3431,6 +3451,13 @@ const ScanStutter=(function(){
   function pulse(){
     const host=buildAnvil();
     if(Math.random()<0.25) pickDeep();
+    /* Which bursts get the VISIBLE whole-screen jolt. Not all of them: at the scheduler's
+       rate that is tens per second, and a screen that is displaced every single burst never
+       comes to rest — it stops reading as "something disrupted the app" and starts reading
+       as "the app is broken", which is what it did. Roughly 6-18 jolts a second at severity,
+       each one snapped back to neutral before the next gap, is violent and still leaves the
+       UI legible and tappable in between. */
+    jolt = joltEnabled && Math.random() < (0.10+intensity*0.22)*(over?1.6:1);
     // Per-burst millisecond budget: how long this single burst is allowed to hold the thread.
     // Scales with severity; hard-capped so ONE burst can never approach the ANR threshold
     // regardless of severity or overdrive — the sustained load comes from frequency×duty, not
@@ -3444,35 +3471,49 @@ const ScanStutter=(function(){
       if(EMIBridge.getSensors) EMIBridge.getSensors();
       else if(EMIBridge.getThermals) EMIBridge.getThermals(); } } }catch(e){}
     // 2) Forced synchronous reflows until the budget is spent — MEASURED, not fixed.
+    // Skipped outright when the page is hidden: there is no rendering to disrupt, the browser
+    // will not lay out an invisible document anyway, and burning the main thread there would
+    // steal cycles from the audio callback — which in the background is the ONLY half of this
+    // effect still doing anything. The audible glitch keeps running via audioTick().
+    const hidden = (typeof document.hidden==='boolean') && document.hidden;
     let ops=0; const t0=perfNow(); let now=t0;
-    if(host){
+    if(host && !hidden){
       // A small floor so even a very tight budget lands at least a few reflows.
       do { reflowOp(host,ops); ops++; now=perfNow(); }
       while(now-t0 < bMs && ops < 6000);
     } else { now=perfNow(); }
     const burstMs = now - t0;
     lastMs=burstMs; lastOps=ops;
-    /* 3) The audible glitch. EVERY burst glitches now — it used to be a 60/40 coin flip, so
-       most bursts made no sound at all and the effect was inaudible in practice. Which KIND
-       is still random (a hold smears, a drop gouges — they sound different), but that one of
-       them happens is not.
+    /* SNAP BACK TO NEUTRAL — but not in this same synchronous block, which is the subtlety
+       that makes or breaks the whole effect.
 
-       Duration is scaled to the MEASURED GAP between bursts, not to a fixed sample count.
-       That matters: at 75% severity bursts land ~18ms apart, so a fixed 80ms hold would still
-       be running when the next three bursts fired and the audio would simply go dead —
-       continuously muted, which is not a stutter. Expressing the glitch as a FRACTION of the
-       gap guarantees the two things a stutter needs: it fires every time, and there is always
-       clean audio in between for it to interrupt. Turning severity up shortens the gap AND
-       raises the fraction, so it thickens toward continuous without ever silently becoming a
-       mute. */
-    const spms=48;                                  // samples per ms, nominal
-    const frac=cl((over?0.42:0.25)+intensity*0.45, 0, 0.88);
-    const span=Math.max(96, lastGap*spms*frac);
-    const g=Math.random();
-    if(g<0.45) holdSamples=Math.round(rnd(span*0.6,span*1.4));
-    else if(g<0.9) dropSamples=Math.round(rnd(span*0.5,span*1.2));
-    else { holdSamples=Math.round(rnd(span*0.3,span*0.7));
-           dropSamples=Math.round(rnd(span*0.3,span*0.7)); }   // both: stutter then gap
+       The structural padding is cleared immediately: it exists to force relayout, and the
+       relayout has already been forced by the reads above.
+
+       The visible transform CANNOT be cleared here. Everything in pulse() runs inside one
+       synchronous task, and the browser does not paint mid-task — so setting a transform and
+       clearing it before returning produces exactly zero painted frames with the transform
+       applied. The screen would never visibly move at all, no matter how large the numbers
+       were. It has to survive to the next paint and be cleared on the far side of it, which
+       is what the rAF does: exactly one displaced frame, then straight again.
+
+       That also bounds it. rAF fires once, so a jolt can never persist — which is precisely
+       the failure that made the app unusable when the transform was simply left applied. */
+    if(appEl){ appEl.style.paddingLeft=''; appEl.style.paddingRight='';
+      if(jolt && !joltPending){
+        joltPending=true;
+        try{ requestAnimationFrame(()=>{ joltPending=false;
+          if(appEl) appEl.style.transform=''; }); }
+        catch(e){ appEl.style.transform=''; joltPending=false; }
+      } else if(!jolt && !joltPending){ appEl.style.transform=''; }
+    }
+    // The audible glitch is NOT asserted here any more — see audioTick(). Asserting it on this
+    // setTimeout path was what confined the effect to the foreground: Android throttles timers
+    // hard in a backgrounded WebView (and can stop them outright), so the moment the app lost
+    // focus the stutter stopped with it. The audio callback keeps running in the background —
+    // that is the whole point of the foreground service — so the glitch is driven from there
+    // instead, and this path is left owning only the DOM/bridge work, which is meaningless
+    // when nothing is being rendered anyway.
     if(Math.random()<0.35) toast('scan…');
     // Deliberately NOT reported to the Governor. The Governor treats audio-callback overrun as
     // evidence the device is under stress and responds by shrinking the RADIO duty cycle. These
@@ -3531,7 +3572,46 @@ const ScanStutter=(function(){
     get enabled(){ return on; },
     set intensity(v){ intensity=cl(v,0,1); }, get intensity(){ return intensity; },
     set overdrive(v){ over=!!v; }, get overdrive(){ return over; },
+    set screenJolt(v){ joltEnabled=!!v;
+      if(!v && appEl){ appEl.style.transform=''; } },
+    get screenJolt(){ return joltEnabled; },
     get bursts(){ return bursts; },
+    /* THE BACKGROUND DRIVER. Called from proc() once per audio buffer, so its clock is the
+       audio callback rather than setTimeout. That is the entire fix for "only works while the
+       app is in focus": Android throttles timers savagely in a backgrounded WebView and can
+       suspend them outright, so a glitch scheduled on setTimeout dies the moment focus is
+       lost. The audio callback keeps being serviced — that is what the foreground service and
+       the wake lock exist to guarantee — so scheduling from here means the stutter continues
+       with the app backgrounded, screen off, or swiped away onto the headless WebView.
+
+       The DOM half legitimately stops when hidden: there is nothing being rendered to
+       disrupt. The audible half, which is the part you can still perceive with the app out of
+       sight, does not.
+
+       Glitch length is a FRACTION of the inter-glitch gap rather than a fixed sample count.
+       A fixed 80ms hold at an 18ms spacing would still be running when the next three fired
+       and the output would go continuously dead — a mute, not a stutter. As a fraction there
+       is always clean audio in between for the glitch to interrupt, at every severity. */
+    audioTick:function(nSamples, sampleRate){
+      if(!on) return;
+      const sr=sampleRate>0?sampleRate:48000;
+      audioClock += (nSamples/sr)*1000;               // ms of real audio elapsed
+      if(audioClock < nextGlitchAt) return;
+      // Mean rate rises with severity: ~6/s at zero, ~46/s at full, ~74/s in overdrive.
+      const perSec=(6+intensity*intensity*40)*(over?1.6:1);
+      const gap=1000/perSec;
+      const jitter=rnd(gap*0.45,gap*1.7);             // never a metronome
+      nextGlitchAt = audioClock + jitter;
+      const frac=cl((over?0.42:0.25)+intensity*0.45, 0, 0.88);
+      const span=Math.max(64, (jitter/1000)*sr*frac);
+      const g=Math.random();
+      if(g<0.45) holdSamples=Math.round(rnd(span*0.6,span*1.4));
+      else if(g<0.9) dropSamples=Math.round(rnd(span*0.5,span*1.2));
+      else { holdSamples=Math.round(rnd(span*0.3,span*0.7));
+             dropSamples=Math.round(rnd(span*0.3,span*0.7)); }   // both: stutter then gap
+      glitches++;
+    },
+    get glitches(){ return glitches; },
     /* Consumed per sample by proc(): 0 = normal, 1 = hold previous sample, 2 = drop. */
     step:function(){
       if(holdSamples>0){ holdSamples--; return 1; }
@@ -5792,8 +5872,13 @@ $('ssOver').addEventListener('click',()=>{ const b=$('ssOver'),v=b.getAttribute(
 // still has to be told, or the UI would claim "on" while nothing hammered. That mismatch is
 // exactly how this feature came to read as absent before, so it is started explicitly here and
 // the two are seeded from the same markup values rather than from a second hardcoded default.
+$('ssJolt').addEventListener('click',()=>{ const b=$('ssJolt'),v=b.getAttribute('aria-pressed')!=='true';
+  b.setAttribute('aria-pressed',String(v)); ScanStutter.screenJolt=v;
+  b.textContent = v ? 'Screen jolt — ON' : 'Screen jolt — OFF';
+  toast(v?'Screen jolt on — the whole display gets thrown around':'Screen jolt off'); });
 ScanStutter.intensity = +$('ssAmt').value;
 $('ssAmtR').textContent = Math.round(+$('ssAmt').value*100)+'%';
+ScanStutter.screenJolt = $('ssJolt').getAttribute('aria-pressed')==='true';
 ScanStutter.enabled = $('ssEn').getAttribute('aria-pressed')==='true';
 $('cpEn').addEventListener('click',()=>{ const b=$('cpEn'),v=b.getAttribute('aria-pressed')!=='true';
   b.setAttribute('aria-pressed',String(v)); ChaosPulse.enabled=v; });
