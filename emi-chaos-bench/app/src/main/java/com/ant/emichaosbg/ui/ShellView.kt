@@ -30,9 +30,12 @@ import android.widget.*
  * TowerLog and SecureLog all already returned JSON; the page was reading it back out and
  * drawing numbers. Those numbers are now drawn where they are produced.
  *
- * MIGRATION, NOT A BIG BANG. Security is native here. Logs, Data and Masker still point at the
- * page while their screens are built, and the menu shows which is which rather than pretending
- * the move is finished.
+ * WHERE THE MIGRATION STANDS. Security, Logs and Data are native Views. MASKER IS THE ONLY
+ * REMAINING WEB-BACKED DESTINATION, and it is the one that should be: it hosts the audio graph
+ * and the DOM hammer, and it is the attack surface the injection detection is there to watch.
+ * DESTS carries that flag per destination so the shell can state it rather than imply it —
+ * webBackedDestinations() is the honest answer to "how much of this is still a web page", and
+ * it is now exactly one entry long.
  */
 class ShellView(
     ctx: Context,
@@ -44,13 +47,15 @@ class ShellView(
     private val tabs = ArrayList<Button>()
     private val ui = Handler(Looper.getMainLooper())
     private var security: SecurityScreen? = null
+    private var logs: LogsScreen? = null
+    private var data: DataScreen? = null
     private var current = ""
 
     private val DESTS = listOf(
-        "Masker" to true,      // true = still the WebView
+        "Masker" to true,      // true = still the WebView, and legitimately so
         "Security" to false,
-        "Logs" to true,
-        "Data" to true
+        "Logs" to false,
+        "Data" to false
     )
 
     init {
@@ -86,7 +91,11 @@ class ShellView(
         // came from exactly this kind of loop calling something expensive too often.
         ui.postDelayed(object : Runnable {
             override fun run() {
-                if (current == "Security") security?.refresh(force = false)
+                when (current) {
+                    "Security" -> security?.refresh(force = false)
+                    "Data" -> data?.refresh()
+                    // Logs deliberately absent: its refresh decrypts records.
+                }
                 ui.postDelayed(this, 5000)
             }
         }, 2500)
@@ -105,6 +114,18 @@ class ShellView(
                 val s = security ?: SecurityScreen(context).also { security = it }
                 content.addView(s, FrameLayout.LayoutParams(-1, -1))
                 s.refresh(force = true)
+            }
+            "Logs" -> {
+                val l = logs ?: LogsScreen(context).also { logs = it }
+                content.addView(l, FrameLayout.LayoutParams(-1, -1))
+                // Cheap only on entry. Loading records decrypts every one of them, so it stays
+                // an explicit press — polling that is what froze this app before.
+                l.refreshCheap()
+            }
+            "Data" -> {
+                val d = data ?: DataScreen(context).also { data = it }
+                content.addView(d, FrameLayout.LayoutParams(-1, -1))
+                d.refresh()
             }
             else -> {
                 // Still the page. Detaching and reattaching the same WebView preserves the
