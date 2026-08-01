@@ -97,23 +97,61 @@ class PrivilegeBridge(private val ctx: Context) {
      * has to be routed through Dhizuku's process — a plain local DevicePolicyManager would be
      * rejected because we are not the owner.
      */
+    /**
+     * The last step this failed at, and why. On device the UI could only say "Dhizuku granted
+     * permission but its device-policy channel could not be reached", because the whole
+     * sequence sat under one `catch (Throwable) { null }` with four silent `?: return null`s
+     * on top of it. Five distinct failure modes reported as one sentence is not a diagnosis —
+     * it cannot even tell a missing Dhizuku owner from a blocked hidden API. Every step now
+     * names itself so the next report says which one, and with what exception.
+     */
+    @Volatile private var dhizukuStep: String? = null
+
     private fun dhizukuDpm(): Pair<DevicePolicyManager, ComponentName>? {
-        if (!dhizukuPermission()) return null
-        return try {
-            val owner = com.rosan.dhizuku.api.Dhizuku.getOwnerComponent() ?: return null
-            val smClass = Class.forName("android.os.ServiceManager")
-            val raw = smClass.getMethod("getService", String::class.java)
-                .invoke(null, Context.DEVICE_POLICY_SERVICE) as? android.os.IBinder ?: return null
-            val wrapped = com.rosan.dhizuku.api.Dhizuku.binderWrapper(raw)
+        if (!dhizukuPermission()) { dhizukuStep = "permission not granted"; return null }
+
+        val owner = try { com.rosan.dhizuku.api.Dhizuku.getOwnerComponent() }
+            catch (e: Throwable) { dhizukuStep = "getOwnerComponent threw: ${e.javaClass.simpleName}: ${e.message}"; return null }
+        if (owner == null) { dhizukuStep = "Dhizuku reports no device-owner component — it is installed but not actually the device owner"; return null }
+
+        // The raw binder used to come from reflecting android.os.ServiceManager#getService.
+        // That is on the non-SDK blocklist, so on a targetSdk-34 app it is hidden from
+        // reflection outright — which is the most likely reason this whole path failed on
+        // Android 16. rikka.shizuku.SystemServiceHelper exists precisely to obtain system
+        // service binders without tripping that, and shizuku:api is already a dependency
+        // here, so it costs nothing to use the supported route instead of the blocked one.
+        val raw = try { rikka.shizuku.SystemServiceHelper.getSystemService(Context.DEVICE_POLICY_SERVICE) }
+            catch (e: Throwable) { dhizukuStep = "could not obtain the device_policy binder: ${e.javaClass.simpleName}: ${e.message}"; return null }
+        if (raw == null) { dhizukuStep = "the device_policy system service returned no binder"; return null }
+
+        val wrapped = try { com.rosan.dhizuku.api.Dhizuku.binderWrapper(raw) }
+            catch (e: Throwable) { dhizukuStep = "Dhizuku.binderWrapper threw: ${e.javaClass.simpleName}: ${e.message}"; return null }
+
+        val iface = try {
             val stub = Class.forName("android.app.admin.IDevicePolicyManager\$Stub")
-            val iface = stub.getMethod("asInterface", android.os.IBinder::class.java)
-                .invoke(null, wrapped)
-            val ifaceCls = Class.forName("android.app.admin.IDevicePolicyManager")
-            val ctor = DevicePolicyManager::class.java.getDeclaredConstructor(Context::class.java, ifaceCls)
+            stub.getMethod("asInterface", android.os.IBinder::class.java).invoke(null, wrapped)
+        } catch (e: Throwable) { dhizukuStep = "IDevicePolicyManager.Stub.asInterface unavailable: ${e.javaClass.simpleName}: ${e.message}"; return null }
+        if (iface == null) { dhizukuStep = "asInterface returned null"; return null }
+
+        // DevicePolicyManager's private constructor is not one fixed signature across
+        // releases — some carry a trailing parentInstance flag. Pick by shape rather than
+        // naming one and failing on every platform that disagrees.
+        val dpm = try {
+            val ctor = DevicePolicyManager::class.java.declaredConstructors.firstOrNull { c ->
+                val p = c.parameterTypes
+                p.size >= 2 && p[0] == Context::class.java && p[1].isInstance(iface)
+            } ?: run { dhizukuStep = "no usable DevicePolicyManager constructor on this platform " +
+                "(saw: ${DevicePolicyManager::class.java.declaredConstructors.joinToString { it.parameterTypes.joinToString(",") { t -> t.simpleName } }})"; return null }
             ctor.isAccessible = true
-            val dpm = ctor.newInstance(ctx, iface) as DevicePolicyManager
-            Pair(dpm, owner)
-        } catch (_: Throwable) { null }
+            val args: Array<Any?> = when (ctor.parameterTypes.size) {
+                2 -> arrayOf(ctx, iface)
+                else -> arrayOf(ctx, iface, false)   // trailing parentInstance flag
+            }
+            ctor.newInstance(*args) as DevicePolicyManager
+        } catch (e: Throwable) { dhizukuStep = "constructing DevicePolicyManager threw: ${e.javaClass.simpleName}: ${e.message}"; return null }
+
+        dhizukuStep = null
+        return Pair(dpm, owner)
     }
 
     /** Which tiers exist right now, and what each is actually good for. */
@@ -212,7 +250,8 @@ class PrivilegeBridge(private val ctx: Context) {
             return o.put("ok", false).put("reason",
                 if (!dhizukuInstalled()) "Install Dhizuku and grant this app permission in it. (Making this app itself the device owner also works but is a far more invasive step — it needs a device with no accounts and a factory reset to undo.)"
                 else if (!dhizukuPermission()) "Dhizuku is installed but hasn't granted this app permission yet — tap 'Request Dhizuku'."
-                else "Dhizuku granted permission but its device-policy channel could not be reached."
+                else "Dhizuku granted permission but its device-policy channel could not be reached — " +
+                     (dhizukuStep ?: "no failing step was recorded, which is itself a bug") + "."
             ).toString()
         }
         return try {
