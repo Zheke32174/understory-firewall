@@ -307,6 +307,22 @@
       </div>
     </div>
     <div class="sect">
+      <div class="head"><span class="t">Vocal spectral analysis</span><span class="tag">Praat/Melodyne-style</span></div>
+      <div class="body">
+        <div class="grid">
+          <div class="stat"><small>Pitch</small><b id="vsPitch">—</b></div>
+          <div class="stat"><small>F1</small><b id="vsF1">—</b></div>
+          <div class="stat"><small>F2</small><b id="vsF2">—</b></div>
+          <div class="stat"><small>F3 (singer's formant)</small><b id="vsF3">—</b></div>
+        </div>
+        <div class="muted">Passive spectral analysis of the mic input, in the spirit of tools like Praat or
+          Melodyne: a coarse fundamental-pitch estimate plus the three loudest spectral peaks in the ranges
+          voice formants typically occupy (F1 ≈300–900Hz, F2 ≈900–2500Hz, F3 ≈2–4kHz — the "singer's formant"
+          band that lets a trained voice cut through without amplification). Reads the same mic analyser as the
+          spectrum above; nothing new is recorded or sent. Rough estimates, not lab-grade formant tracking.</div>
+      </div>
+    </div>
+    <div class="sect">
       <div class="head"><span class="t">RF passive scan</span><span class="tag">Wi-Fi + BLE, read-only</span></div>
       <div class="body">
         <div class="row"><button class="btn acc" id="rfScan">Scan Wi-Fi</button>
@@ -317,6 +333,23 @@
           fingerprinting (AirTag / SmartTag / Tile-style, via manufacturer data and assigned service UUIDs) and
           spam-flood detection run automatically off the existing BLE scan in the Link tab and report here too.
           Per-device GATT service inspection is available from each device's <b>Inspect</b> button on the Link tab.</div>
+      </div>
+    </div>
+    <div class="sect">
+      <div class="head"><span class="t">RF environment classifier</span><span class="tag">receive-only</span></div>
+      <div class="body">
+        <div class="grid">
+          <div class="stat"><small>Wi-Fi 2.4GHz</small><b id="rcWifi24">0</b></div>
+          <div class="stat"><small>Wi-Fi 5GHz</small><b id="rcWifi5">0</b></div>
+          <div class="stat"><small>BLE trackers</small><b id="rcBleTrack">0</b></div>
+          <div class="stat"><small>BLE generic</small><b id="rcBleGen">0</b></div>
+          <div class="stat"><small>Cellular</small><b id="rcCell">—</b></div>
+          <div class="stat"><small>GNSS sats</small><b id="rcSat">—</b></div>
+        </div>
+        <div class="muted">A unified read of what's already being scanned above and on the Link/Sensors tabs —
+          Wi-Fi by band, BLE by classification, active cellular generation, satellites in view — sorted into one
+          summary instead of five separate lists. No new radio activity: this only re-labels data this app is
+          already collecting.</div>
       </div>
     </div>
     <div class="sect">
@@ -381,6 +414,21 @@
       </div>
     </div>
     <div class="sect">
+      <div class="head"><span class="t">App integrity</span><span class="tag" id="tgTag">—</span></div>
+      <div class="body">
+        <div class="grid">
+          <div class="stat"><small>Signature</small><b id="tgSig">—</b></div>
+          <div class="stat"><small>Debugger</small><b id="tgDbg">—</b></div>
+          <div class="stat"><small>Frida</small><b id="tgFrida">—</b></div>
+          <div class="stat"><small>Root</small><b id="tgRoot">—</b></div>
+        </div>
+        <div class="muted" id="tgNote">Checks this APK's own signing certificate, and looks for the common
+          traces of a debugger, Frida instrumentation, or root — the same category of check banking and DRM
+          apps ship. Detect-and-report only: nothing here blocks the app, alters behavior, or touches your
+          data — it only informs this readout. Native build only; no signal in a browser preview.</div>
+      </div>
+    </div>
+    <div class="sect">
       <div class="head"><span class="t">Anomaly score</span><span class="tag">sensor fusion</span></div>
       <div class="body">
         <div class="gauge" id="anomGauge" style="--gv:0"><b id="anomVal">0</b><small>0-100</small></div>
@@ -409,10 +457,15 @@
       <div class="head"><span class="t">Bluetooth LE accessories</span><span class="tag" id="blesrc">—</span></div>
       <div class="body">
         <div class="row"><button class="btn acc" id="bleScan">Scan</button>
-          <button class="btn" id="bleStop">Stop</button></div>
+          <button class="btn" id="bleStop">Stop</button>
+          <button class="chip" id="bleChaotic" aria-pressed="false">Chaotic cadence</button></div>
         <div class="list" id="bleList" style="margin-top:8px"><div class="muted">No devices yet. Scan to discover companion sensor pucks, remote triggers and beacons.</div></div>
         <div class="muted">A paired accessory can feed its RSSI / sensor values into the modulation matrix
-          (<b>entropy</b>), or act as a remote <b>start/stop trigger</b>. BLE is used to read accessories, never to jam.</div>
+          (<b>entropy</b>), or act as a remote <b>start/stop trigger</b>. BLE is used to read accessories, never to jam.
+          <b>Chaotic cadence</b> cycles the same standard active scan on/off at randomized intervals instead of one
+          continuous session — real transmission (BLE scanning sends scan-request packets, standard protocol,
+          standard API), just noisier in timing. It never advertises a fake identity or anything outside normal
+          discovery.</div>
       </div>
     </div>
     <div class="sect">
@@ -547,6 +600,10 @@ const COLORS=[['brown','brown'],['pink','pink'],['white','white'],['blue','blue'
 const VBUS=[['off','off'],['amp','→ amp'],['freq','→ freq'],['filt','→ filter'],
   ['doppler','→ Doppler'],['glitch','→ glitch rate'],['formant','→ formant morph'],
   ['chorus','→ chorus depth'],['tilt','→ spectral tilt'],['grain','→ granular smear']];
+// Five genuinely distinct waveform shapes (not hundreds of near-identical variants, which
+// would just be padding) — six independently-picked voices over this set is already a
+// 5^6 = 15,625-way combination before frequency/detune randomization even enters it.
+const WAVES=[['sine','sine'],['saw','saw'],['triangle','triangle'],['square','square'],['pulse','pulse']];
 const R=(k,lab,min,max,st,unit,def,rmin,rmax)=>({t:'r',k,lab,min,max,st,unit,def,
   rmin:rmin===undefined?min:rmin, rmax:rmax===undefined?max:rmax});
 const S=(k,lab,opts,def)=>({t:'s',k,lab,opts,def});
@@ -718,7 +775,27 @@ const MOD=[
    R('icLen','Chirp len',10,80,2,'ms',30) ]},
  {id:'cnr',title:'Static crackle rain',tog:'e_cnr',defOff:true,ctrls:[
    R('L_cnr','Level',0,1,.01,'pct',.3), R('cnrRate','Base rate',1,80,1,'/s',12),
-   R('cnrDensity','Swell',0,1,.01,'pct',.7), R('cnrSharp','Sharp',0,1,.01,'pct',.8) ]}
+   R('cnrDensity','Swell',0,1,.01,'pct',.7), R('cnrSharp','Sharp',0,1,.01,'pct',.8) ]},
+ {id:'wv',title:'Waveform swarm',tog:'e_wv',defOff:true,ctrls:[
+   R('L_wv','Level',0,1,.01,'pct',.3), R('wvBase','Base',40,2000,10,'hz',150),
+   R('wvSpread','Spread',0,1,.01,'pct',.4), R('wvDetune','Detune',0,1,.01,'pct',.3),
+   R('wvDuty','Pulse duty',.05,.5,.01,'pct',.25),
+   S('wv1','Voice 1',WAVES,'sine'), S('wv2','Voice 2',WAVES,'saw'),
+   S('wv3','Voice 3',WAVES,'triangle'), S('wv4','Voice 4',WAVES,'square'),
+   S('wv5','Voice 5',WAVES,'pulse'), S('wv6','Voice 6',WAVES,'sine') ]},
+ {id:'ps',title:'Partial sweep chaos',tog:'e_ps',defOff:true,ctrls:[
+   R('L_ps','Level',0,1,.01,'pct',.35), R('psRate','Attempts',.5,20,.5,'/s',4),
+   R('psLo','Low',40,6000,10,'hz',200), R('psHi','High',1000,20000,100,'hz',9000),
+   R('psWild','Wildness',0,1,.01,'pct',.6) ]},
+ {id:'fd',title:'FM ghost · frequency discriminator',tog:'e_fd',defOff:true,ctrls:[
+   R('L_fd','Level',0,1,.01,'pct',.3), R('fdCarrier','Carrier',300,4000,20,'hz',900),
+   R('fdDev','Deviation',10,2000,10,'hz',300), R('fdModRate',' Mod rate',.2,20,.1,'hz',3) ]},
+ {id:'pd',title:'FM ghost · phase discriminator',tog:'e_pd',defOff:true,ctrls:[
+   R('L_pd','Level',0,1,.01,'pct',.3), R('pdCarrier','Carrier',300,4000,20,'hz',700),
+   R('pdVcoGain','VCO gain',10,3000,10,'hz',600), R('pdLpf','LPF cutoff',20,2000,10,'hz',300) ]},
+ {id:'duo',title:'Duophonic desync',tog:'e_duo',defOff:true,ctrls:[
+   R('L_duo','Mix',0,1,.01,'pct',.4), R('duoDelayMs','Delay',5,60,1,'ms',18),
+   R('duoSplit','Split freq',200,3000,50,'hz',800) ]}
 ];
 
 /* ============ param state + UI builder ============ */
@@ -919,6 +996,33 @@ const MS_N=6, MS_RATIOS=[1,1.62,2.41,3.06,3.99,4.62];
 let msY1=new Float64Array(MS_N),msY2=new Float64Array(MS_N),msC=new Float64Array(MS_N),msR2=new Float64Array(MS_N),msCd=0;
 const IC_N=5; let icV=Array.from({length:IC_N},()=>({active:false,age:0,len:1,f0:800,f1:2000,ph:0,cd:Math.round(rnd(1000,20000))}));
 let cnrSpk=0,cnrDensPh=0;
+const WV_N=6; let wvPh=new Float64Array(WV_N);
+// Disruptor: a shared, randomly-updating rate multiplier the ghost-voice/duophonic/partial-
+// sweep modules read as an extra factor on their own rates. Updated rarely (main thread,
+// via schedule()) — reading a plain number per sample costs nothing. Mostly near 1 (normal),
+// occasionally negative (reversed) or large (over-accelerated), so those specific effects
+// keep getting yanked out of whatever pattern they'd otherwise settle into.
+let disruptMult=1, disruptNext=0;
+function updateDisruptor(now){
+  if(now<disruptNext) return;
+  const r=Math.random();
+  if(r<0.15) disruptMult=-rnd(1.5,6); // reversed AND accelerated
+  else if(r<0.3) disruptMult=-rnd(0.3,1.2); // reversed, gentler
+  else if(r<0.55) disruptMult=rnd(2,7); // over-accelerated forward
+  else disruptMult=rnd(0.7,1.3); // near-normal
+  disruptNext=now+rnd(600,3200);
+}
+let psPh=0, psStart=200, psEnd=6000, psLen=0.3, psAge=0, psCd=0;
+let fdModPh=0, fdCarPh=0, fdPrevCarrier=0, fdEnv=0;
+let pdSigPh=0, pdVcoPh=0, pdLpState=0;
+const DUO_LEN=3000; let duoBuf=new Float32Array(DUO_LEN), duoW=0, duoLp=[0,0], duoHp=[0,0];
+function waveOf(type,ph,duty){
+  if(type==='sine') return Math.sin(TAU*ph);
+  if(type==='saw') return 2*ph-1;
+  if(type==='triangle') return 2*Math.abs(2*(ph-Math.floor(ph+0.5)))-1;
+  if(type==='square') return ph<0.5?1:-1;
+  return ph<duty?1:-1; // pulse
+}
 
 const CAP=2048, cap=new Float32Array(CAP); let capW=0;
 
@@ -1274,6 +1378,52 @@ function proc(e){
       cnrSpk*=lerp(.3,.96,P.cnrSharp);
       mono+=cnrSpk*P.L_cnr*1.2; }
 
+    if(P.e_wv){ // Waveform swarm: six independently-picked basic waveforms (sine/saw/triangle/square/pulse)
+      let g=0; const wvTypes=[P.wv1,P.wv2,P.wv3,P.wv4,P.wv5,P.wv6];
+      for(let k=0;k<WV_N;k++){ const det=1+((k-(WV_N-1)/2)/WV_N)*P.wvDetune*0.1;
+        const f=P.wvBase*(1+k*P.wvSpread*0.5)*det*fmF;
+        wvPh[k]+=f/sr; if(wvPh[k]>=1)wvPh[k]-=(wvPh[k]|0);
+        g+=waveOf(wvTypes[k],wvPh[k],P.wvDuty); }
+      mono+=(g/WV_N)*P.L_wv; }
+
+    if(P.e_ps){ // Partial sweep chaos: unpredictable sweep stubs -- new random start/end/length every attempt, often cut short
+      if(--psCd<=0){
+        psStart=rnd(P.psLo,P.psHi); psEnd=rnd(P.psLo,P.psHi);
+        if(disruptMult<0){ const t=psStart; psStart=psEnd; psEnd=t; } // Disruptor: reverses sweep direction
+        psLen=rnd(0.015, 0.02+P.psWild*1.5)/Math.max(0.3,Math.abs(disruptMult)); // and over-accelerates it (shorter stub)
+        psAge=0;
+        psCd=Math.max(1,Math.round(sr*rnd(0.05,1/Math.max(.1,P.psRate)))); }
+      psAge++;
+      const frac=psAge/Math.max(1,psLen*sr);
+      if(frac<=1){ const f=lerp(psStart,psEnd,frac)*fmF;
+        psPh+=f/sr; if(psPh>=1)psPh-=(psPh|0);
+        mono+=Math.sin(TAU*psPh)*P.L_ps; } }
+
+    if(P.e_fd){ // FM ghost - frequency discriminator: differentiator + envelope detector on an internally
+      // synthesized FM carrier. Entirely internal audio DSP -- an audio-domain model of the classic
+      // slope-detector FM demod technique, same category as radar-chirp/TDMA-buzz elsewhere in this file.
+      const modRate=P.fdModRate*(1+MB.formant*0.4)*disruptMult; // Disruptor: reverses/over-accelerates the recovered "ghost" on its own schedule
+      fdModPh+=modRate/sr; if(fdModPh>=1)fdModPh-=1;
+      const modv=Math.sin(TAU*fdModPh);
+      const instF=(P.fdCarrier+P.fdDev*modv)*fmF;
+      fdCarPh+=instF/sr; if(fdCarPh>=1)fdCarPh-=(fdCarPh|0);
+      const carrier=Math.sin(TAU*fdCarPh);
+      const diff=carrier-fdPrevCarrier; fdPrevCarrier=carrier; // differentiator
+      const rect=Math.abs(diff)*sr*0.015; // rectify + scale
+      fdEnv=lerp(fdEnv,rect,0.04); // envelope-detector lowpass
+      mono+=(fdEnv-0.35)*2*P.L_fd; }
+
+    if(P.e_pd){ // FM ghost - phase discriminator: VCO + multiplier + LPF (quadrature-style demod)
+      const dev=200*(0.5+0.5*b);
+      pdSigPh+=(P.pdCarrier+dev)*fmF/sr; if(pdSigPh>=1)pdSigPh-=(pdSigPh|0);
+      const sig=Math.sin(TAU*pdSigPh);
+      pdVcoPh+=P.pdVcoGain*0.5*disruptMult/sr; if(pdVcoPh>=1)pdVcoPh-=(pdVcoPh|0); // Disruptor drives the VCO itself out of its nominal rate
+      const vco=Math.sin(TAU*pdVcoPh);
+      const mult=sig*vco; // multiplier -> sum + difference frequency components
+      const alpha=cl(cl(P.pdLpf,20,4000)/sr,0.0005,0.5);
+      pdLpState=lerp(pdLpState,mult,alpha); // LPF removes the high-frequency sum term
+      mono+=pdLpState*4*P.L_pd; }
+
     if(P.e_wg){ // Wind gust: filtered-noise gusts with a slow amplitude swell, organic masking texture
       wgEnvPh+=P.wgRate/sr; if(wgEnvPh>=1)wgEnvPh-=1;
       let env=0.5+0.5*Math.sin(TAU*wgEnvPh);
@@ -1313,6 +1463,21 @@ function proc(e){
       const loL=tlLpL, hiL=l-tlLpL, loR=tlLpR, hiR=r-tlLpR;
       const outL=loL*(1-t)+hiL*(1+t), outR=loR*(1-t)+hiR*(1+t);
       l=lerp(l,outL,P.L_tl); r=lerp(r,outR,P.L_tl); }
+
+    if(P.e_duo){ // Duophonic desync: the classic 1970s mono-to-fake-stereo trick -- delay one
+      // channel by fractions of a second, low-pass the other channel's treble, high-pass the
+      // delayed channel's bass. Produces artificial width without discrete left/right imaging.
+      duoBuf[duoW]=r; duoW=(duoW+1)%DUO_LEN;
+      // Disruptor: over-accelerates by collapsing the delay time toward a comb-filter-short
+      // gap, and "reverses" by inverting the delayed channel's polarity, on its own schedule.
+      const dsamp=cl((P.duoDelayMs/Math.max(0.3,Math.abs(disruptMult)))*sr/1000,1,DUO_LEN-2);
+      const readPos=(duoW-dsamp+DUO_LEN*2)%DUO_LEN;
+      const i0=readPos|0, frac=readPos-i0, i1=(i0+1)%DUO_LEN;
+      const delayedR=(duoBuf[i0]*(1-frac)+duoBuf[i1]*frac)*(disruptMult<0?-1:1);
+      const cutF=2*Math.sin(Math.PI*cl(P.duoSplit,100,4000)/sr);
+      const leftLP=svf(duoLp,l,cutF,0.707,'lp');
+      const rightHP=svf(duoHp,delayedR,cutF,0.707,'hp');
+      l=lerp(l,leftLP,P.L_duo); r=lerp(r,rightHP,P.L_duo); }
 
     let cD=P.crDwn; if(bCrush)cD=cl(P.crDwn*(1+P.bAmt*(0.5+0.5*b)*3),1,64);
     if(cD>1 || P.crBits<16){
@@ -1385,7 +1550,7 @@ function schedule(now){
   } else { mNext=now+40; }
   if(P.dr>0 && P.dd>0){ if(now>=dNext){ smoothDrift(); dNext=now+1000/P.dr; } }
   else dNext=now+300;
-  Sensors.tick(now); Scene.tick(now); Dsp.update(); DemodGuard.tick(now);
+  Sensors.tick(now); Scene.tick(now); Dsp.update(); DemodGuard.tick(now); updateDisruptor(now);
 }
 function smoothDrift(){ const d=P.dd;
   MASH.forEach(k=>{ if(Math.random()<.4){ const c=CTRL[k].def, span=(c.rmax-c.rmin);
@@ -1579,6 +1744,25 @@ const Accessories=(function(){
       push({name:names[(Math.random()*names.length)|0],rssi:-(40+(Math.random()*50|0)),role:'entropy',connected:false,id:'sim'+Math.random()}); added++; },400);
     toast('No BLE stack — simulating discovery');
   }
+  // Chaotic scan cadence: cycles the SAME standard active BLE scan on/off at randomized
+  // intervals instead of one continuous session. This is real transmission (active BLE
+  // scanning sends scan-request packets, standard protocol, standard Android API, same as
+  // any BLE app does for discovery) — made noisier/more randomized in timing, as asked for.
+  // It does NOT advertise fabricated identities or emit anything outside the normal
+  // discovery protocol — see ETHICS.md for why that line stays where it is.
+  function bleStopScan(){ if(window.EMIBridge&&EMIBridge.bleStop)try{EMIBridge.bleStop();}catch(e){} }
+  let chaoticOn=false, chaoticTimer=null;
+  function chaoticStep(){
+    if(!chaoticOn) return;
+    scan();
+    setTimeout(()=>{ if(!chaoticOn)return; bleStopScan();
+      chaoticTimer=setTimeout(chaoticStep, rnd(400,4000)); }, rnd(300,2500));
+  }
+  function setChaoticScan(v){
+    chaoticOn=v; if(chaoticTimer){clearTimeout(chaoticTimer);chaoticTimer=null;}
+    if(v){ toast('Chaotic BLE scan cadence on'); chaoticStep(); }
+    else bleStopScan();
+  }
   function push(d){ try{ d.tag=RF.classifyBle(d); }catch(e){}
     if(devices.find(x=>x.id===d.id)) { render(); return; } devices.push(d); render(); }
   function nativeReport(json){ try{ const arr=JSON.parse(json);
@@ -1625,9 +1809,9 @@ const Accessories=(function(){
   function wsDisconnect(){ if(ws){try{ws.close();}catch(e){}} ws=null; setState('idle'); }
   function setState(s){ $('wsState').textContent=s; }
   function broadcast(obj){ if(ws&&ws.readyState===1){try{ws.send(JSON.stringify(obj));}catch(e){}} }
-  return { scan, stop(){ if(window.EMIBridge&&EMIBridge.bleStop)try{EMIBridge.bleStop();}catch(e){} },
+  return { scan, stop:bleStopScan, setChaoticScan,
     render, nativeReport, wsConnect, wsDisconnect, broadcast, meshRender,
-    get lastSpectrum(){return lastSpectrum;},
+    get lastSpectrum(){return lastSpectrum;}, get devices(){return devices;},
     gattResult(json){
       let d=null;
       try{ const r=JSON.parse(json);
@@ -1658,7 +1842,19 @@ const Profiles=(function(){
     'Vehicle':seedFrom({e_sb:true,L_sb:.5,e_inv:true,e_cw:true,e_hm:true,hmB:'50',lv:.3,drive:3}),
     'Server room':seedFrom({e_cw:true,L_cw:.5,cwF:12000,e_hm:true,hmH:30,e_inv:true,e_us:true,lv:.26}),
     'Interview':seedFrom({e_vm:true,vmTalk:8,vmD:1,e_vf:true,vfAmt:1,L_vm:.9,e_gg:true,lv:.3,mStr:.7,mJit:.5}),
-    'Panic':seedFrom({e_ar:true,e_rz:true,e_pl:true,e_gsm:true,drive:5,lv:.5,en:1,mStr:1,mPps:80})
+    'Panic':seedFrom({e_ar:true,e_rz:true,e_pl:true,e_gsm:true,drive:5,lv:.5,en:1,mStr:1,mPps:80}),
+    'Ghost station':seedFrom({e_fd:true,e_pd:true,e_duo:true,L_fd:.5,L_pd:.5,L_duo:.6,e_hm:false,drive:2.8,lv:.3}),
+    'Waveform lab':seedFrom({e_wv:true,L_wv:.6,wvSpread:.7,wvDetune:.6,e_nf:false,lv:.26}),
+    'Storm front':seedFrom({e_wg:true,e_cnr:true,e_sb:true,L_wg:.6,L_cnr:.5,L_sb:.4,lv:.3}),
+    'Chaos vector overdrive':seedFrom({e_cv:true,cAmt:.8,dAmt:.7,eAmt:.6,fAmt:.7,cDest:'freq',dDest:'doppler',eDest:'formant',fDest:'glitch',lv:.28,mStr:.7}),
+    'Insect hive':seedFrom({e_ic:true,e_ms:true,e_fm:true,L_ic:.5,L_ms:.4,L_fm:.4,lv:.3}),
+    'Submarine':seedFrom({e_sb:true,e_pll:true,e_cw:true,L_sb:.6,L_pll:.4,L_cw:.4,drive:2.4,lv:.3}),
+    'Radio silence':seedFrom({e_vm:true,vmD:.7,L_vm:.5,e_nf:true,L_nf:.3,e_sw:false,e_ar:false,drive:1.8,lv:.18,mStr:.2,mPps:3}),
+    'Shepard spiral':seedFrom({e_shp:true,e_gr:true,e_cf:true,L_shp:.6,L_gr:.4,L_cf:.5,lv:.28}),
+    'Feedback chamber':seedFrom({e_fb:true,e_rz:true,e_pl:true,L_fb:.35,L_rz:.5,L_pl:.4,drive:3.2,lv:.3}),
+    'Total chaos':seedFrom({e_cv:true,e_wv:true,e_ps:true,e_fd:true,e_pd:true,e_duo:true,e_shp:true,e_gr:true,
+      e_fb:true,e_gl:true,e_ic:true,e_ms:true,e_cnr:true,e_wg:true,e_tl:true,e_cf:true,e_chr:true,e_fm:true,
+      e_pll:true,e_ft:true,drive:4,lv:.35,mStr:.8,mPps:30})
   };
   function seedFrom(over){ return {over}; }
   function snapshot(){ const s={p:{},tog:{},mm:MODMATRIX.map(r=>({src:r.src,dst:r.dst,depth:r.depth})),
@@ -1691,8 +1887,13 @@ const Profiles=(function(){
   function load(name){ const s=store[name]||(BUILTIN[name]&&builtinSnap(name)); if(!s){toast('No profile '+name);return;}
     applySnap(s,morph); active=name; $('profActive').textContent=name; renderList(); }
   function builtinSnap(name){ // build a full snapshot from defaults + overrides
-    const s={p:{},tog:{},mm:[],mPps:P.mPps}; MOD.forEach(m=>{ m.ctrls.forEach(c=>{ s.p[c.k]=c.def; }); if(m.tog)s.tog[m.tog]=(m.id==='mg'||m.id==='mst'||m.id==='chA'||m.id==='chB'); });
-    MOD.forEach(m=>{if(m.tog)s.tog[m.tog]=true;});
+    // Baseline matches build()'s own boot default (defOff modules start off) rather than
+    // forcing every module on — this used to unconditionally flip all ~38 toggles to true
+    // for every profile, silently reintroducing the exact "everything on at once" CPU-load
+    // problem the performance fix addressed, just triggered by loading a profile instead of
+    // Randomize-All. A profile's `over` can still explicitly enable a defOff module by name.
+    const s={p:{},tog:{},mm:[],mPps:P.mPps};
+    MOD.forEach(m=>{ m.ctrls.forEach(c=>{ s.p[c.k]=c.def; }); if(m.tog)s.tog[m.tog]=!m.defOff; });
     const ov=BUILTIN[name].over; for(const k in ov){ if(k.startsWith('e_'))s.tog[k]=ov[k]; else s.p[k]=ov[k]; }
     return s; }
   function save(name){ if(!name){toast('Name it first');return;} store[name]=snapshot(); persist(); active=name; $('profActive').textContent=name; renderList(); toast('Saved '+name); }
@@ -1986,7 +2187,7 @@ const RF=(function(){
       it.append(b,s); list.appendChild(it); });
     el.appendChild(list);
   }
-  return { wifiScanNow, classifyBle, renderAccKinds, wellKnownUuid, get ACCESSORY_KINDS(){return ACCESSORY_KINDS;} };
+  return { wifiScanNow, classifyBle, renderAccKinds, wellKnownUuid, get lastWifi(){return lastWifi;}, get ACCESSORY_KINDS(){return ACCESSORY_KINDS;} };
 })();
 
 /* ============ SENSOR-FUSION ANOMALY ENGINE (+ thermal, + cell/IMSI-catcher heuristics) ============
@@ -2066,10 +2267,47 @@ const Anomaly=(function(){
       }
     }catch(e){}
   }
+  let tgCd=0;
+  function pollTamperGuard(){
+    if(--tgCd>0) return; tgCd=20; // rarely changes -- poll much less often than everything else
+    try{
+      if(!window.EMITamper||!EMITamper.getIntegrityStatus){ const t=$('tgTag'); if(t)t.textContent='browser preview'; return; }
+      const s=JSON.parse(EMITamper.getIntegrityStatus()||'{}');
+      const sig=$('tgSig'); if(sig)sig.textContent=s.signatureOk?'ok':'mismatch';
+      const dbg=$('tgDbg'); if(dbg)dbg.textContent=s.debuggerAttached?'attached':'none';
+      const fr=$('tgFrida'); if(fr)fr.textContent=s.fridaSuspicion?'suspicious':'clean';
+      const rt=$('tgRoot'); if(rt)rt.textContent=s.rootSuspicion?'suspicious':'clean';
+      const tag=$('tgTag'); if(tag){ tag.textContent=s.clean?'clean':'flagged'; tag.className='tag'+(s.clean?'':' pill'); }
+      if(!s.clean && Array.isArray(s.findings) && s.findings.length){
+        const note=$('tgNote'); if(note && !note.dataset.flagged){ note.dataset.flagged='1';
+          Alerts.push(1,'App integrity check flagged: '+s.findings.join('; '),'tamper'); }
+      }
+    }catch(e){}
+  }
+  function pollRfClassifier(){
+    try{
+      const wifi=RF.lastWifi||[]; let w24=0,w5=0;
+      wifi.forEach(r=>{ if(r.freq>=4900) w5++; else if(r.freq>0) w24++; });
+      const w1=$('rcWifi24'); if(w1)w1.textContent=String(w24);
+      const w2=$('rcWifi5'); if(w2)w2.textContent=String(w5);
+      const ble=Accessories.devices||[]; let track=0,gen=0;
+      ble.forEach(d=>{ if(d.tag) track++; else gen++; });
+      const b1=$('rcBleTrack'); if(b1)b1.textContent=String(track);
+      const b2=$('rcBleGen'); if(b2)b2.textContent=String(gen);
+      if(window.EMIBridge&&EMIBridge.getCellInfo){
+        const c=JSON.parse(EMIBridge.getCellInfo()||'{}');
+        const ce=$('rcCell'); if(ce)ce.textContent=(typeof c.generation==='number'&&c.generation>0)?'Gen '+c.generation:'—';
+      }
+      if(window.EMIBridge&&EMIBridge.getGnssStatus){
+        const g=JSON.parse(EMIBridge.getGnssStatus()||'{}');
+        const se=$('rcSat'); if(se)se.textContent=g.count!=null?String(g.count):'—';
+      }
+    }catch(e){}
+  }
   function tick(){
     const {thermS,cellS,drainS}=pollThermalCell();
     const {magS,motionS,baroS}=pollMotionMag();
-    pollCompromise();
+    pollCompromise(); pollTamperGuard(); pollRfClassifier();
     const usS=Mic.enabled&&document.getElementById('micUs')&&document.getElementById('micUs').textContent.includes('⚠')?1:0;
     const w=thermS*14+cellS*28+magS*13+motionS*8+usS*20+baroS*7+drainS*10;
     score=cl(w,0,100);
@@ -2310,6 +2548,32 @@ function drawSpectrum(){
     const raw=bins[bin]; const v=raw>1?raw/255:raw; // Uint8 (mic) vs 0..1 (mesh) both accepted
     const y=h-cl(v,0,1)*h; x?g.lineTo(x,y):g.moveTo(x,y); }
   g.stroke();
+  vocalAnalysis(bins,nyq);
+}
+// Coarse, passive vocal spectral analysis: pitch estimate (strongest low-band peak) and the
+// loudest spectral peak within each of three formant bands. Not lab-grade (a real formant
+// tracker needs LPC, not just peak-picking on an FFT magnitude bin) — a rough, honest
+// approximation in the spirit of what Praat/Melodyne show, built entirely from the existing
+// mic analyser data already being read for the spectrum display above it.
+const FORMANT_BANDS=[[80,900],[900,2500],[2000,4000]]; // pitch-ish, F1, F2/F3-ish
+function peakInBand(bins,nyq,loHz,hiHz){
+  const N=bins.length, loBin=Math.max(0,Math.floor(loHz/nyq*N)), hiBin=Math.min(N-1,Math.ceil(hiHz/nyq*N));
+  let best=-1,bestV=-1;
+  for(let i=loBin;i<=hiBin;i++){ const v=bins[i]>1?bins[i]/255:bins[i]; if(v>bestV){bestV=v;best=i;} }
+  return best<0?null:{hz:(best/N)*nyq,mag:bestV};
+}
+let vsCd=0;
+function vocalAnalysis(bins,nyq){
+  if(--vsCd>0) return; vsCd=6; // a few-frames throttle -- this doesn't need to update every frame
+  const pitch=peakInBand(bins,nyq,70,400); // fundamental usually lands well below the formant bands
+  const f1=peakInBand(bins,nyq,FORMANT_BANDS[0][0],FORMANT_BANDS[0][1]);
+  const f2=peakInBand(bins,nyq,FORMANT_BANDS[1][0],FORMANT_BANDS[1][1]);
+  const f3=peakInBand(bins,nyq,FORMANT_BANDS[2][0],FORMANT_BANDS[2][1]);
+  const fmt=p=>p&&p.mag>0.15?Math.round(p.hz)+' Hz':'—';
+  const pe=$('vsPitch'); if(pe)pe.textContent=fmt(pitch);
+  const e1=$('vsF1'); if(e1)e1.textContent=fmt(f1);
+  const e2=$('vsF2'); if(e2)e2.textContent=fmt(f2);
+  const e3=$('vsF3'); if(e3)e3.textContent=fmt(f3);
 }
 function draw(now){
   now=now||perfNow();
@@ -2430,6 +2694,8 @@ $('mmClear').addEventListener('click',()=>{MODMATRIX.length=0;mmRender();});
 /* accessories */
 $('bleScan').addEventListener('click',()=>Accessories.scan());
 $('bleStop').addEventListener('click',()=>Accessories.stop());
+$('bleChaotic').addEventListener('click',()=>{ const b=$('bleChaotic'),v=b.getAttribute('aria-pressed')!=='true';
+  b.setAttribute('aria-pressed',String(v)); Accessories.setChaoticScan(v); });
 $('wsConn').addEventListener('click',()=>Accessories.wsConnect($('wsUrl').value.trim()));
 $('wsDisc').addEventListener('click',()=>Accessories.wsDisconnect());
 

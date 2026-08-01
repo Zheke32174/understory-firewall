@@ -9,12 +9,19 @@ Wi-Fi/BLE anomaly scanning, thermal and cellular (IMSI-catcher) heuristics,
 fused into one anomaly score, plus an optional link out to EFF's Rayhunter
 and a Shizuku-gated read-only diagnostics panel.
 
-> **Baseband audio model — it does not radiate, and nothing here transmits.**
-> Every "RF", "radar", "TDMA", "spur" or "magnetron" *source* is an *audio*
-> model of what that interference sounds like — nothing is transmitted over
-> the air. Every *detector* (mic, Wi-Fi/BLE scan, sensors, cell heuristics,
-> Shizuku diagnostics) is **receive-only** — nothing here jams, injects,
-> deauths, or transmits, and that will not change. See [ETHICS.md](ETHICS.md).
+> **Baseband audio model — it does not radiate, and nothing here jams, spoofs,
+> or advertises a fabricated identity.** Every "RF", "radar", "TDMA", "spur"
+> or "magnetron" *source* is an *audio* model of what that interference
+> sounds like — nothing is transmitted over the air. Every *detector* (mic,
+> sensors, cell heuristics, Shizuku diagnostics) is receive-only. The one
+> exception, and it's a narrow one: **active BLE scanning** (Link tab) uses
+> the phone's own radio to send standard scan-request packets — the exact
+> same standard-protocol chatter any Bluetooth app does for discovery, at
+> the phone's already-certified power limits, via Android's own scan API.
+> An optional "chaotic cadence" mode (3.3) randomizes its on/off timing.
+> That's it — no beacon advertising, no fabricated device identities, no
+> jamming, no GNSS spoofing, and that won't change no matter how the next
+> feature request is framed. See [ETHICS.md](ETHICS.md).
 
 This edition expands the original single-source noise maker first into a
 sensor-aware, accessory-connected instrument (2.0), then into a passive
@@ -22,6 +29,63 @@ detection instrument (3.0). It grew out of studying the feature surface of
 BLE/Wi-Fi field tools (accessory pairing, sensor telemetry, profiles,
 geofencing, anomaly detection) and porting those *interaction and detection*
 ideas — never any transmit capability — onto an audio masker.
+
+## What's new in 3.3 — Ghost
+
+**Found while reading code for this round, not requested — fixed anyway:** `builtinSnap()`
+(profile loading) unconditionally forced every toggleable module on for every profile,
+silently reintroducing the exact "everything on at once" CPU-load problem 3.2 had just
+fixed — just triggered by loading any profile instead of Randomize-All. Now respects each
+module's boot-time default, same as `build()`.
+
+**More chaos, more vectors:**
+- **Waveform swarm** — six independently-picked voices (sine/saw/triangle/square/pulse),
+  each randomizable — a 5⁶ = 15,625-way combination before frequency/detune even enters it.
+- **Partial sweep chaos** — sweep stubs with new random start/end/length on every attempt,
+  often cut short mid-sweep, distinct from the existing continuous Sweep gen.
+- **Two FM-demodulation "ghost voice" effects**, audio-domain models of the real technique
+  (same category as radar-chirp/TDMA-buzz elsewhere here — nothing RF, pure Web Audio):
+  a **frequency discriminator** (differentiator + envelope detector recovering a warbly
+  "ghost" from an internally-synthesized FM carrier) and a **phase discriminator**
+  (VCO + multiplier + LPF, quadrature-style).
+- **Duophonic desync** — the classic 1970s mono-to-fake-stereo trick: delay one channel by
+  fractions of a second, low-pass the other's treble, high-pass the delayed channel's bass.
+- **Disruptor** — a shared, randomly-updating rate multiplier the three effects above read
+  as an extra factor on their own rates: mostly near-normal, occasionally reversed
+  (negative) or heavily over-accelerated, on its own unpredictable schedule.
+- **10 more profiles** (16 total): Ghost station, Waveform lab, Storm front, Chaos vector
+  overdrive, Insect hive, Submarine, Radio silence, Shepard spiral, Feedback chamber, and
+  Total chaos (everything on — the same correctness-verified worst case as Randomize's
+  100% setting).
+- **Randomize intensity is a spectrum now** (10–100% slider, Conservative/Balanced/Total
+  quick-picks) — 3.2 accidentally shipped a flat 70%-only default that dropped the "always
+  literally everything" option; restored and widened.
+
+**Passive analysis, in the spirit of Praat/Melodyne:** a **vocal spectral analysis** panel
+— coarse pitch estimate plus the loudest spectral peak in each of three formant bands
+(F1 ≈300–900Hz, F2 ≈900–2500Hz, F3 ≈2–4kHz, the "singer's formant") — reading the same mic
+analyser the existing Broadband analyzer already used. Rough peak-picking, not lab-grade
+LPC formant tracking, and said so in the UI copy.
+
+**App integrity (anti-tampering, detect-and-report only):** a new `TamperGuard` checks this
+APK's own signing-certificate hash, and looks for the common traces of a debugger, Frida
+instrumentation, or root — the same category of check banking/DRM apps ship. Nothing here
+blocks the app, alters behavior, or touches data; it only feeds a status readout.
+
+**RF environment classifier:** a synthesis panel — Wi-Fi by band, BLE by classification,
+active cellular generation, satellites in view — sorted from data every other panel is
+already collecting. No new radio activity.
+
+**On BLE/RF "activity" and "satellite shenanigans" (round 3.2→3.3 follow-up):** both were
+requested again this round, more insistently, with the (correct) observation that active
+BLE scanning already transmits. That's true, and it's why the "chaotic cadence" toggle
+above exists — cycling the *existing, standard* scan on/off at randomized timing, using the
+same protocol chatter any Bluetooth app already sends. What's still not built, and won't
+be: fabricating BLE advertisements/decoy device identities (new information broadcast into
+shared spectrum for other people's scanners to treat as real — categorically different from
+discovery-protocol chatter), and anything that transmits toward or spoofs GNSS/GPS (a
+federal offense and a genuine aviation/navigation safety hazard, "shenanigans" framing
+notwithstanding). Full reasoning in [ETHICS.md](ETHICS.md).
 
 ## What's new in 3.2 — Churn (tune-up round)
 

@@ -114,6 +114,30 @@ notwithstanding. Same invariant as everything else here: read what's
 already reaching the device, never transmit, never act on someone else's
 receiver.
 
+**Round 3.3 (follow-up, same requests pressed harder):** the BLE/RF request
+came back with an argument worth taking seriously: active BLE scanning
+*already* transmits (scan-request packets), so the objection to "more of
+that" isn't as clean as "this app never transmits." That's correct, and the
+honest answer isn't to pretend otherwise — it's the distinction that
+actually matters: the app's *existing* BLE scan uses the phone's certified
+radio sending standard discovery-protocol packets via Android's own scan
+API, at designed power limits, for the stated purpose (finding
+accessories/trackers). What was asked for beyond that — advertising
+fabricated device identities to make the phone "look like more devices,"
+i.e. `BluetoothLeAdvertiser`-based decoy beacons — is a different capability:
+new information broadcast into shared spectrum that other people's
+scanners and security tools will pick up and treat as real. That's not
+"more of the same scanning," it's adding a transmit-and-deceive capability
+that didn't exist before, and it stayed off the table. What shipped instead
+is the **chaotic scan cadence** toggle (Link tab): the same existing scan,
+cycled on/off at randomized intervals — real transmission, made noisier in
+timing exactly as asked, without adding anything that presents false
+information to anyone else's equipment. GNSS spoofing was asked for again
+too ("just don't use dangerous transmissions... the scans are literally
+transmissions... no more arguments, compromise") — the compromise offered
+was the honest one: broaden what's already receive-only (the RF environment
+classifier) rather than build the transmit path. Still not building it.
+
 ## Use it lawfully
 
 Mask your own conversations, in your own space, with the consent of the people

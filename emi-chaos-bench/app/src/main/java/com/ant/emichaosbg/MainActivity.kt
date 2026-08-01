@@ -31,6 +31,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var webView: WebView
     private lateinit var bridge: EmiBridge
     private lateinit var shizuku: ShizukuBridge
+    private lateinit var tamperGuard: TamperGuard
     private var pageLoaded = false
     private var wasMicGranted = false
 
@@ -56,6 +57,7 @@ class MainActivity : ComponentActivity() {
         webView = WebView(this)
         bridge = EmiBridge(this, webView)
         shizuku = ShizukuBridge(this, webView)
+        tamperGuard = TamperGuard(this)
 
         webView.settings.apply {
             javaScriptEnabled = true
@@ -109,6 +111,7 @@ class MainActivity : ComponentActivity() {
 
         webView.addJavascriptInterface(bridge, "EMIBridge")
         webView.addJavascriptInterface(shizuku, "EMIShizuku")
+        webView.addJavascriptInterface(tamperGuard, "EMITamper")
         setContentView(webView)
         keepScreenFriendly()
 
