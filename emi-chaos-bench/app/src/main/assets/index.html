@@ -1505,6 +1505,11 @@
   </div>
 
   <button class="power" id="go">Start</button>
+  <!-- The recovery hatch. Stop takes the graph apart; this throws the engine away and rebuilds
+       it, and clears the service workers and caches that can otherwise keep serving stale code
+       across reloads. Deliberately next to Start/Stop rather than buried in a panel: it is
+       needed exactly when something is wrong, which is the worst time to go hunting for it. -->
+  <button class="btn" id="resetEngine" style="margin-left:6px">Reset engine</button>
   <div class="note" id="note">—</div>
 </div>
 <div class="toast" id="toast"></div>
@@ -1572,6 +1577,9 @@ function copyText(t,okMsg){
   fallback();
 }
 let ctx=null,node=null,mediaEl=null,mediaDest=null,mediaGain=null,running=false,sr=48000;
+// The DSP chain's output node, held so stop() can disconnect what start() attached. Without
+// this, every start/stop cycle left another tail wired to ctx.destination.
+let tail=null;
 function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('on'),1600);}
 
 /* ============ schema ============ */
@@ -2036,6 +2044,12 @@ function start(){
   node.onaudioprocess=proc;
   const dspTail=Dsp.build(ctx,node);
   dspTail.connect(ctx.destination);
+  // REMEMBERED so stop() can actually take it apart. Every start() builds a chain and connects
+  // it to destination; stop() used to disconnect only the ScriptProcessor, so each cycle left
+  // another live tail attached. That is why Stop did not silence the app and why the sound got
+  // progressively wrong: reverb tails and the media-stream branch from previous sessions were
+  // still connected and summing into the same destination.
+  tail=dspTail;
   try{
     if(ctx.createMediaStreamDestination){
       mediaDest=ctx.createMediaStreamDestination(); mediaGain=ctx.createGain();
@@ -2056,14 +2070,65 @@ function start(){
   try{if(window.EMIBridge&&EMIBridge.setForeground)EMIBridge.setForeground(true);}catch(e){}
   Accessories.broadcast({type:'state',running:true});
 }
+/* STOP MUST ACTUALLY STOP. Reported as "the stop button doesn't work" together with "sound is
+   borked", and those were one bug: the graph was never fully taken apart.
+
+   What was torn down: the ScriptProcessor. What was NOT: the DSP tail that start() connects to
+   ctx.destination on every single press, the media-stream branch, and the AudioContext itself,
+   which stayed RUNNING. So each start/stop cycle left another complete chain wired to the
+   output. Silence depended on the ScriptProcessor being the only thing producing sound — but the
+   convolver holds a tail, and anything still connected keeps summing.
+
+   Now: disconnect the tail, drop the media branch, and SUSPEND the context. Suspending is what
+   makes stop authoritative — it halts the audio thread outright, so nothing left connected by
+   any past bug can still be heard. */
 function stop(){
   if(mediaEl){try{mediaEl.pause();mediaEl.srcObject=null;}catch(e){}}
   if(mediaGain){try{mediaGain.disconnect();}catch(e){}} mediaGain=null;mediaDest=null;
   if(node){try{node.disconnect();node.onaudioprocess=null;}catch(e){}}
+  if(tail){try{tail.disconnect();}catch(e){}} tail=null;
+  try{ Dsp.teardown&&Dsp.teardown(); }catch(e){}
   try{if('mediaSession' in navigator)navigator.mediaSession.playbackState='none';}catch(e){}
   node=null; running=false; document.body.classList.remove('live'); $('go').textContent='Start';
+  // The authoritative silence. Resumed by start().
+  try{ if(ctx&&ctx.state==='running') ctx.suspend(); }catch(e){}
   try{if(window.EMIBridge&&EMIBridge.setForeground)EMIBridge.setForeground(false);}catch(e){}
   Accessories.broadcast({type:'state',running:false});
+}
+
+/* HARD RESET — the "clear the corruption out" control.
+   Stop tears the graph down; this throws the whole engine away. Closing the AudioContext
+   releases the audio thread and every node ever attached to it, so a graph that has got into a
+   state no amount of disconnecting fixes can be recovered from without restarting the app. It
+   also clears the caches the WebView accumulates, which is the other half of "corruption in
+   cached workers": a stale service worker or cached asset survives a reload and can keep
+   serving old code indefinitely. */
+async function resetEngine(){
+  try{ if(running) stop(); }catch(e){}
+  try{ if(ctx){ await ctx.close(); } }catch(e){}
+  ctx=null; node=null; tail=null; mediaGain=null; mediaDest=null; mediaEl=null;
+  try{ Dsp.teardown&&Dsp.teardown(); }catch(e){}
+  let cleared=[];
+  // Service workers first: one left registered can serve stale code forever.
+  try{
+    if(navigator.serviceWorker&&navigator.serviceWorker.getRegistrations){
+      const rs=await navigator.serviceWorker.getRegistrations();
+      for(const r of rs){ try{ await r.unregister(); cleared.push('worker'); }catch(e){} }
+    }
+  }catch(e){}
+  try{
+    if(window.caches&&caches.keys){
+      const ks=await caches.keys();
+      for(const k of ks){ try{ await caches.delete(k); cleared.push('cache'); }catch(e){} }
+    }
+  }catch(e){}
+  // Native side: WebView HTTP cache + the app's own cache dir.
+  let nat='';
+  try{ if(window.EMIBridge&&EMIBridge.clearCaches) nat=EMIBridge.clearCaches(); }catch(e){}
+  toast('Engine reset — audio graph rebuilt from scratch'+
+    (cleared.length?', '+cleared.length+' cache/worker entries cleared':'')+
+    (nat?'. '+nat:''));
+  haptic('clip');
 }
 function perfNow(){ return (typeof performance!=='undefined'&&performance.now)?performance.now():Date.now(); }
 
@@ -6741,6 +6806,19 @@ $('riSlide').addEventListener('input',e=>setRandIntensity(+e.target.value));
 document.querySelectorAll('[data-ri]').forEach(b=>b.addEventListener('click',()=>setRandIntensity(+b.dataset.ri)));
 $('rand').addEventListener('click',()=>randomizeAll());
 $('go').addEventListener('click',()=>running?stop():start());
+$('resetEngine').addEventListener('click',()=>{ resetEngine().catch(e=>toast('Reset failed — '+(e&&e.message?e.message:'unknown'))); });
+
+/* Read-only view of the transport, for tests and for on-device diagnosis of "is it actually
+   stopped". `ctx` and `running` are script-scoped, so nothing outside this file could observe
+   them — which meant the one question the user asked ("does Stop work?") was unanswerable from
+   the outside. Exposes state only: there is no way to start, stop or reconfigure through it. */
+try{ Object.defineProperty(window,'__audio',{value:{
+  get running(){ return running; },
+  get ctxState(){ return ctx?ctx.state:'none'; },
+  get hasTail(){ return !!tail; },
+  get hasNode(){ return !!node; },
+  get sampleRate(){ return ctx?ctx.sampleRate:0; }
+}}); }catch(e){}
 
 /* tabs */
 document.querySelectorAll('#tabs .tab').forEach(t=>t.addEventListener('click',()=>{

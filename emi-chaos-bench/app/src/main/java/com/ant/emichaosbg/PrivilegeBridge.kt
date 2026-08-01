@@ -107,6 +107,44 @@ class PrivilegeBridge(private val ctx: Context) {
      */
     @Volatile private var dhizukuStep: String? = null
 
+    /**
+     * The delegated IDevicePolicyManager proxy, kept when the SDK wrapper cannot be built.
+     * See the note in [dhizukuDpm] — on platforms where the DevicePolicyManager constructor is
+     * blocked by non-SDK restrictions, this interface is still fully usable.
+     */
+    @Volatile private var dhizukuIface: Any? = null
+
+    /**
+     * Calls setUserControlDisabledPackages straight on the AIDL interface.
+     *
+     * The signature GAINED a caller-package argument in later releases, so the method is chosen
+     * by shape rather than by naming one arrangement and failing everywhere else — the same
+     * discipline the constructor lookup used, applied one level down where the platform does not
+     * block us.
+     */
+    private fun ifaceSetUserControlDisabled(
+        iface: Any, admin: ComponentName, pkgs: List<String>
+    ): String? {
+        val m = iface.javaClass.methods.firstOrNull {
+            it.name == "setUserControlDisabledPackages"
+        } ?: return "the delegated interface has no setUserControlDisabledPackages"
+        return try {
+            val p = m.parameterTypes
+            when {
+                // (ComponentName, List)
+                p.size == 2 -> m.invoke(iface, admin, pkgs)
+                // (ComponentName, String callerPackage, List)
+                p.size == 3 && p[1] == String::class.java -> m.invoke(iface, admin, ctx.packageName, pkgs)
+                else -> return "unrecognised setUserControlDisabledPackages signature (" +
+                    p.joinToString { it.simpleName } + ")"
+            }
+            null
+        } catch (e: Throwable) {
+            val c = (e as? java.lang.reflect.InvocationTargetException)?.cause ?: e
+            "${c.javaClass.simpleName}: ${c.message}"
+        }
+    }
+
     private fun dhizukuDpm(): Pair<DevicePolicyManager, ComponentName>? {
         if (!dhizukuPermission()) { dhizukuStep = "permission not granted"; return null }
 
@@ -140,8 +178,27 @@ class PrivilegeBridge(private val ctx: Context) {
             val ctor = DevicePolicyManager::class.java.declaredConstructors.firstOrNull { c ->
                 val p = c.parameterTypes
                 p.size >= 2 && p[0] == Context::class.java && p[1].isInstance(iface)
-            } ?: run { dhizukuStep = "no usable DevicePolicyManager constructor on this platform " +
-                "(saw: ${DevicePolicyManager::class.java.declaredConstructors.joinToString { it.parameterTypes.joinToString(",") { t -> t.simpleName } }})"; return null }
+            } ?: run {
+                /* THE CONSTRUCTOR IS NOT THE ONLY ROUTE, AND ON THIS PLATFORM IT IS NOT A ROUTE
+                 * AT ALL. Reported from a device: "Dhizuku granted permission but its
+                 * device-policy channel could not be reached — no usable DevicePolicyManager
+                 * constructor on this platform".
+                 *
+                 * DevicePolicyManager's constructors are non-SDK, so on a modern release
+                 * reflection over them is blocked and declaredConstructors offers nothing
+                 * usable. Wrapping the binder in a DevicePolicyManager was only ever a
+                 * convenience: the delegated binder Dhizuku hands back already speaks
+                 * IDevicePolicyManager, and setUserControlDisabledPackages is a method ON THAT
+                 * INTERFACE. Constructing the SDK wrapper just to call through it adds a step
+                 * that the platform blocks, for nothing.
+                 *
+                 * So the AIDL proxy is stashed and called directly. Recorded rather than
+                 * silently substituted — the UI should be able to say which route worked.
+                 */
+                dhizukuIface = iface
+                dhizukuStep = null
+                return null
+            }
             ctor.isAccessible = true
             val args: Array<Any?> = when (ctor.parameterTypes.size) {
                 2 -> arrayOf(ctx, iface)
@@ -246,6 +303,32 @@ class PrivilegeBridge(private val ctx: Context) {
         // require turning THIS app into the device owner (a one-shot, account-hostile,
         // factory-reset-to-undo operation most people should not do for a masking app).
         val viaDhizuku = dhizukuDpm()
+
+        /* THE DIRECT-AIDL ROUTE. dhizukuDpm() sets dhizukuIface when Dhizuku's delegation
+         * succeeded but the SDK wrapper could not be constructed — which is the reported case:
+         * "granted permission but its device-policy channel could not be reached". The
+         * delegation is fine; only the convenience wrapper is blocked. Taken before giving up,
+         * because giving up here told the user Dhizuku had failed when it had not. */
+        val iface = dhizukuIface
+        if (viaDhizuku == null && iface != null) {
+            val admin = runCatching { com.rosan.dhizuku.api.Dhizuku.getOwnerComponent() }.getOrNull()
+            if (admin != null) {
+                val list = if (enable) listOf(ctx.packageName) else emptyList()
+                val err = ifaceSetUserControlDisabled(iface, admin, list)
+                if (err == null) {
+                    return o.put("ok", true).put("protected", enable)
+                        .put("via", "dhizuku (direct AIDL — the SDK wrapper is blocked on this platform)")
+                        .put("reason", if (enable)
+                            "Force-stop protection is on. The DevicePolicyManager wrapper is not " +
+                            "constructible on this Android version, so the delegated device-policy " +
+                            "interface was called directly — same privileged operation, one fewer " +
+                            "blocked hop."
+                        else "Protection released.").toString()
+                }
+                o.put("directAidlError", err)
+            }
+        }
+
         if (viaDhizuku == null && !isDeviceOwner()) {
             return o.put("ok", false).put("reason",
                 if (!dhizukuInstalled()) "Install Dhizuku and grant this app permission in it. (Making this app itself the device owner also works but is a far more invasive step — it needs a device with no accounts and a factory reset to undo.)"

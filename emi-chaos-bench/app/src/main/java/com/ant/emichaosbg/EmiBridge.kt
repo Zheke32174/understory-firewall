@@ -1011,6 +1011,41 @@ class EmiBridge(private val ctx: Context, private val web: WebView) : SensorEven
         if (on) ContextCompat.startForegroundService(ctx, i) else ctx.stopService(i)
     }
 
+    /**
+     * Clears the WebView's caches and this app's cache directory. The page half of the reset
+     * (service workers, the Cache API) is done in JavaScript; this is the part only native can
+     * reach: the WebView's own HTTP cache and back/forward list, plus files under cacheDir.
+     *
+     * WHY IT EXISTS. A stale cached asset or a service worker left registered survives reloads
+     * and can keep serving old code indefinitely, which presents as the app "not taking" a fix
+     * — indistinguishable from the fix not working. Recovering from that previously meant
+     * clearing app data from Settings, which on this app ALSO DESTROYS THE VAULT KEY and every
+     * record with it. Giving the app its own narrower reset means the recovery for a broken
+     * cache is no longer "lose all your evidence".
+     *
+     * DELIBERATELY SCOPED. cacheDir only. It does not touch filesDir, which is where the vault
+     * lives. There is no code path here — or anywhere — that deletes the log.
+     */
+    @JavascriptInterface
+    fun clearCaches(): String {
+        var files = 0
+        var bytes = 0L
+        try {
+            ctx.cacheDir?.listFiles()?.forEach { f ->
+                val size = if (f.isFile) f.length() else 0L
+                if (f.deleteRecursively()) { files++; bytes += size }
+            }
+        } catch (_: Throwable) {}
+        // WebView calls must run on the thread that owns the WebView.
+        main.post {
+            try { web.clearCache(true) } catch (_: Throwable) {}
+            try { web.clearHistory() } catch (_: Throwable) {}
+            try { web.clearFormData() } catch (_: Throwable) {}
+        }
+        return "Native cache cleared ($files item(s), ${bytes / 1024}KB). The vault was not " +
+            "touched — it lives in filesDir, and nothing here deletes records."
+    }
+
     private fun postJs(js: String) = main.post { web.evaluateJavascript(js, null) }
 
     /**

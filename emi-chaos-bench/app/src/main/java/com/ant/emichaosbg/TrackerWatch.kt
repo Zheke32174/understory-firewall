@@ -61,7 +61,9 @@ class TrackerWatch(
         var lastLat: Double, var lastLon: Double,
         var sessions: Int, var lastSession: Long,
         var bestRssi: Int, var label: String?,
-        var addrs: MutableSet<String>, var flagged: Boolean
+        var addrs: MutableSet<String>, var flagged: Boolean,
+        /** Separate latch from [flagged]: camped and rotating are different findings. */
+        var campFlagged: Boolean = false
     )
 
     /** Keyed by advertisement payload where available, else by address. */
@@ -76,6 +78,93 @@ class TrackerWatch(
     private val MIN_SESSIONS = 6
     private val MIN_DISPLACEMENT_M = 500.0
     private val WINDOW_MS = 60 * 60_000L        // forget anything older than an hour
+
+    // CAMPED: the stationary-user complement to a follow. Higher session count and a real time
+    // span, because at zero displacement persistence is the only evidence there is.
+    private val MIN_CAMP_SESSIONS = 12
+    private val MIN_CAMP_MINUTES = 15L
+    private val STATIONARY_M = 75.0             // inside GNSS noise for a phone sitting still
+
+    /**
+     * BLE ADDRESS PRIVACY CLASS, from the two most significant bits of the first octet.
+     *
+     * This is the discriminator that turns "an unidentified device has been here 25 minutes"
+     * into something a person can act on. Bluetooth LE privacy exists precisely so that devices
+     * do NOT keep one address: a modern phone, watch, or earbud uses a Resolvable Private
+     * Address and rotates it roughly every 15 minutes, which is why a scan of a busy room
+     * produces churn rather than a stable roster.
+     *
+     * A device that holds ONE address for half an hour is therefore not doing what current
+     * consumer hardware does. That is not proof of anything hostile — fixed infrastructure,
+     * beacons, older peripherals, and plenty of embedded gear use static addresses because
+     * they were built before the privacy spec or have no reason to hide. But it separates
+     * "phone that walked past" from "thing that is installed here", and that separation is the
+     * whole question when the user is stationary and asking what is parked around them.
+     *
+     *   0b11 → random STATIC     — random-looking, but fixed for the device's lifetime
+     *   0b01 → resolvable private — the privacy-preserving default; rotates
+     *   0b00 → non-resolvable private — rotates, rare
+     *   otherwise → public        — a real vendor OUI, permanently fixed and attributable
+     */
+    private fun addrClass(addr: String): String {
+        val first = addr.substringBefore(':').toIntOrNull(16) ?: return "unknown"
+        return when (first ushr 6) {
+            0b11 -> "random-static"
+            0b01 -> "resolvable-private"
+            0b00 -> "non-resolvable-private"
+            else -> "public"
+        }
+    }
+
+    /** True when the address is one that is SUPPOSED to rotate. */
+    private fun rotatesByDesign(addr: String) =
+        addrClass(addr).endsWith("private")
+
+    /**
+     * VENDOR FROM THE ADVERTISEMENT, WITHOUT CONNECTING TO ANYTHING.
+     *
+     * The key of the manufacturer-specific data block IS the Bluetooth SIG company identifier —
+     * it was already being captured and used only as an opaque fingerprint. Decoding it turns a
+     * row reading "unidentified · 25 min · moved 0m" into a named manufacturer, which is the
+     * difference between a list a person can triage and a list they can only stare at. A
+     * stationary user looking at 41 unknown emitters cannot act on any of them; the same 41
+     * split into "your TV's vendor", "a laptop vendor" and "three I cannot name" is a shortlist.
+     *
+     * Entirely PASSIVE. This reads a field already present in advertisements the radio was
+     * receiving anyway — no connection, no GATT, no probe, nothing transmitted. Identifying a
+     * device by connecting to it would announce your interest to whoever owns it, which for
+     * someone investigating what is parked around them is exactly the wrong trade.
+     *
+     * Only IDs I am confident of are named; anything else is reported as its hex ID rather than
+     * guessed at, because a wrong vendor name is worse than an honest number.
+     */
+    private fun vendorOf(companyId: Int): String? = when (companyId) {
+        0x004C -> "Apple"
+        0x0006 -> "Microsoft"
+        0x0075 -> "Samsung"
+        0x00E0 -> "Google"
+        0x0059 -> "Nordic Semiconductor"
+        0x02E5 -> "Espressif (ESP32)"
+        0x0087 -> "Garmin"
+        0x000F -> "Broadcom"
+        0x000D -> "Texas Instruments"
+        0x0001 -> "Ericsson"
+        0x0157 -> "Huami / Amazfit"
+        0x0171 -> "Amazon"
+        0x0499 -> "Ruuvi"
+        0x0310 -> "SGL Italia"
+        else -> null
+    }
+
+    /** Human label for a sighting's manufacturer block, or null when it carries none. */
+    private fun describeVendor(o: JSONObject): String? {
+        val mfg = o.optJSONObject("mfg") ?: return null
+        val k = mfg.keys()
+        if (!k.hasNext()) return null
+        val idStr = k.next()
+        val id = idStr.toIntOrNull() ?: return null
+        return vendorOf(id) ?: "company 0x%04x".format(id)
+    }
 
     private fun flag(sev: Int, key: String, what: String) {
         val now = System.currentTimeMillis()
@@ -128,6 +217,14 @@ class TrackerWatch(
                     if (u.contains("fd5a")) { label = "Find My network"; break }
                 }
             }
+            // The advertised device NAME, when one is broadcast, beats any inference.
+            if (label == null) d.optString("name", "").takeIf { it.isNotBlank() }
+                ?.let { label = "\"$it\"" }
+            // Otherwise fall back to the manufacturer, so a row is attributable to a company
+            // even when the exact product cannot be named. "unidentified" was doing a lot of
+            // work in that list: 41 rows of it is not triageable, and the company ID needed to
+            // fix that was already in the advertisement, unused.
+            if (label == null) describeVendor(d)?.let { label = it }
 
             // Identity key: the advertisement payload if there is one, since that is what
             // survives MAC rotation. Falls back to the address.
@@ -153,6 +250,54 @@ class TrackerWatch(
                     "trackers avoid simple blocklists" +
                     (s.label?.let { " — this one fingerprints as $it" } ?: "") +
                     ". It may equally be your own device doing exactly what it is designed to do.")
+            }
+
+            /* CAMPED: persistent NEXT TO YOU while you are not moving.
+             *
+             * THE GAP THIS CLOSES. The follow test below requires real displacement, on the
+             * sound reasoning that a tracker in your bag and a beacon on a shelf are identical
+             * in one sweep and only separable by movement. But that makes displacement a
+             * NECESSARY condition — so for a user who does not move, the panel can only ever
+             * say "nothing following", however long something sits beside them. Observed
+             * exactly that on device: 41 identities, 1551 sightings, 77 scan sessions, almost
+             * every entry reading "moved 0m", and a confident "nothing following". That is a
+             * structural false all-clear in the one situation where a person at home, who
+             * suspects something is parked nearby, most needs an answer.
+             *
+             * Being stationary does not remove the question, it changes it: not "is this
+             * travelling with me" but "has this been sitting on me for a long time". So a
+             * device seen across many sessions, over a long span, while the DEVICE ITSELF has
+             * not moved, is reported as CAMPED.
+             *
+             * Deliberately weaker language and a lower severity than a follow. A camped BLE
+             * device is overwhelmingly likely to be a neighbour's TV, a thermostat, a smart
+             * bulb, a car in the driveway, or your own hardware — anything mains-powered and
+             * stationary looks exactly like this. It is reported because "we cannot tell you
+             * anything while you sit still" is worse than a hedged answer, not because it is
+             * damning.
+             */
+            val stationary = hasFix(lat, lon) && hasFix(s.firstLat, s.firstLon) &&
+                metres(s.firstLat, s.firstLon, lat, lon) < STATIONARY_M
+            val spanMin = (now - s.firstT) / 60000
+            if (!s.campFlagged && s.sessions >= MIN_CAMP_SESSIONS && spanMin >= MIN_CAMP_MINUTES &&
+                (stationary || !hasFix(lat, lon))) {
+                s.campFlagged = true
+                val stableMac = s.addrs.size == 1
+                flag(2, "camp:$key",
+                    "A BLE device has been within range across ${s.sessions} separate scans over " +
+                    "$spanMin minutes while you have not moved" +
+                    (s.label?.let { " (fingerprints as $it)" } ?: "") +
+                    ", strongest signal ${s.bestRssi}dBm." +
+                    (if (stableMac)
+                        " It has held ONE MAC address the whole time — most modern devices rotate " +
+                        "theirs every few minutes for privacy, so a stable address means rotation " +
+                        "is disabled, absent, or the device predates it."
+                     else "") +
+                    " This is NOT the tracker-following-you test, which needs you to travel; it " +
+                    "is the complement, for when you are stationary. Anything mains-powered " +
+                    "nearby looks like this — a TV, a thermostat, a bulb, a parked car, your own " +
+                    "hardware. It is listed so that a persistent emitter is visible to you at " +
+                    "all, rather than hidden behind a movement test you cannot satisfy.")
             }
 
             // FOLLOW: persistent across sessions AND carried a real distance.
@@ -219,21 +364,41 @@ class TrackerWatch(
             if (s.sessions < 3) continue
             val moved = if (hasFix(s.firstLat, s.firstLon) && hasFix(s.lastLat, s.lastLon))
                 metres(s.firstLat, s.firstLon, s.lastLat, s.lastLon) else 0.0
+            val mins = (now - s.firstT) / 60000
+            val anyAddr = s.addrs.firstOrNull()
+            val cls = anyAddr?.let { addrClass(it) } ?: "unknown"
+            // "Static" here means: one address, held the whole time, of a kind that is NOT
+            // supposed to rotate. That is the property that separates installed infrastructure
+            // from phones walking past, and it is the only handle a stationary user has.
+            val staticAddr = s.addrs.size == 1 && anyAddr != null && !rotatesByDesign(anyAddr)
             followers.put(JSONObject()
                 .put("id", k.take(24))
                 .put("label", s.label ?: "unidentified")
                 .put("sessions", s.sessions)
                 .put("addresses", s.addrs.size)
-                .put("minutes", (now - s.firstT) / 60000)
+                .put("minutes", mins)
                 .put("movedM", moved.toInt())
                 .put("rssi", s.bestRssi)
+                .put("addrClass", cls)
+                .put("staticAddr", staticAddr)
+                .put("camped", s.sessions >= MIN_CAMP_SESSIONS && mins >= MIN_CAMP_MINUTES &&
+                    moved < STATIONARY_M)
                 .put("following", s.sessions >= MIN_SESSIONS && moved >= MIN_DISPLACEMENT_M))
         }
         o.put("candidates", followers)
-        o.put("note", "A follow needs BOTH persistence across separate scans AND real displacement " +
-            "— a tracker on a shelf you walked past cannot produce both. Your own tag and a " +
-            "companion's tag produce them legitimately, because they are genuinely travelling " +
-            "with you.")
+        o.put("note", "A FOLLOW needs BOTH persistence across separate scans AND real " +
+            "displacement — a tracker on a shelf you walked past cannot produce both. Your own " +
+            "tag and a companion's tag produce them legitimately, because they are genuinely " +
+            "travelling with you.\n\n" +
+            "CAMPED is the complement, and it exists because displacement is a NECESSARY " +
+            "condition for a follow: a user who does not move can never satisfy it, so the " +
+            "panel could only ever report 'nothing following' however long something sat beside " +
+            "them. Camped means many sessions over a long span while you stayed put. " +
+            "STATIC ADDRESS means one address held throughout, of a type that is not supposed " +
+            "to rotate — modern phones and wearables use resolvable private addresses and change " +
+            "them every few minutes, so a fixed address is the signature of installed equipment " +
+            "rather than someone passing by. Neither is an accusation: everything mains-powered " +
+            "nearby looks exactly like this.")
         return o.toString()
     }
 }
