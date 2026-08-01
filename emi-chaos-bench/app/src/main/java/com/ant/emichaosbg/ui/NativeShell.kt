@@ -157,6 +157,14 @@ object Nx {
             isAllCaps = true
             setTextColor(INK); textSize = 10.5f
             typeface = Typeface.MONOSPACE
+            // One line, ellipsised, minimal default width. Without this a weighted row of these
+            // buttons wrapped and went ragged at a large system font, and the platform Button's
+            // default minWidth pushed siblings out of their weight share.
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(dp(ctx, 10), dp(ctx, 8), dp(ctx, 10), dp(ctx, 8))
             setBackgroundColor(Color.parseColor("#e6e1d4"))
             setOnClickListener { onClick() }
         }
@@ -173,20 +181,22 @@ object Nx {
             setTextColor(INK); textSize = 11f
             typeface = Typeface.MONOSPACE
             setLineSpacing(dp(ctx, 3).toFloat(), 1f)
-            setPadding(dp(ctx, 10), dp(ctx, 8), dp(ctx, 10), dp(ctx, 8))
-            setBackgroundColor(Color.parseColor("#e9e4d7"))
             val stripe = when {
                 severity >= 3 -> CRIT
                 severity == 2 -> WARN
                 else -> RULE
             }
-            // Left severity stripe, drawn as a layered background rather than an extra view.
+            // BACKGROUND FIRST, PADDING SECOND. View.setBackground applies the drawable's own
+            // padding and WIPES any padding set before it — so setting padding first (as this
+            // did) left every finding's text flush against its edges. Left severity stripe drawn
+            // as a layered background rather than an extra view.
             background = android.graphics.drawable.LayerDrawable(arrayOf(
                 android.graphics.drawable.ColorDrawable(stripe),
                 android.graphics.drawable.InsetDrawable(
                     android.graphics.drawable.ColorDrawable(Color.parseColor("#e9e4d7")),
                     dp(ctx, 3), 0, 0, 0)
             ))
+            setPadding(dp(ctx, 10), dp(ctx, 8), dp(ctx, 10), dp(ctx, 8))
         }
 
     fun spacer(ctx: Context, h: Int): View =

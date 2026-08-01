@@ -176,6 +176,10 @@ class MaskerService : Service() {
     override fun onDestroy() {
         isRunning = false
         try { bleWatcher?.stop() } catch (_: Exception) {}
+        // Stop the scan engine too: onDestroy cancelled the timers and the BLE scanner but left
+        // ScanEngine's "emi-scan" HandlerThread running for the rest of the process — a thread
+        // leak that kept scanning after the service was torn down. quitSafely via stop().
+        try { scanEngine?.stop() } catch (_: Exception) {}
         try { escalationTimer?.cancel() } catch (_: Exception) {}
         escalationTimer = null
         try { towerTimer?.cancel() } catch (_: Exception) {}
