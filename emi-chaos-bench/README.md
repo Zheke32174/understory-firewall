@@ -30,6 +30,103 @@ BLE/Wi-Fi field tools (accessory pairing, sensor telemetry, profiles,
 geofencing, anomaly detection) and porting those *interaction and detection*
 ideas — never any transmit capability — onto an audio masker.
 
+## What's new in 3.6 — BadJack
+
+**Three independent scanners, staggered.** BLE-only, Wi-Fi-only, and a new **combined**
+cadence that re-rolls per burst whether it drives BLE, Wi-Fi, or both. Three independent
+random processes on three independent clocks beat one process; **Arm all three** staggers
+the starts by random offsets, because cadences kicked off in the same millisecond share a
+phase and their combined activity would come out as a regular comb instead of chaos.
+
+**Chaos governor — self-regulating without ever reducing the chaos.** It never touches the
+audio engine, randomizer, modulation matrix or any demod guard. It only reshapes the *radio
+duty cycle*, and only on measured evidence: battery temperature, charge level, the rate at
+which Android is silently dropping our scan requests (an over-eager scanner doesn't scan
+more, it just gets ignored while still costing power), and audio-callback overrun.
+
+> Verified, not asserted: at maximum de-rating the `marathon` mode drops from 12.9% to 1.9%
+> and `lurk` rises from 13.1% to 33.4% — the duty cycle genuinely eases — while Shannon
+> entropy of the mode distribution only falls from 2.248 to 2.019 bits and **all five modes
+> stay reachable at every level.** Reshape, not collapse.
+
+**Nine independent spectrum band guards, infrasound → ultrasound.** The global guard asks
+"is the whole output predictable?"; these ask it per band, because a band-limited listener
+filters to the slice they care about first, so one tidy band is all they need. Per band:
+**tonality** (has this band collapsed to a steady tone?) and **envelope periodicity** (is its
+loudness pulsing on a schedule?), with band-targeted correction that rerolls only the dials
+shaping that band.
+
+Getting this right took four rounds of unit-testing against synthetic signals, and each round
+caught a real defect that would have shipped as *a guard confidently naming the wrong band*:
+
+| Defect found by testing | Why it was wrong | Fix |
+|---|---|---|
+| Waveform autocorrelation per band | A bandpass output oscillates near its own centre frequency no matter what you feed it — it was measuring the **filter's ringing**, not the content. Chaotic output scored a bogus 87% "periodic". | Replaced with envelope coefficient-of-variation, normalised against the Rayleigh value (0.5227) that narrowband *noise* produces. |
+| Envelope lags fixed across all bands | Testing a 60Hz-wide band at lags corresponding to 146Hz+ — frequencies its envelope physically cannot contain. | Lags scaled to each band's bandwidth; too-narrow bands report `n/a` instead of a wrong number. |
+| Single 2-pole bandpass | Only 12dB/octave, so a loud pure tone leaked into *every* band strongly enough to trip them all. | Cascaded to 4-pole (24dB/oct); f0 clamped below 0.40·sr where the RBJ equations degrade. |
+| Filter startup transient | From zero state a narrow low-frequency section spends most of a 21ms window settling; a pure 150Hz tone read **0%** tonal when it should read ~100%. | Warm-up pass over preceding samples; envelope follower seeded at steady state. |
+| 43ms window for 20–300Hz | To reject a 150Hz carrier's ripple the follower must sit below ~40Hz, but the noise envelope fluctuates faster than that — so it removed the very fluctuation that distinguishes noise from tone, and **broadband chaos falsely tripped sub-bass and bass.** | Dedicated 4:1-decimated ring, 4096 samples ≈ 341ms, for bands below 1.5kHz. |
+
+Final state: silent on the masker's own broadband chaos, and correctly localising pure tones
+at 50Hz, 150Hz, 2kHz and 19kHz, plus a tone buried in noise.
+
+**BadJack DSP rack (new DSP tab)** — a stage-for-stage port of the supplied
+`BadJack_HiFi_Avocado_DynBass_DRX.eel` LiveProg script: HiFi rescue (bad-jack channel blend,
+mono bass, one-pole bass/vocal/air/harshness shelves) → Avocado glitch/repeat/reverse/duck →
+Dynamic bass → DRX 3-band transient dynamics → trim + soft limiter. Plus a **DDC/VDC biquad
+loader** and the bundled **48kHz stereo impulse response** via a ConvolverNode.
+
+> **The rootless-JamesDSP exposure is deliberately not reproduced.** Rootless JamesDSP reaches
+> system-wide audio by attaching an AudioEffect to the global output mix, which needs a
+> signature-level permission (DUMP, via Shizuku/adb). That's what lets it EQ other apps — and
+> it's also the exposure: a permission that broad, held persistently, means anything that
+> compromises that app inherits a tap on every sound the device makes, calls included. This
+> rack is an in-process pass over our own generated buffer. No AudioEffect, no global session,
+> no DUMP, no Shizuku, no access to other apps' audio, nothing to inherit. The trade is stated
+> plainly rather than hidden: these effects shape the masker's output and nothing else.
+
+DDC files are **pole-stability-checked before they touch the audio path** — a file in the
+opposite sign convention, or a malformed one, would otherwise be an instant runaway.
+
+**35 preset modulation matrices, auto-swapped per profile.** With auto-swap on, loading a
+builtin draws a fresh routing, so the modulation *topology* changes with the profile rather
+than only the dial values. Profiles you saved keep their own matrix. A preset naming a dial
+this build lacks drops that route instead of failing.
+
+**Side-channel guard.** MEMS gyros/accelerometers have mechanical resonances — sound near
+19–20kHz can couple in and appear as motion that never happened (Son et al., *Rocking Drones
+with Intentional Sound Noise*; Trippel et al., *WALNUT*). Three signatures are fused, never
+used alone: stream going **narrowband**, gyro and accelerometer **disagreeing** about whether
+the phone is moving, and **repeated identical samples**. Plus **runtime hijack** detection —
+the primitives the engine depends on and the bridge methods themselves are snapshotted at load
+and re-checked for still being native code. Everything reports; nothing blocks.
+
+**Screen chaos.** Brightness, colour temperature, saturation and slight hue drift driven off
+the same chaos cores as the audio, every axis clamped (brightness only ever dims to 72% of
+your own setting, never brightens past it) and slew-limited. The slew limit is a **safety
+bound, not a taste setting**: fast luminance oscillation in the ~3–30Hz range is a
+photosensitive-seizure risk, so the rate of change is held far below it. This app's window
+only — never the system brightness setting.
+
+**Privileged-access tiers: Shizuku → Dhizuku → Device Owner → ADB.** These are **not
+interchangeable**, and the UI says so rather than implying a clean fallback:
+
+- **Shizuku** runs as the adb-shell UID and is the *only* tier that can serve the read-only
+  `dumpsys` diagnostics.
+- **Dhizuku** is backed by device owner, and its process API spawns inside a normal app UID —
+  so shell output through it comes back **no more privileged than ours**. It genuinely cannot
+  replace the diagnostics if Shizuku goes away. Nothing can; that capability leaves with it.
+- What Dhizuku and **device owner** give instead is what Shizuku can't:
+  `setUserControlDisabledPackages` (API 30+), the one supported mechanism on stock Android
+  that makes an app resistant to being **silently force-stopped**. That's the real answer to
+  "can't be tampered with without appops".
+- **Device admin** alone is weaker — it greys out the Settings buttons, but adb can still stop
+  the app.
+
+The declared device-admin policy set is deliberately minimal: no wipe, no password control, no
+login monitoring. Dhizuku is reached by reflection rather than a compile-time dependency, so a
+device without it degrades to "not available" instead of crashing at startup.
+
 ## What's new in 3.5 — Blackout
 
 **Chaotic cadence is now a shared engine, and much more aggressive.** The BLE

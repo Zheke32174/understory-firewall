@@ -112,6 +112,7 @@ class MainActivity : ComponentActivity() {
         webView.addJavascriptInterface(bridge, "EMIBridge")
         webView.addJavascriptInterface(shizuku, "EMIShizuku")
         webView.addJavascriptInterface(tamperGuard, "EMITamper")
+        webView.addJavascriptInterface(PrivilegeBridge(this), "EMIPriv")
         setContentView(webView)
         keepScreenFriendly()
 

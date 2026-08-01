@@ -170,6 +170,7 @@
     <button class="tab" data-p="sensors">Sensors</button>
     <button class="tab" data-p="detect">Detect</button>
     <button class="tab" data-p="link">Link</button>
+    <button class="tab" data-p="dsp">DSP</button>
     <button class="tab" data-p="profiles">Profiles</button>
   </div>
 
@@ -212,6 +213,61 @@
       </div>
     </div>
     <div id="panel"></div>
+    <div class="sect">
+      <div class="head"><span class="t">Spectrum band guards</span><span class="tag" id="bgLast">—</span>
+        <div class="sw" id="bgEn" aria-pressed="true"></div></div>
+      <div class="body">
+        <div class="list" id="bgList"><div class="muted">Start the masker to begin band analysis.</div></div>
+        <div class="muted">Nine <b>independent</b> demodulation guards, infrasound through ultrasound, each with
+          its own waveform and envelope score and its own band-targeted correction. The global guard above asks
+          "is the whole output predictable?" — these ask it per band, because a band-limited listener filters to
+          the slice they care about first, so one tidy band is all they need.
+          <br><br>
+          <b>Infrasound (&lt;20Hz)</b> can't be seen in the 43ms capture window at all — one 10Hz cycle is 4800
+          samples — so that guard runs off a separate decimated envelope buffer spanning ~5.5s, resolving to
+          about 0.4Hz. It's asking whether the <i>loudness</i> pulses at an infrasonic rate, which is the
+          demodulable thing at those frequencies. <b>Ultrasonic (&gt;18kHz)</b> normally reads <i>quiet</i> on a
+          phone speaker; that's expected physics, not a fault. Bands below an energy floor report
+          <b>quiet</b> rather than a score, because normalised autocorrelation on a near-empty band divides
+          noise by noise and returns confident nonsense.</div>
+      </div>
+    </div>
+    <div class="sect">
+      <div class="head"><span class="t">Chaos governor</span><span class="tag" id="govState">nominal</span></div>
+      <div class="body">
+        <div class="grid">
+          <div class="stat"><small>Battery temp</small><b id="govTherm">—</b></div>
+          <div class="stat"><small>Scan drops</small><b id="govScan">—</b></div>
+          <div class="stat"><small>Reason</small><b id="govWhy">nominal</b></div>
+        </div>
+        <div class="muted">Keeps the chaos from damaging anything <b>without ever reducing the chaos</b>. It
+          never touches the audio engine, the randomizer, the modulation matrix or any demod guard — those stay
+          at full tilt permanently. It only reshapes the <b>radio duty cycle</b>, and only on measured evidence:
+          battery temperature, charge level, the rate at which Android is silently dropping our scan requests,
+          and audio-callback overrun.
+          <br><br>
+          Under stress the cadences spend more time in <b>lurk</b> and less in <b>marathon</b> — the
+          distribution shifts, every mode stays reachable, and the draw stays fully random, so entropy doesn't
+          collapse. The sound you hear never changes. It releases by itself when the evidence clears.</div>
+      </div>
+    </div>
+    <div class="sect">
+      <div class="head"><span class="t">Screen chaos</span><span class="tag" id="sxState">off</span>
+        <div class="sw" id="sxEn" aria-pressed="false"></div></div>
+      <div class="body">
+        <div class="row"><div class="cell full"><small>Amount <span id="sxAmtR">60%</span></small>
+          <input id="sxAmt" type="range" min="0" max="1" step="0.01" value="0.6"></div></div>
+        <div class="muted">Drives brightness, colour temperature, saturation and a slight hue drift off the same
+          chaos cores as the audio. Every axis is clamped to a deliberately conservative window — brightness only
+          ever dims to 72% of your own setting and never brightens past it, saturation stays within ±10%, hue
+          within ±6° — and all of it is slew-limited.
+          <br><br>
+          The slew limit is a <b>safety bound, not a taste setting</b>: fast luminance oscillation in the
+          ~3–30Hz range is a photosensitive-seizure risk, so the rate of change is held far below that and the
+          update period well outside it. Affects this app's own window only — it never writes the system
+          brightness setting or touches any other app's display.</div>
+      </div>
+    </div>
     <div class="sect">
       <div class="head"><span class="t">Randomize intensity</span></div>
       <div class="body">
@@ -280,8 +336,17 @@
       </div>
     </div>
     <div class="sect">
-      <div class="head"><span class="t">Modulation matrix</span><span class="tag">sensor → dial</span></div>
+      <div class="head"><span class="t">Modulation matrix</span><span class="tag" id="mmPreset">—</span></div>
       <div class="body" id="mmBody">
+        <div class="row"><select id="mmPresetSel" style="flex:1"></select>
+          <button class="btn acc" id="mmPresetLoad">Load</button>
+          <button class="btn" id="mmPresetRand">Random</button></div>
+        <div class="row"><button class="chip" id="mmAuto" aria-pressed="true">Auto-swap per profile</button></div>
+        <div class="muted" style="margin-bottom:6px">35 preset routings. With <b>auto-swap</b> on, loading a
+          builtin profile draws a fresh one, so the modulation <i>topology</i> changes with the profile rather
+          than only the dial values — the same builtin never runs the same routing twice. Profiles you saved
+          yourself keep their own matrix and are never overwritten. A preset naming a dial this build doesn't
+          have drops that route instead of failing.</div>
         <div class="mmrow" style="font-size:8.5px;color:var(--soft);text-transform:uppercase;letter-spacing:.08em">
           <span>Source</span><span>Target dial</span><span>Depth</span><span></span></div>
         <div id="mmList"></div>
@@ -478,6 +543,32 @@
       </div>
     </div>
     <div class="sect">
+      <div class="head"><span class="t">Side-channel guard</span><span class="tag" id="scgState">clear</span></div>
+      <div class="body">
+        <div class="list" id="scgList"><div class="muted">No injection or hijack signatures yet.</div></div>
+        <div class="row" style="margin-top:8px"><button class="btn" id="scgRecheck">Recheck now</button></div>
+        <div class="muted">Two layers of the same question: is what this app reads actually what the hardware and
+          the runtime produced?
+          <br><br>
+          <b>Sensor injection.</b> MEMS gyros and accelerometers have mechanical resonances — sound at roughly
+          19–20kHz can couple into the sensing mass and show up as motion that never happened (Son et al.,
+          <i>Rocking Drones with Intentional Sound Noise</i>; Trippel et al., <i>WALNUT</i>). Three signatures
+          separate that from real movement: the stream going <b>narrowband</b> (driven by a tone rather than
+          messy human motion), <b>gyro and accelerometer disagreeing</b> about whether the phone is moving at
+          all, and <b>repeated identical samples</b> indicating a replayed or clamped feed. They're fused, never
+          used alone — a phone on a vibrating surface trips the first, a phone flat on a desk trips the second,
+          so it takes two signatures (or one plus corroborating ultrasonic mic energy) to report.
+          <br><br>
+          <b>Runtime hijack.</b> If something injected JS into this page or swapped the native bridge, every
+          other readout here becomes whatever the attacker wants. So the primitives this engine depends on and
+          the bridge methods themselves are snapshotted at load and re-checked for still being native code.
+          Anything that stops being native has been replaced.
+          <br><br>
+          Everything here <b>reports and nothing blocks</b>. A false positive should cost you a notification,
+          never your masking session.</div>
+      </div>
+    </div>
+    <div class="sect">
       <div class="head"><span class="t">Cell guard</span><span class="tag" id="cgState">watching</span></div>
       <div class="body">
         <div class="grid">
@@ -507,6 +598,38 @@
           silently reconfiguring your modem is exactly the wrong thing to have happened the moment you need to
           dial emergency services. The button above opens the OS's own network settings so you make that call,
           with the readout here as context. See ETHICS.md.</div>
+      </div>
+    </div>
+    <div class="sect">
+      <div class="head"><span class="t">Privileged access tiers</span><span class="tag" id="pvTag">—</span></div>
+      <div class="body">
+        <div class="list" id="pvList"><div class="muted">Native build only.</div></div>
+        <div class="row" style="margin-top:8px"><button class="btn" id="pvRefresh">Refresh</button>
+          <button class="btn acc" id="pvProtect">Protect from force-stop</button>
+          <button class="btn" id="pvAdmin">Enable device admin</button>
+          <button class="btn" id="pvDhizuku">Request Dhizuku</button></div>
+        <div class="row"><button class="btn" id="pvAdb">Copy adb command</button>
+          <span class="pill" id="pvProt">—</span></div>
+        <div class="muted">Four tiers, and they are <b>not interchangeable</b> — saying "Dhizuku as a Shizuku
+          fallback" would be half a lie, so here's the real split:
+          <br><br>
+          <b>Shizuku</b> runs as the adb-shell UID, which is the only tier that can serve the read-only
+          <code>dumpsys</code> diagnostics. <b>Dhizuku</b> is backed by device owner, and its process API spawns
+          inside a normal app UID — so shell output through it comes back <i>no more privileged than ours</i>,
+          and it <b>cannot</b> replace the diagnostics if Shizuku goes away. Nothing can; that capability simply
+          leaves with Shizuku.
+          <br><br>
+          What Dhizuku and <b>device owner</b> provide instead is something Shizuku genuinely can't:
+          <code>setUserControlDisabledPackages</code> (Android 11+), the one supported mechanism on stock
+          Android that makes an app resistant to being <b>silently force-stopped</b>. That's the real answer to
+          "can't be tampered with without appops" — once set, stopping or uninstalling the masker takes a
+          deliberate privileged action rather than a background tap. <b>Device admin</b> alone is weaker: it
+          greys out the Settings buttons, but adb can still stop the app.
+          <br><br>
+          Every tier is optional and the app works without all of them. The declared device-admin policy set is
+          deliberately minimal — no wipe, no password control, no login monitoring. Note that becoming device
+          owner is a one-shot provisioning step that needs a device with no accounts added, and a factory reset
+          clears it.</div>
       </div>
     </div>
     <div class="sect">
@@ -584,6 +707,27 @@
           duty cycle. <b>Foxhunt</b> on a device below repeatedly re-scans and shows an RSSI trend
           (warmer/colder) so you can walk toward or away from it. <b>Export scan log</b> writes every sighting
           this session to a CSV you keep — nothing is uploaded.</div>
+      </div>
+    </div>
+    <div class="sect">
+      <div class="head"><span class="t">Scanner trio</span><span class="tag" id="scMode">idle</span></div>
+      <div class="body">
+        <div class="row"><button class="chip" id="scChaotic" aria-pressed="false">Combined BLE+Wi-Fi</button>
+          <button class="btn acc" id="scAll">Arm all three</button>
+          <button class="btn" id="scNone">All off</button></div>
+        <div class="grid" style="margin-top:6px">
+          <div class="stat"><small>Last pick</small><b id="scPick">—</b></div>
+          <div class="stat"><small>Combined cycles</small><b id="scCycles">0</b></div>
+        </div>
+        <div class="muted">Three <b>independent</b> chaotic scanners, deliberately not one switch: BLE-only (Link
+          tab, above), Wi-Fi-only (Detect tab), and this <b>combined</b> one, which re-rolls per burst whether it
+          drives BLE, Wi-Fi, or both at once. Three independent random processes on three independent clocks
+          produce a far less predictable aggregate than any single one can.
+          <br><br>
+          <b>Arm all three</b> staggers the starts by random offsets — three cadences kicked off in the same
+          millisecond share a phase, and their combined activity would come out as a regular comb instead of
+          chaos. Every one of these drives the same standard platform scans the app already performed; nothing
+          new goes on the air, only how many independent clocks decide when.</div>
       </div>
     </div>
     <div class="sect">
@@ -665,6 +809,74 @@
           <a href="https://shizuku.rikka.app" style="color:inherit">Shizuku</a> (adb-pairing or root) and grant
           this app permission through it. Every command here is a fixed, read-only allowlist — see
           <code>ShizukuUserService.kt</code> — no free-form exec, no write path.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="page" id="page-dsp">
+    <div class="sect">
+      <div class="head"><span class="t">BadJack rack</span><span class="tag" id="bjTag">off</span>
+        <div class="sw" id="bjEn" aria-pressed="false"></div></div>
+      <div class="body">
+        <div id="bjMaster"></div>
+        <div class="muted">A stage-for-stage port of the supplied <code>BadJack_HiFi_Avocado_DynBass_DRX.eel</code>
+          LiveProg script into this app's own audio path: HiFi rescue → Avocado glitch/duck → Dynamic bass →
+          DRX multiband dynamics → trim/soft-limiter.
+          <br><br>
+          <b>It processes this app's audio and nothing else, deliberately.</b> Rootless JamesDSP reaches
+          system-wide audio by attaching an AudioEffect to the global output mix, which requires granting it a
+          signature-level permission (DUMP, via Shizuku/adb). That's what lets it EQ other apps — and it's also
+          the exposure: a permission that broad, held persistently, means anything that compromises that app
+          inherits a tap on every sound the device makes, calls included. This rack takes none of it: an
+          in-process pass over our own generated buffer. No AudioEffect, no global session, no DUMP, no Shizuku,
+          no access to other apps' audio, nothing to inherit.</div>
+      </div>
+    </div>
+    <div class="sect">
+      <div class="head"><span class="t">HiFi rescue</span><span class="tag">bad-jack repair</span></div>
+      <div class="body"><div id="bjHifi"></div>
+        <div class="muted">Channel blend rescues a partially-failed jack/driver by folding the dead side back
+          toward mono; mono-bass tightens low end; the shelves are the EEL's one-pole bass/vocal/air/harshness
+          stages at the same topology and coefficients.</div></div>
+    </div>
+    <div class="sect">
+      <div class="head"><span class="t">Avocado</span><span class="tag">glitch + duck</span></div>
+      <div class="body"><div id="bjAvo"></div>
+        <div class="muted">Buffered stutter/repeat/reverse/fadeout with envelope ducking and an optional
+          arpeggiator. Buffer length and count are capped below the EEL's 4000ms × 16 — that combination would
+          allocate roughly 24MB of Float32 per channel, which is fine inside a desktop DAW's memory block and
+          not fine on a phone. The audible behaviour is unchanged.</div></div>
+    </div>
+    <div class="sect">
+      <div class="head"><span class="t">Dynamic bass + DRX</span><span class="tag">multiband dynamics</span></div>
+      <div class="body"><div id="bjDyn"></div>
+        <div class="muted">DRX splits the mid signal low/mid/high, compares each band against its own slow
+          envelope, and expands or compresses on the transient delta — negative values compress, positive
+          expand. The side channel is preserved and re-added, so stereo width survives.</div></div>
+    </div>
+    <div class="sect">
+      <div class="head"><span class="t">DDC / VDC biquads</span><span class="tag" id="ddcTag">none</span></div>
+      <div class="body">
+        <div class="row"><button class="btn acc" id="ddcLoad">Load bundled BassLite</button>
+          <button class="btn" id="ddcClear">Clear</button></div>
+        <textarea id="ddcBox" placeholder="Or paste a ViPER4Android-style .ddc/.vdc here (SR_44100: / SR_48000: lines)"></textarea>
+        <div class="row"><button class="btn" id="ddcApply">Apply pasted</button></div>
+        <div class="muted">Cascaded IIR sections in ViPER4Android DDC layout — 5 floats per biquad
+          (<code>b0,b1,b2,a1,a2</code>) with the a-coefficients already negated for direct-form-I, so the
+          difference equation is <code>y = b0x + b1x₁ + b2x₂ + a1y₁ + a2y₂</code>. Every section is
+          pole-stability-checked before it's allowed near the audio path: a file in the opposite sign
+          convention, or a malformed one, would otherwise turn into an instant runaway.</div>
+      </div>
+    </div>
+    <div class="sect">
+      <div class="head"><span class="t">Convolver</span><span class="tag" id="convTag">off</span></div>
+      <div class="body">
+        <div class="row"><button class="chip" id="convEn" aria-pressed="false">Enable IR</button>
+          <span class="pill" id="convInfo">bundled 48k stereo</span></div>
+        <div id="bjConv"></div>
+        <div class="muted">True-stereo impulse response from the bundled
+          <code>BadJack_HiFi_Convolver_48k.wav</code> (48kHz, stereo, ~85ms), run through a Web Audio
+          ConvolverNode in the output rack. Resampled automatically if the device runs at a different rate.</div>
       </div>
     </div>
   </div>
@@ -1243,8 +1455,291 @@ const Dsp=(function(){
     bb.gain.value=boostOn?cl(P.bbAmt,0,1)*18:0; bb.frequency.value=cl(P.bbC,20,20000); bb.Q.value=cl(P.bbW,0.3,12);
     boostG.gain.value=boostOn?cl(P.boost,1,1.5):1;
   }
-  function teardown(){ lo=mid=hi=bb=comp=dryG=wetG=conv=mixOut=boostG=lim=null; builtFor=null; }
-  return { build, update, teardown };
+  function teardown(){ lo=mid=hi=bb=comp=dryG=wetG=conv=mixOut=boostG=lim=null; builtFor=null; irBuf=null; }
+  // ---- BadJack impulse response ----
+  // The bundled IR replaces the synthetic "space" buffer in the same ConvolverNode rather
+  // than adding a second node, so enabling it costs nothing extra and the dry/wet mix that
+  // already exists keeps working. decodeAudioData resamples to the device rate for us, so a
+  // phone running at 44.1k gets the 48k IR handled correctly instead of pitch-shifted.
+  let irBuf=null, irOn=false;
+  async function loadIr(){
+    if(irBuf||!builtFor) return irBuf;
+    try{
+      const r=await fetch('dsp/BadJack_HiFi_Convolver_48k.wav');
+      const ab=await r.arrayBuffer();
+      irBuf=await builtFor.decodeAudioData(ab);
+      const info=$('convInfo');
+      if(info) info.textContent=irBuf.numberOfChannels+'ch · '+irBuf.length+' taps · '+Math.round(irBuf.sampleRate/1000)+'k';
+      return irBuf;
+    }catch(e){ toast('IR load failed'); return null; }
+  }
+  async function setIrEnabled(v){
+    irOn=v;
+    if(!conv){ toast('Start the masker first'); return; }
+    if(v){
+      const b=await loadIr();
+      if(!b) return;
+      try{ conv.buffer=b; }catch(e){ toast('IR could not be applied'); return; }
+      if(P.spMix<0.05){ setPval('spMix',cl(BadJack.params.convMix/100,0,1)); flushDirty(); }
+      toast('IR convolver on');
+    } else {
+      try{ conv.buffer=synthIR(builtFor,0.35,2.2); }catch(e){}
+      toast('IR off — synthetic space restored');
+    }
+  }
+  return { build, update, teardown, setIrEnabled, get irOn(){return irOn;} };
+})();
+
+/* ============ BADJACK DSP RACK — JamesDSP/LiveProg port ============
+   A direct port of the supplied `BadJack_HiFi_Avocado_DynBass_DRX.eel` LiveProg script,
+   stage for stage, into this app's own audio path. Four stages plus output conditioning:
+
+     1. HiFi rescue     — balance, bad-jack channel blend, mono-bass, bass shelf,
+                          vocal presence, harshness tame, air lift (one-pole shelves,
+                          same topology as the EEL).
+     2. Avocado         — buffered glitch/repeat/reverse/fadeout/pitch with envelope
+                          ducking and an optional arpeggiator, ring-buffer based.
+     3. Dynamic bass    — envelope-driven low-band push.
+     4. DRX dynamics    — 3-band (low/mid/high) transient-relative dynamics on the mid
+                          signal, side channel preserved.
+     Output            — trim, soft limiter (x/sqrt(1+x^2) shaped, matching the EEL's
+                          normalised drive), hard safety clamp, master dry/wet.
+
+   Also here: a **DDC/VDC biquad loader** (ViPER4Android-style cascaded IIR coefficient
+   sets, as in the supplied BadJack_BassLite_SmoothTop.ddc) and an **impulse-response
+   convolver** using the supplied 48kHz stereo IR.
+
+   ── ON THE ROOTLESS-JAMESDSP EXPOSURE, WHICH THIS DELIBERATELY DOES NOT REPRODUCE ──
+   Rootless JamesDSP works by attaching an AudioEffect to the *global* output mix, which
+   requires granting it a powerful signature-level permission (DUMP, via Shizuku/adb).
+   That is what makes it able to process other apps' audio — and it is exactly the
+   exposure: a permission that broad, held persistently, means anything that compromises
+   that app inherits a tap on every sound the device produces, from calls to notifications.
+   This rack takes none of that. It is an in-process pass over THIS app's own generated
+   buffer only. No AudioEffect, no global session, no DUMP, no Shizuku involvement, no
+   access to any other app's audio, and nothing to inherit if this app were compromised.
+   The trade is honest and stated plainly: these effects shape the masker's own output and
+   nothing else on the phone. See ETHICS.md. */
+const BadJack=(function(){
+  // ---- state (mirrors the EEL's @init block) ----
+  let hifi_bassL=0,hifi_bassR=0,vocal_lpL=0,vocal_lpR=0,vocal_bandL=0,vocal_bandR=0;
+  let harsh_lpL=0,harsh_lpR=0,air_lpL=0,air_lpR=0;
+  let db_low=0,db_env=0;
+  let drx_low=0,drx_tlp=0,drx_low_env=0,drx_mid_env=0,drx_high_env=0;
+  // Avocado ring buffers — sized for the EEL's 4000ms max at 48k, 16 buffers would be
+  // 3M floats per channel. That is a real allocation and the EEL gets away with it only
+  // because REAPER hands it a big memory block. Cap at a musically identical but sane
+  // 1500ms x 8 buffers and clamp the UI range to match, rather than silently allocating
+  // ~24MB of Float32 on a phone.
+  const AVO_MAX_MS=1500, AVO_MAX_BUFS=8;
+  let avoMaxLen=0, avoL=null, avoR=null;
+  let avo_is_recording=0,avo_playback_buffer=0,avo_playback_csr=0,avo_record_buffer=0,avo_record_csr=0;
+  let avo_gain=1,avo_thresh=0,avo_max_thresh=0,avo_arpeg_idx=0,avo_play_rate=1;
+  const AVO_FADE=48;
+  const ARP={1:[1,1.25993,1.49830,2],2:[1,1.18920,1.49830,2],3:[1,1.49830,2],4:[1,2,3]};
+  // ---- DDC/VDC cascaded biquads ----
+  // ViPER4Android DDC layout: per section 5 floats [b0,b1,b2,a1,a2] where the difference
+  // equation is y = b0*x + b1*x1 + b2*x2 + a1*y1 + a2*y2 — i.e. the a-coefficients are
+  // ALREADY NEGATED for direct-form-I. Verified against the supplied file: section 1 has
+  // a1=1.9784, a2=-0.9786, giving a denominator 1 - 1.9784z^-1 + 0.9786z^-2 whose poles
+  // sit at |z|≈0.989, inside the unit circle. Read with the opposite sign convention the
+  // same filter would be wildly unstable, so this is the discriminating check.
+  let ddc=null, ddcName='—';
+  const ddcState=[];
+  function parseDdc(text,rate){
+    const want='SR_'+(rate>=47000?48000:44100);
+    let line=null;
+    text.split(/\r?\n/).forEach(l=>{ const t=l.trim(); if(t.startsWith(want+':')) line=t.slice(want.length+1); });
+    if(!line){ // fall back to whichever SR_ line exists
+      text.split(/\r?\n/).forEach(l=>{ const t=l.trim(); const m=/^SR_\d+:(.*)$/.exec(t); if(m&&!line)line=m[1]; });
+    }
+    if(!line) return null;
+    const nums=line.split(',').map(s=>parseFloat(s)).filter(v=>isFinite(v));
+    if(nums.length<5 || nums.length%5!==0) return null;
+    const secs=[];
+    for(let i=0;i<nums.length;i+=5) secs.push({b0:nums[i],b1:nums[i+1],b2:nums[i+2],a1:nums[i+3],a2:nums[i+4]});
+    // Stability check per section: poles of 1 - a1 z^-1 - a2 z^-2 must be inside |z|<1.
+    // A malformed or wrong-convention file would otherwise blow the output up instantly.
+    for(const s of secs){
+      const a1=s.a1,a2=s.a2;
+      if(!(Math.abs(a2)<1 && Math.abs(a1)<1+a2+1e-9 && Math.abs(a1)<2)) return {error:'unstable section'};
+    }
+    return secs;
+  }
+  function setDdc(secs,name){
+    ddc=secs&&secs.length?secs:null; ddcName=ddc?name:'—';
+    ddcState.length=0;
+    if(ddc) ddc.forEach(()=>ddcState.push({x1L:0,x2L:0,y1L:0,y2L:0,x1R:0,x2R:0,y1R:0,y2R:0}));
+  }
+  // ---- parameters, defaulted to the EEL's own @init values ----
+  const p={
+    on:0, mix:1.0, inGain:3, outTrim:-1, lim:85,
+    hifi:1, blend:35, monoBass:25, bal:0, bassG:3, bassF:95,
+    vocG:3, vocF:2500, airG:2, airF:8500, harshG:2, harshF:4200,
+    avo:0, avoLen:250, avoMix:35, avoBufs:8, avoRepeat:70, avoPitch:5,
+    avoRev:10, avoFade:18, avoDuck:8, avoAtk:15, avoArp:0,
+    dbass:1, dbassStr:60, dbassFocus:85, dbassMix:65,
+    drx:1, drxBass:0.7, drxMid:0, drxTreble:0.4, drxBassF:95, drxTrebleF:8000,
+    drxGain:-1, drxMix:65, ddcOn:0, convOn:0, convMix:35
+  };
+  function ensureAvo(){
+    const need=Math.ceil(AVO_MAX_MS*sr/1000)*AVO_MAX_BUFS;
+    if(avoMaxLen===need&&avoL) return;
+    avoMaxLen=need; avoL=new Float32Array(need); avoR=new Float32Array(need);
+  }
+  const db=v=>Math.pow(10,v/20);
+  function process(L,R,n){
+    if(!p.on) return;
+    const inG=db(p.inGain), outT=db(p.outTrim);
+    const limDrive=1+(p.lim/100)*2.75;
+    const limRef=limDrive/Math.sqrt(1+limDrive*limDrive);
+    const mix=cl(p.mix,0,1);
+    // one-pole coefficients (EEL: exp(-2*pi*f/srate))
+    const A=f=>Math.exp(-2*Math.PI*Math.max(1,Math.min(f,sr*0.45))/sr);
+    const bassA=A(p.bassF), vocA=A(p.vocF), airA=A(p.airF), harshA=A(p.harshF);
+    const bassG=db(p.bassG), vocG=db(p.vocG), airG=db(p.airG), harshG=db(-p.harshG);
+    const blend=p.blend/100, monoB=p.monoBass/100;
+    const balL=p.bal<=0?1:db(-p.bal), balR=p.bal<=0?db(p.bal):1;
+    const dbA=A(p.dbassFocus), dbStr=p.dbassStr/100, dbMix=p.dbassMix/100;
+    const drxBA=A(p.drxBassF), drxTA=A(p.drxTrebleF), drxG=db(p.drxGain), drxMix=p.drxMix/100;
+    const avoOn=p.avo, avoMix=p.avoMix/100;
+    let avoLen=0,avoBufs=1,avoSlot=0;
+    if(avoOn){ ensureAvo();
+      avoBufs=Math.max(1,Math.min(p.avoBufs|0,AVO_MAX_BUFS));
+      avoSlot=Math.floor(avoMaxLen/AVO_MAX_BUFS);
+      avoLen=Math.max(16,Math.min(Math.round(p.avoLen*sr/1000),avoSlot-1));
+    }
+    for(let i=0;i<n;i++){
+      const dryL=L[i], dryR=R[i];
+      let l=dryL*inG, r=dryR*inG;
+      // ---- STAGE 1: HiFi rescue ----
+      if(p.hifi){
+        l*=balL; r*=balR;
+        const m=(l+r)*0.5;
+        l=l*(1-blend)+m*blend; r=r*(1-blend)+m*blend;
+        hifi_bassL=hifi_bassL*bassA+l*(1-bassA);
+        hifi_bassR=hifi_bassR*bassA+r*(1-bassA);
+        const bm=(hifi_bassL+hifi_bassR)*0.5;
+        hifi_bassL=hifi_bassL*(1-monoB)+bm*monoB;
+        hifi_bassR=hifi_bassR*(1-monoB)+bm*monoB;
+        l+=hifi_bassL*(bassG-1); r+=hifi_bassR*(bassG-1);
+        vocal_lpL=vocal_lpL*vocA+l*(1-vocA); vocal_lpR=vocal_lpR*vocA+r*(1-vocA);
+        vocal_bandL=vocal_bandL*0.92+(l-vocal_lpL)*0.08;
+        vocal_bandR=vocal_bandR*0.92+(r-vocal_lpR)*0.08;
+        l+=vocal_bandL*(vocG-1); r+=vocal_bandR*(vocG-1);
+        harsh_lpL=harsh_lpL*harshA+l*(1-harshA); harsh_lpR=harsh_lpR*harshA+r*(1-harshA);
+        l+=(l-harsh_lpL)*(harshG-1)*0.35; r+=(r-harsh_lpR)*(harshG-1)*0.35;
+        air_lpL=air_lpL*airA+l*(1-airA); air_lpR=air_lpR*airA+r*(1-airA);
+        l+=(l-air_lpL)*(airG-1)*0.5; r+=(r-air_lpR)*(airG-1)*0.5;
+      }
+      // ---- STAGE 2: Avocado glitch / ducking ----
+      if(avoOn&&avoL){
+        const aDryL=l, aDryR=r;
+        if(avo_is_recording){
+          const w=avoSlot*avo_record_buffer+avo_record_csr;
+          if(w>=0&&w<avoMaxLen){ avoL[w]=l; avoR[w]=r; }
+          avo_record_csr++;
+          if(avo_record_csr>avoLen) avo_is_recording=0;
+        } else {
+          avo_record_buffer=Math.floor(Math.random()*avoBufs);
+          avo_record_csr=0; avo_is_recording=1;
+        }
+        if(Math.floor(avo_playback_csr)>avoLen){
+          avo_playback_csr=0;
+          if(Math.random()*100>p.avoRepeat) avo_playback_buffer=Math.floor(Math.random()*avoBufs);
+          if(p.avoArp>0){ const t=ARP[p.avoArp]||[1];
+            avo_play_rate=t[avo_arpeg_idx%t.length]; avo_arpeg_idx=(avo_arpeg_idx+1)%t.length;
+          } else {
+            avo_play_rate=1;
+            if(Math.random()*100>110-p.avoPitch) avo_play_rate=2;
+          }
+          if(Math.random()*100>105-p.avoRev){
+            const base=avoSlot*avo_playback_buffer;
+            let a=0,b=avoLen-1;
+            while(a<b){ const ia=base+a, ib=base+b;
+              if(ia>=0&&ib<avoMaxLen){ const tL=avoL[ia];avoL[ia]=avoL[ib];avoL[ib]=tL;
+                const tR=avoR[ia];avoR[ia]=avoR[ib];avoR[ib]=tR; }
+              a++;b--; }
+          }
+          if(Math.random()*100>105-p.avoFade){
+            const base=avoSlot*avo_playback_buffer;
+            for(let k=0;k<avoLen;k++){ const idx=base+k; if(idx<avoMaxLen){ avoL[idx]*=0.85; avoR[idx]*=0.85; } }
+          }
+        }
+        let idx=Math.floor(avo_playback_csr);
+        let mult=1;
+        if(idx<AVO_FADE) mult=idx/AVO_FADE;
+        else if(idx>avoLen-AVO_FADE) mult=(avoLen-idx-1)/AVO_FADE;
+        mult=cl(mult,0,1);
+        idx=cl(idx,0,avoLen-1);
+        const rd=avoSlot*avo_playback_buffer+idx;
+        const tmpL=(rd>=0&&rd<avoMaxLen)?mult*avoL[rd]:0;
+        const tmpR=(rd>=0&&rd<avoMaxLen)?mult*avoR[rd]:0;
+        avo_playback_csr+=avo_play_rate;
+        const lev=Math.max(Math.abs(l),Math.abs(r));
+        avo_thresh = lev>avo_thresh ? avo_thresh*0.9+0.1*lev : avo_thresh*0.98+0.02*lev;
+        const tgt = avo_thresh>Math.max(p.avoDuck/100, avo_max_thresh*p.avoDuck/65) ? 1 : (1-avoMix);
+        avo_max_thresh = avo_thresh>avo_max_thresh
+          ? Math.max(avo_max_thresh, avo_max_thresh*0.1+avo_thresh*0.9)
+          : avo_max_thresh*0.99998;
+        avo_gain = tgt>avo_gain
+          ? avo_gain*0.95+0.05*tgt
+          : avo_gain*(1-p.avoAtk/100000)+(p.avoAtk/100000)*tgt;
+        const wetL=l*avo_gain+tmpL*(1-avo_gain), wetR=r*avo_gain+tmpR*(1-avo_gain);
+        l=aDryL*(1-avoMix)+wetL*avoMix; r=aDryR*(1-avoMix)+wetR*avoMix;
+      }
+      // ---- STAGE 3: Dynamic bass ----
+      if(p.dbass){
+        const dL=l,dR=r, m=(l+r)*0.5;
+        db_low=db_low*dbA+m*(1-dbA);
+        db_env=db_env*0.995+Math.abs(db_low)*0.005;
+        const push=1+dbStr*2, dyn=1+dbStr*Math.max(0,db_env-Math.abs(db_low))*6;
+        l=dL*(1-dbMix)+(l+db_low*push*dyn)*dbMix;
+        r=dR*(1-dbMix)+(r+db_low*push*dyn)*dbMix;
+      }
+      // ---- STAGE 4: DRX multiband dynamics ----
+      if(p.drx){
+        const dL=l,dR=r, m=(l+r)*0.5;
+        drx_low=drx_low*drxBA+m*(1-drxBA);
+        drx_tlp=drx_tlp*drxTA+m*(1-drxTA);
+        const high=m-drx_tlp, middle=m-drx_low-high;
+        drx_low_env=drx_low_env*0.995+Math.abs(drx_low)*0.005;
+        drx_mid_env=drx_mid_env*0.995+Math.abs(middle)*0.005;
+        drx_high_env=drx_high_env*0.995+Math.abs(high)*0.005;
+        const ld=cl(1+p.drxBass*Math.max(-0.5,Math.min((Math.abs(drx_low)-drx_low_env)*8,1.5)),0.25,4);
+        const md=cl(1+p.drxMid*Math.max(-0.5,Math.min((Math.abs(middle)-drx_mid_env)*8,1.5)),0.25,4);
+        const hd=cl(1+p.drxTreble*Math.max(-0.5,Math.min((Math.abs(high)-drx_high_env)*8,1.5)),0.25,4);
+        const procMid=drx_low*ld+middle*md+high*hd;
+        const sL=l-m, sR=r-m;
+        l=dL*(1-drxMix)+((procMid+sL)*drxG)*drxMix;
+        r=dR*(1-drxMix)+((procMid+sR)*drxG)*drxMix;
+      }
+      // ---- DDC cascaded biquads (direct form I, a-coefficients pre-negated) ----
+      if(p.ddcOn&&ddc){
+        for(let s=0;s<ddc.length;s++){
+          const c=ddc[s], st=ddcState[s];
+          const yl=c.b0*l+c.b1*st.x1L+c.b2*st.x2L+c.a1*st.y1L+c.a2*st.y2L;
+          st.x2L=st.x1L; st.x1L=l; st.y2L=st.y1L; st.y1L=yl; l=yl;
+          const yr=c.b0*r+c.b1*st.x1R+c.b2*st.x2R+c.a1*st.y1R+c.a2*st.y2R;
+          st.x2R=st.x1R; st.x1R=r; st.y2R=st.y1R; st.y1R=yr; r=yr;
+        }
+      }
+      // ---- output: trim, soft limit, clamp, master mix ----
+      l*=outT; r*=outT;
+      const ll=l*limDrive, rr=r*limDrive;
+      l=(ll/Math.sqrt(1+ll*ll))/limRef; r=(rr/Math.sqrt(1+rr*rr))/limRef;
+      l=cl(l,-0.98,0.98); r=cl(r,-0.98,0.98);
+      if(!isFinite(l))l=0; if(!isFinite(r))r=0;
+      L[i]=dryL*(1-mix)+l*mix; R[i]=dryR*(1-mix)+r*mix;
+    }
+  }
+  return { process, params:p, setDdc, parseDdc,
+    get ddcName(){return ddcName;}, get ddcSections(){return ddc?ddc.length:0;},
+    reset(){ hifi_bassL=hifi_bassR=vocal_lpL=vocal_lpR=vocal_bandL=vocal_bandR=0;
+      harsh_lpL=harsh_lpR=air_lpL=air_lpR=0; db_low=db_env=0;
+      drx_low=drx_tlp=drx_low_env=drx_mid_env=drx_high_env=0;
+      avo_is_recording=0; avo_playback_csr=0; avo_gain=1; avo_thresh=0; avo_max_thresh=0;
+      ddcState.forEach(s=>{s.x1L=s.x2L=s.y1L=s.y2L=s.x1R=s.x2R=s.y1R=s.y2R=0;}); } };
 })();
 
 /* ---- modulation snapshot/restore around a buffer ---- */
@@ -1259,7 +1754,8 @@ function applyModIn(){ const saved={}; const routes=Sensors.enabled?MODMATRIX:[]
 function applyModOut(saved){ for(const k in saved)P[k]=saved[k]; }
 
 function proc(e){
-  schedule(perfNow());
+  const procT0=perfNow();
+  schedule(procT0);
   const saved=applyModIn();
   const L=e.outputBuffer.getChannelData(0), Rr=e.outputBuffer.getChannelData(1), n=L.length, E=P.en;
   const aR=chz(P.aRate), bR=chz(P.bRate);
@@ -1624,10 +2120,24 @@ function proc(e){
     if(Math.abs(pl*P.drive)>2.2||Math.abs(pr*P.drive)>2.2)clipCount++;
     if(!isFinite(l))l=0; if(!isFinite(r))r=0;
     L[i]=l; Rr[i]=r;
-    cap[capW]=(l+r)*.5; capW=(capW+1)%CAP;
   }
+  // BadJack rack runs as a post-pass over the finished buffer, exactly where the ported
+  // EEL's @sample block sits in JamesDSP's chain: after the source, before the output.
+  BadJack.process(L,Rr,n);
+  // Capture ring is filled AFTER the rack so the demod/band guards analyse what actually
+  // leaves the app, not the pre-DSP signal. Feeding them the wrong tap would let a
+  // rack setting quietly re-introduce the very regularity they exist to catch.
+  let rmsAcc=0;
+  for(let i=0;i<n;i++){ const m=(L[i]+Rr[i])*.5; cap[capW]=m; capW=(capW+1)%CAP; rmsAcc+=m*m;
+    BandGuard.feedLow(m); }
+  BandGuard.feedLong(Math.sqrt(rmsAcc/Math.max(1,n)));
   applyModOut(saved);
   if(clipCount>n*0.2){ if(clipHot<=0){haptic('clip');clipHot=8;} } clipHot--;
+  // Audio-callback cost, measured not guessed: if a buffer eats most of its own real-time
+  // budget we're near underrun, and the governor should ease the RADIOS (never the audio)
+  // before it turns into an audible dropout.
+  const budgetMs=(n/sr)*1000, spent=perfNow()-procT0;
+  if(spent>budgetMs*0.75) Governor.noteAudioGlitch();
 }
 function noise(ch){
   const w=Math.random()*2-1;
@@ -1679,6 +2189,7 @@ function schedule(now){
   if(P.dr>0 && P.dd>0){ if(now>=dNext){ smoothDrift(); dNext=now+1000/P.dr; } }
   else dNext=now+300;
   Sensors.tick(now); Scene.tick(now); Dsp.update(); DemodGuard.tick(now); updateDisruptor(now);
+  Governor.evaluate(now); BandGuard.tick(now); ScreenChaos.tick(now);
 }
 function smoothDrift(){ const d=P.dd;
   MASH.forEach(k=>{ if(Math.random()<.4){ const c=CTRL[k].def, span=(c.rmax-c.rmin);
@@ -1807,6 +2318,309 @@ const DemodGuard=(function(){
     get flash(){const f=burstFlash;burstFlash*=0.8;return f;} };
 })();
 
+/* ============ MULTI-BAND DEMODULATION GUARDS ============
+   The global guard asks "is the whole output predictable?". That misses the case where
+   ONE slice of the spectrum has gone regular while the rest stays chaotic — and a band-
+   limited attacker filters to the band they care about first, so a single tidy band is
+   all they need. These guards therefore run INDEPENDENTLY per band, all the way from
+   infrasound to ultrasound, each with its own score, its own threshold and its own
+   band-targeted correction.
+
+   Two structural problems this has to get right:
+
+   1. INFRASOUND CANNOT BE SEEN IN THE MAIN BUFFER. The capture ring is 2048 samples at
+      48kHz = ~43ms. A single 10Hz cycle is 4800 samples. So the sub-20Hz guard does not
+      look at the waveform at all — it runs off a separate long buffer of the *envelope*,
+      decimated by 256 (≈187Hz effective) and 1024 long ≈ 5.5s, which resolves down to
+      about 0.4Hz. That is also the meaningful question for infrasound here: not "is there
+      sub-20Hz audio" (phone speakers can't reproduce it anyway) but "is the loudness
+      pulsing at an infrasonic rate", which is trivially demodulable.
+
+   2. THE ZERO-ENERGY TRAP. Normalised autocovariance divides by the band's own variance.
+      A band with almost nothing in it therefore divides noise by noise and returns a
+      confident-looking high score that means nothing. Every band here is gated on a
+      relative AND absolute energy floor first, and reports 'quiet' rather than a number
+      when it's below. This matters most for the ultrasonic band, which on a phone speaker
+      is nearly always near-empty — that is expected physics, not a fault, and it must not
+      read as a permanent trip.
+
+   Cost is kept trivial by round-robining: two bands are evaluated per tick, so the full
+   spectrum sweeps about every 5s rather than filtering nine bands at once. */
+const BandGuard=(function(){
+  // PER-BAND THRESHOLDS, CALIBRATED FROM MEASUREMENT — not chosen by eye.
+  // A single global threshold cannot work here. Running 300 trials of pure broadband chaos
+  // (what the masker actually emits) through this exact filter chain showed that the score a
+  // band reaches on NOISE is strongly band-dependent: sub-bass reaches tone 0.909 while ultra
+  // never exceeds 0.161. One number is therefore either far too loose at the top of the
+  // spectrum or guaranteed to false-positive at the bottom — and it was: a flat 0.80 measured
+  // a 4.7% per-band-per-evaluation false-positive rate on the masker's own output.
+  // tTh/aTh sit above each band's measured 99th percentile (and above its observed maximum)
+  // with margin, which takes the measured false-positive rate to 0% while still catching every
+  // synthetic tone case in the suite. With the 2-consecutive-reads requirement in evalBand on
+  // top of that, a spurious trip is not a realistic event.
+  // ultra is 17-21kHz rather than up to Nyquist: the RBJ design equations degrade badly as w0
+  // approaches pi, and phone speakers have nothing up there anyway.
+  const BANDS=[
+    {k:'infra',    lo:0.4,  hi:20,    infra:true, tTh:0.72, aTh:0.72},
+    {k:'sub-bass', lo:20,   hi:80,    tTh:0.94, aTh:0.85},
+    {k:'bass',     lo:80,   hi:300,   tTh:0.85, aTh:0.85},
+    {k:'low-mid',  lo:300,  hi:1000,  tTh:0.80, aTh:0.80},
+    {k:'mid',      lo:1000, hi:3000,  tTh:0.82, aTh:0.85},
+    {k:'presence', lo:3000, hi:6000,  tTh:0.70, aTh:0.72},
+    {k:'high',     lo:6000, hi:12000, tTh:0.70, aTh:0.68},
+    {k:'v-high',   lo:12000,hi:18000, tTh:0.62, aTh:0.62},
+    {k:'ultra',    lo:17000,hi:21000, tTh:0.55, aTh:0.60}
+  ];
+  // Which source modules live mostly in which band — used so a trip rerolls the dials that
+  // actually shape that band instead of nuking everything (the global guard already does
+  // the global thing).
+  const BAND_MODULES={
+    'infra':['sb','wg','tl','ms'], 'sub-bass':['sb','hm','wg'], 'bass':['hm','sb','dp','wf','fm'],
+    'low-mid':['vm','vf','dp','fm','chr','duo'], 'mid':['vm','vf','sw','gg','pk','ft','ps','fd','pd'],
+    'presence':['sw','ar','sp','rz','gg','ic','cnr','pl'], 'high':['sp','cw','rz','ic','wp','gl'],
+    'v-high':['cw','us','inv','sp','mr'], 'ultra':['us','inv','mr']
+  };
+  const WIN=1024, LAGS=[3,5,8,13,21,34,55,89,144];
+  const bp=new Float32Array(2048), env=new Float32Array(256);
+  /* LOW-BAND RING.
+     The main capture ring is 2048 samples ≈ 43ms. That is simply not enough TIME to judge
+     20-300Hz behaviour: to reject a 150Hz carrier's rectified ripple the envelope follower
+     has to sit below ~40Hz, but a noise envelope in that band fluctuates faster than that,
+     so the follower removes the very fluctuation that distinguishes noise from a tone and
+     every low band reads "tonal". Testing showed exactly that — broadband chaos falsely
+     tripping sub-bass and bass.
+     The fix is more time, not different filtering: a dedicated ring decimated 4:1 (12kHz
+     effective) holding 4096 samples ≈ 341ms, box-averaged on the way in as a crude
+     anti-alias — which is all that's needed since only sub-1.5kHz content is ever read from
+     it. Low bands analyse from here; everything above uses the main ring. */
+  const LOW_DEC=4, LOWCAP=4096;
+  const lowBuf=new Float32Array(LOWCAP);
+  let lowW=0, lowAcc=0, lowN=0, lowFilled=0;
+  function feedLow(s){
+    lowAcc+=s;
+    if(++lowN>=LOW_DEC){ lowBuf[lowW]=lowAcc/LOW_DEC; lowW=(lowW+1)%LOWCAP;
+      lowAcc=0; lowN=0; if(lowFilled<LOWCAP)lowFilled++; }
+  }
+  // long decimated envelope buffer for the infrasound guard (~5.5s @ ~187Hz)
+  const LONG=1024, LDEC=256; const longBuf=new Float32Array(LONG);
+  let longW=0, longAcc=0, longN=0, longFilled=0;
+  const state=BANDS.map(b=>({k:b.k, score:0, am:0, energy:0, quiet:true, streak:0, trips:0}));
+  let cursor=0, next=0, en=true, lastTrip='—';
+
+  /* Fed from the audio path once per buffer — cheap: one abs+accumulate per sample slot. */
+  function feedLong(rms){
+    longAcc+=rms; longN++;
+    if(longN>=Math.max(1,Math.round(LDEC/128))){ // proc() calls once per ~1024-sample buffer
+      longBuf[longW]=longAcc/longN; longW=(longW+1)%LONG; longAcc=0; longN=0;
+      if(longFilled<LONG) longFilled++;
+    }
+  }
+  /* Mean-removed normalised autocovariance, max over a lag set. Returns 0 when the input
+     has no variance to speak of — the zero-energy guard lives here as well as at band level. */
+  function autocov(arr,n,lags){
+    if(n<24) return 0;
+    let mean=0; for(let i=0;i<n;i++) mean+=arr[i]; mean/=n;
+    let vs=0; for(let i=0;i<n;i++){ const d=arr[i]-mean; vs+=d*d; }
+    if(vs<1e-12) return 0;
+    let best=0;
+    for(const lag of lags){
+      if(lag>=n-8) continue;
+      let corr=0,cnt=0;
+      for(let i=0;i+lag<n;i++){ corr+=(arr[i]-mean)*(arr[i+lag]-mean); cnt++; }
+      if(cnt<8) continue;
+      let vsub=0; for(let i=0;i<cnt;i++){ const d=arr[i]-mean; vsub+=d*d; }
+      if(vsub<1e-12) continue;
+      const nv=Math.abs(corr)/vsub;
+      if(nv>best) best=nv;
+    }
+    return cl(best,0,1);
+  }
+  /* RBJ bandpass, CASCADED TWICE (4-pole), over the capture ring into `bp`.
+     One 2-pole section rolls off at only 12dB/octave, which is nowhere near enough band
+     isolation here: testing with a loud pure tone showed it leaking into every other band
+     strongly enough to trip them, so the guard would confidently name the WRONG band —
+     worse than not flagging at all. Two cascaded sections give 24dB/octave and localise
+     properly. f0 is clamped below 0.40·sr because the RBJ design equations degrade badly
+     as w0 approaches pi, which is exactly where the ultrasonic band sits at 48kHz. */
+  function bandpass(lo,hi,src,srcCap,srcW,rate,win){
+    const nyq=rate*0.5;
+    const hiC=Math.min(hi,nyq*0.80), loC=Math.max(1,Math.min(lo,hiC*0.9));
+    const f0=Math.min(Math.sqrt(loC*hiC), rate*0.40);
+    const bw=Math.max(0.35,Math.log2(hiC/loC));
+    const w0=2*Math.PI*f0/rate, sw=Math.sin(w0), cw2=Math.cos(w0);
+    const alpha=sw*Math.sinh(Math.log(2)/2*bw*w0/Math.max(1e-6,sw));
+    const a0=1+alpha, b0=alpha/a0, b2=-alpha/a0, a1=(-2*cw2)/a0, a2=(1-alpha)/a0;
+    // WARM-UP: run over the WIN samples PRECEDING the analysis window and discard that
+    // output. From zero state a narrow low-frequency section spends most of a 21ms window
+    // just settling, and that settling ramp is a variance contribution large enough to swamp
+    // the measurement — testing showed a pure 150Hz tone reading 0% tonal when it should read
+    // ~100%, entirely from this transient. The ring already holds CAP samples, so the warm-up
+    // is free: it's data we have anyway.
+    const start=(srcW+srcCap*4)%srcCap;         // oldest sample in the ring
+    const total=Math.min(srcCap,win*2), emitFrom=total-win;
+    let x1=0,x2=0,y1=0,y2=0, p1=0,p2=0,q1=0,q2=0, e=0, n=0;
+    for(let i=0;i<total;i++){
+      const x=src[(start+i)%srcCap];
+      const y=b0*x+b2*x2-a1*y1-a2*y2;
+      x2=x1;x1=x;y2=y1;y1=y;
+      const z=b0*y+b2*p2-a1*q1-a2*q2;        // second identical section
+      p2=p1;p1=y;q2=q1;q1=z;
+      if(i>=emitFrom){ bp[n++]=z; e+=z*z; }
+    }
+    return e/Math.max(1,n);
+  }
+  /* Envelope follower, TIME CONSTANT SCALED TO THE BAND.
+     A fixed coefficient cannot serve nine bands: at a=0.2 the corner sits near 1.5kHz, so
+     for a 150Hz band it passes the rectified carrier's own ripple straight through and the
+     "envelope" is mostly carrier. Testing showed exactly that — a pure 150Hz tone read 5%
+     tonal when it should read ~100%. Cutoff is lo/2, putting the rectified ripple (2·lo and
+     up) at least two octaves above the corner, and two cascaded poles put it ~24dB down. */
+  function envelopeOf(n,loHz,rate){
+    rate=rate||sr;
+    const fc=cl((loHz||300)*0.5, 1, rate*0.2);
+    const a=1-Math.exp(-2*Math.PI*fc/rate);
+    // Seed both poles at the window's own mean rectified level rather than zero. Same
+    // transient problem as the bandpass: at a 40Hz corner the follower needs ~950 samples to
+    // climb from 0, which is the entire window, so an unseeded follower measures its own
+    // rise time instead of the signal. Starting at steady state removes the ramp outright.
+    let seed=0; for(let i=0;i<n;i++) seed+=Math.abs(bp[i]); seed/=Math.max(1,n);
+    let lp1=seed,lp2=seed,m=0;
+    const out=Math.floor(n/8);
+    for(let i=0;i<n;i++){
+      const s=Math.abs(bp[i]);
+      lp1+=a*(s-lp1); lp2+=a*(lp1-lp2);
+      if(i%8===0&&m<out) env[m++]=lp2;
+    }
+    return m;
+  }
+  function totalEnergy(){
+    const base=(capW-WIN-8+CAP*4)%CAP;
+    let e=0; for(let i=0;i<WIN;i++){ const s=cap[(base+i)%CAP]; e+=s*s; }
+    return e/WIN;
+  }
+  function evalBand(idx,tot){
+    const b=BANDS[idx], st=state[idx];
+    if(b.infra){
+      // infrasound: analyse the LONG decimated envelope buffer, not the waveform.
+      if(longFilled<128){ st.quiet=true; st.score=0; st.am=0; return; }
+      const n=longFilled;
+      const tmp=new Float32Array(n);
+      for(let i=0;i<n;i++) tmp[i]=longBuf[(longW-n+i+LONG*2)%LONG];
+      let mean=0; for(let i=0;i<n;i++) mean+=tmp[i]; mean/=n;
+      st.energy=mean;
+      st.quiet = mean<1e-4;
+      if(st.quiet){ st.score=0; st.am=0; return; }
+      // lags here are in decimated samples (~187Hz), so lag 9 ≈ 20Hz ... lag 187 ≈ 1Hz
+      st.am=autocov(tmp,n,[3,5,9,14,19,28,37,56,75,94,140,187]);
+      st.score=st.am;
+    } else {
+      // Low bands come off the decimated long ring (12kHz, 341ms); everything above uses the
+      // main ring (48kHz, 43ms). The split is by TIME needed, not by preference — see the
+      // LOW-BAND RING note above.
+      const useLow = b.hi<=1500;
+      const rate = useLow ? sr/LOW_DEC : sr;
+      const win  = useLow ? 2048 : WIN;
+      if(useLow && lowFilled<LOWCAP){ st.quiet=true; st.score=0; st.am=-1; return; }
+      const e = useLow
+        ? bandpass(b.lo,b.hi,lowBuf,LOWCAP,lowW,rate,win)
+        : bandpass(b.lo,b.hi,cap,CAP,capW,rate,win);
+      st.energy=e;
+      // zero-energy gate: needs BOTH an absolute floor and a share of total energy,
+      // otherwise a near-silent band divides noise by noise and scores garbage.
+      st.quiet = (e<1e-7) || (tot>0 && e/tot < 0.0015);
+      if(st.quiet){ st.score=0; st.am=0; return; }
+      const m=envelopeOf(win,b.lo,rate);
+      // Envelope periodicity is only MEANINGFUL where the analysis window is long enough to
+      // hold several envelope cycles. A band of bandwidth BW cannot have envelope structure
+      // faster than ~BW, so its envelope period is >= 1/BW; the 1024-sample window is ~21ms,
+      // which holds enough cycles only when BW is comfortably wide. Below that, what you'd be
+      // autocorrelating is the bandpass filter's own impulse response — the same trap the
+      // waveform metric fell into, one layer down. Testing caught it: the 60Hz-wide sub-bass
+      // band read a confident 69% "periodic envelope" against lags corresponding to 146Hz+,
+      // frequencies its own envelope physically cannot contain.
+      // So: narrow bands report envelope as n/a and are judged on tonality alone, and the
+      // lag set for wide bands is scaled to the band rather than fixed.
+      const BW=b.hi-b.lo;
+      if(BW>=400){
+        const envRate=rate/8;                     // decimated envelope sample rate for THIS band
+        const L0=Math.max(3,Math.round(envRate/BW));
+        const lags=[1,1.5,2,3,4,6].map(f=>Math.round(L0*f)).filter(l=>l<m/3);
+        st.am = lags.length ? autocov(env,m,lags) : -1;
+      } else {
+        st.am=-1;                                  // n/a — window too short for this bandwidth
+      }
+      // TONALITY via envelope coefficient-of-variation.
+      //
+      // Deliberately NOT waveform autocorrelation here: a bandpass filter's output
+      // oscillates near its own centre frequency no matter what you feed it, so
+      // autocorrelating a narrow band measures the FILTER's ringing, not whether the
+      // CONTENT is predictable. Testing this made the point — chaotic masker output was
+      // scoring 87% "periodic" in the 20-80Hz band purely as a filter artifact.
+      //
+      // The envelope's coefficient of variation is the honest discriminator, and it has a
+      // known reference value: narrowband Gaussian noise has a Rayleigh envelope, whose
+      // CV is sqrt(4/pi - 1) = 0.5227. A pure tone's envelope is constant, CV -> 0. So
+      // normalising CV against the Rayleigh value gives ~0 for noise-like content and ~1
+      // for a band that has collapsed to a steady tone — which IS trivially notched out,
+      // and is the real vulnerability at band level.
+      let mean=0; for(let i=0;i<m;i++) mean+=env[i]; mean/=Math.max(1,m);
+      let sd=0; for(let i=0;i<m;i++){ const d=env[i]-mean; sd+=d*d; }
+      sd=Math.sqrt(sd/Math.max(1,m));
+      const cv=mean>1e-9?sd/mean:0.5227;
+      st.score=cl(1-(cv/0.5227),0,1);
+    }
+    const bad = st.score>b.tTh || (st.am>=0 && st.am>b.aTh);
+    if(bad) st.streak++; else st.streak=Math.max(0,st.streak-1);
+    if(st.streak>=2){ trip(idx); }
+  }
+  function trip(idx){
+    const b=BANDS[idx], st=state[idx];
+    st.streak=0; st.trips++; lastTrip=b.k;
+    // Band-targeted: reroll the level + own controls of the modules that live in this band.
+    const ids=BAND_MODULES[b.k]||[];
+    let touched=0;
+    ids.forEach(id=>{
+      const lk='L_'+id; if(CTRL[lk]){ randCtrl(lk); touched++; }
+      const m=MOD.find(x=>x.id===id);
+      if(m) m.ctrls.forEach(c=>{ if(c.k!==lk && CTRL[c.k] && Math.random()<0.5){ randCtrl(c.k); touched++; } });
+    });
+    if(touched) flushDirty();
+    Alerts.push(1,`Band guard [${b.k} · ${b.lo}–${b.hi}Hz]: this band alone settled down (tonality ${Math.round(st.score*100)}%${st.am>=0?`, envelope periodicity ${Math.round(st.am*100)}%`:''}) while the rest stayed chaotic — a band-limited listener only needs one tidy band. Rerolled the ${touched} dial(s) that shape it.`,'bandguard');
+  }
+  function tick(now){
+    if(!en||!running) return;
+    if(now<next) return; next=now+1200;
+    const tot=totalEnergy();
+    for(let i=0;i<2;i++){ evalBand(cursor,tot); cursor=(cursor+1)%BANDS.length; }
+    render();
+  }
+  function render(){
+    const el=$('bgList'); if(!el)return;
+    el.innerHTML='';
+    state.forEach((st,i)=>{
+      const b=BANDS[i];
+      const it=document.createElement('div'); it.className='item';
+      const nm=document.createElement('div'); nm.className='n';
+      nm.textContent=b.k+' · '+(b.lo<1?b.lo:Math.round(b.lo))+'–'+(b.hi>=1000?(b.hi/1000)+'k':b.hi)+'Hz';
+      it.appendChild(nm);
+      if(st.quiet){ const q=document.createElement('span'); q.className='badge'; q.textContent='quiet'; it.appendChild(q); }
+      else{
+        const s=document.createElement('span'); s.className='rssi';
+        s.textContent=(b.infra?'':'tone '+Math.round(st.score*100)+'% · ')+
+          (st.am<0?'am n/a':'am '+Math.round(st.am*100)+'%');
+        it.appendChild(s);
+        if(st.score>b.tTh||(st.am>=0&&st.am>b.aTh)){ const w=document.createElement('span'); w.className='badge warn'; w.textContent='regular'; it.appendChild(w); }
+      }
+      if(st.trips){ const t=document.createElement('span'); t.className='badge'; t.textContent=st.trips+' trip'+(st.trips===1?'':'s'); it.appendChild(t); }
+      el.appendChild(it);
+    });
+    const lt=$('bgLast'); if(lt)lt.textContent=lastTrip;
+  }
+  return { tick, feedLong, feedLow, render,
+    set enabled(v){en=v;}, get enabled(){return en;},
+    get bands(){return state;}, get lastTrip(){return lastTrip;} };
+})();
+
 /* ============ SENSORS ============ */
 const Sensors=(function(){
   const raw={gx:0,gy:0,gz:0,ox:0,oy:0,oz:0,ax:0,ay:0,az:0,mag:0,magS:0,spd:0,hdg:0,alt:0,net:0,rtt:0,shake:0,mic:0,baro:0,light:0};
@@ -1887,6 +2701,127 @@ function mmRender(){ const list=$('mmList'); list.innerHTML='';
 }
 function updModCount(){ $('modn').textContent='mod '+MODMATRIX.length; }
 
+/* ---- BadJack rack UI ---------------------------------------------------------------
+   Built from a table rather than hand-written markup so the ~35 EEL sliders stay in one
+   place. Ranges mirror the .eel's own slider declarations except where noted (Avocado
+   buffer length, capped — see the panel copy). */
+const BJ_CTRLS={
+  bjMaster:[['mix','Master mix',0,1,.01,'%'],['inGain','Input gain',-12,12,.1,'dB'],
+    ['outTrim','Output trim',-12,3,.1,'dB'],['lim','Soft limiter',0,100,1,'%']],
+  bjHifi:[['hifi','HiFi rescue',0,1,1,'sw'],['blend','Bad-jack blend',0,100,1,'%'],
+    ['monoBass','Mono bass',0,100,1,'%'],['bal','L/R balance',-6,6,.1,'dB'],
+    ['bassG','Bass shelf',0,12,.1,'dB'],['bassF','Bass freq',40,180,1,'Hz'],
+    ['vocG','Vocal presence',0,10,.1,'dB'],['vocF','Vocal freq',1000,5000,10,'Hz'],
+    ['airG','Air clarity',0,8,.1,'dB'],['airF','Air freq',4000,14000,100,'Hz'],
+    ['harshG','Harshness tame',0,8,.1,'dB'],['harshF','Harsh freq',2500,8000,50,'Hz']],
+  bjAvo:[['avo','Avocado',0,1,1,'sw'],['avoLen','Buffer length',10,1500,1,'ms'],
+    ['avoMix','Mix',0,100,1,'%'],['avoBufs','Buffers',1,8,1,''],
+    ['avoRepeat','Repeat prob',0,99,1,'%'],['avoPitch','Pitch-mod prob',0,100,1,'%'],
+    ['avoRev','Reverse prob',0,99,1,'%'],['avoFade','Fadeout prob',0,99,1,'%'],
+    ['avoDuck','Duck threshold',0,99,1,'%'],['avoAtk','Glitch attack',0,99,1,'%'],
+    ['avoArp','Arpeggiator',0,4,1,'arp']],
+  bjDyn:[['dbass','Dynamic bass',0,1,1,'sw'],['dbassStr','DynBass strength',0,100,1,'%'],
+    ['dbassFocus','DynBass focus',40,180,1,'Hz'],['dbassMix','DynBass mix',0,100,1,'%'],
+    ['drx','DRX dynamics',0,1,1,'sw'],['drxBass','DRX bass',-1,2,.01,''],
+    ['drxMid','DRX mid',-1,2,.01,''],['drxTreble','DRX treble',-1,2,.01,''],
+    ['drxBassF','DRX bass band',40,600,1,'Hz'],['drxTrebleF','DRX treble band',1000,20000,10,'Hz'],
+    ['drxGain','DRX gain',-10,5,.1,'dB'],['drxMix','DRX mix',0,100,1,'%']],
+  bjConv:[['convMix','IR mix',0,100,1,'%']]
+};
+const ARP_NAMES=['Off','Major','Minor','Fifths','Octaves'];
+function bjFmt(k,v,unit){
+  if(unit==='arp') return ARP_NAMES[v|0]||'Off';
+  if(unit==='sw') return v?'on':'off';
+  if(unit==='%'&&k==='mix') return Math.round(v*100)+'%';
+  return (Math.round(v*100)/100)+(unit?(' '+unit):'');
+}
+function buildBadJackUI(){
+  for(const host in BJ_CTRLS){
+    const el=$(host); if(!el) continue;
+    el.innerHTML='';
+    BJ_CTRLS[host].forEach(([k,lab,mn,mx,st,unit])=>{
+      const row=document.createElement('div'); row.className='row';
+      const cell=document.createElement('div'); cell.className='cell full';
+      const s=document.createElement('small');
+      s.innerHTML=lab+' <b id="bjv_'+k+'" style="float:right">'+bjFmt(k,BadJack.params[k],unit)+'</b>';
+      const inp=document.createElement('input'); inp.type='range';
+      inp.min=mn; inp.max=mx; inp.step=st; inp.value=BadJack.params[k];
+      inp.addEventListener('input',e=>{
+        const v=+e.target.value; BadJack.params[k]=v;
+        const b=$('bjv_'+k); if(b)b.textContent=bjFmt(k,v,unit);
+      });
+      cell.append(s,inp); row.appendChild(cell); el.appendChild(row);
+    });
+  }
+}
+
+/* ---- Preset modulation matrices ----------------------------------------------------
+   A library of ready-made sensor→dial routings. Each preset is a named set of routes with
+   a theme (what the phone's physical situation is doing to the sound). Loading a profile
+   picks one, so the matrix is never the same two profiles running — the modulation
+   *topology* changes with the profile, not just the dial values.
+
+   Destinations are validated against CTRL at load time, so a preset naming a dial that a
+   given build doesn't have degrades to a shorter matrix instead of silently routing into
+   nothing (or throwing) — presets outlive individual module refactors this way. */
+const MM_PRESETS=[
+  {n:'Handheld drift',      r:[['gx','aRate',.45],['gy','bRate',-.35],['oz','vmD',.30],['shake','mStr',.50]]},
+  {n:'Pocket tumble',       r:[['ax','cRate',.55],['ay','dRate',-.45],['az','aFilt',.40],['shake','mStr',.60]]},
+  {n:'Compass sweep',       r:[['mag','cfRate',.60],['magS','L_cf',.35],['hdg','fmRatio',.40]]},
+  {n:'Walking pace',        r:[['spd','mStr',.55],['shake','aRate',.40],['gz','L_gl',.35]]},
+  {n:'Altitude bloom',      r:[['alt','shpRate',.50],['baro','wgRate',.45],['light','L_wg',.30]]},
+  {n:'Network weather',     r:[['net','glRate',.50],['rtt','L_gl',.40],['net','crBits',-.35]]},
+  {n:'Room light',          r:[['light','eqHi',.45],['light','spHi',.30],['baro','L_nf',.25]]},
+  {n:'Voice reactive',      r:[['mic','L_vm',.55],['mic','vmTalk',.45],['mic','drive',.30]]},
+  {n:'Tilt formants',       r:[['ox','vfLo',.50],['oy','vfHi',.45],['oz','vfAmt',.35]]},
+  {n:'Gyro doppler',        r:[['gx','dpR',.60],['gy','dpDepth',.45],['gz','dpTone',.35]]},
+  {n:'Shake glitch',        r:[['shake','glRate',.70],['shake','glLen',.50],['ax','glRev',.40]]},
+  {n:'Slow breathing',      r:[['baro','tlRate',.35],['alt','tlDepth',.40],['light','lv',.15]]},
+  {n:'Magnetic storm',      r:[['mag','rzR',.55],['magS','rzQ',.45],['gx','L_rz',.35]]},
+  {n:'Motion chorus',       r:[['gx','chsDetune',.50],['gy','chsVoices',.40],['az','L_chr',.35]]},
+  {n:'Speed shepard',       r:[['spd','shpRate',.60],['hdg','shpLo',.35],['shake','shpOct',.30]]},
+  {n:'Insect swarm',        r:[['gx','icRate',.55],['gy','icLo',.40],['gz','icHi',.40],['shake','L_ic',.45]]},
+  {n:'Submarine drift',     r:[['baro','sbF',.45],['alt','sbW',.40],['oz','L_sb',.30]]},
+  {n:'Feedback lean',       r:[['oy','fbFeedback',.35],['ox','fbDelayMs',.45],['shake','L_fb',.30]]},
+  {n:'Grain scatter',       r:[['ax','grRate',.55],['ay','grLen',.45],['shake','L_gr',.40]]},
+  {n:'PLL wander',          r:[['mag','pllRef',.50],['gz','pllJit',.45],['net','pllSlew',.30]]},
+  {n:'Formant tracker',     r:[['ox','ftRate',.50],['mic','ftQ',.40],['oy','L_ft',.35]]},
+  {n:'Waveform morph',      r:[['gx','wvSpread',.55],['gy','wvDetune',.45],['gz','wvDuty',.40],['shake','wvBase',.35]]},
+  {n:'Partial sweep chaos', r:[['shake','psRate',.60],['gx','psWild',.50],['gy','psLo',.35],['gz','psHi',.35]]},
+  {n:'FM ghost',            r:[['gx','fdDev',.55],['gy','fdModRate',.45],['mag','fdCarrier',.35]]},
+  {n:'Phase ghost',         r:[['ox','pdVcoGain',.50],['oy','pdLpf',.40],['gz','pdCarrier',.35]]},
+  {n:'Duophonic drift',     r:[['oz','duoDelayMs',.50],['mag','duoSplit',.40],['gx','L_duo',.30]]},
+  {n:'Modem chatter',       r:[['net','dgB',.55],['rtt','dgD',.45],['gx','dgC',.35]]},
+  {n:'Cell buzz',           r:[['net','gsmF',.45],['rtt','gsmD',.40],['mag','gsmC',.35]]},
+  {n:'Radar spin',          r:[['mag','rdR',.55],['hdg','rdLo',.40],['gz','rdHi',.35]]},
+  {n:'Coil whine ride',     r:[['baro','cwF',.45],['light','cwP',.35],['gx','cwS',.30]]},
+  {n:'Ultrasonic edge',     r:[['light','usLo',.40],['baro','usHi',.35],['mag','L_us',.30]]},
+  {n:'Everything moves',    r:[['gx','aRate',.40],['gy','bRate',.35],['gz','cRate',.35],['ox','dRate',.30],
+                               ['oy','eRate',.30],['oz','fRate',.30],['shake','mStr',.45],['mic','lv',.20]]},
+  {n:'Tilt tonality',       r:[['ox','eqLo',.40],['oy','eqMid',.35],['oz','eqHi',.40]]},
+  {n:'Kinetic drive',       r:[['shake','drive',.45],['ax','dr',.35],['ay','dd',.35]]},
+  {n:'Stillness swell',     r:[['shake','wgSwell',-.50],['gx','wgRate',-.35],['light','L_wg',.30]]}
+];
+function mmPresetApply(idx,silent){
+  const pr=MM_PRESETS[idx]; if(!pr) return 0;
+  MODMATRIX.length=0;
+  let dropped=0;
+  pr.r.forEach(([src,dst,depth])=>{
+    if(!CTRL[dst]||!CTRL[dst].def||CTRL[dst].def.t!=='r'){ dropped++; return; }
+    MODMATRIX.push({src,dst,depth});
+  });
+  mmRender();
+  const el=$('mmPreset'); if(el)el.textContent=pr.n;
+  if(!silent) toast('Matrix: '+pr.n+(dropped?(' ('+dropped+' unavailable)'):''));
+  return MODMATRIX.length;
+}
+function mmPresetRandom(silent){ return mmPresetApply((Math.random()*MM_PRESETS.length)|0,silent); }
+function mmPresetRender(){
+  const sel=$('mmPresetSel'); if(!sel)return;
+  sel.innerHTML='';
+  MM_PRESETS.forEach((p,i)=>{ const o=document.createElement('option'); o.value=String(i); o.textContent=p.n; sel.appendChild(o); });
+}
+
 /* ============ HAPTICS ============ */
 const Haptics=(function(){
   let en=true, intensity=.6; const on={mash:true,clip:true,profile:true}; let mashCd=0;
@@ -1902,7 +2837,79 @@ const Haptics=(function(){
     set enabled(v){en=v;} , get enabled(){return en;},
     set intensity(v){intensity=v;}, setOn(k,v){on[k]=v;}, test(){ pattern([0,20,40,20,40,60]); } };
 })();
-function haptic(k){ Haptics.fire(k); }
+function haptic(k){ Haptics.fire(k); try{ SideChannel.noteHaptic(); }catch(e){} }
+
+/* ============ SCREEN CHAOS ============
+   Drives the display itself off the same chaos cores that drive the audio: brightness,
+   colour temperature, saturation and a very slight hue drift, all moving continuously and
+   unpredictably rather than on any loop.
+
+   The whole design constraint is "within a range that is not disruptive to the user", so
+   every axis is clamped to a deliberately conservative window and rate-limited:
+     - brightness never leaves 0.72–1.00 of whatever the user set (it can only ever dim
+       slightly, never brighten past their own setting, and never approaches unreadable),
+     - colour temp stays inside a mild warm/cool sepia-to-blue window,
+     - saturation 0.90–1.10, hue +/-6 degrees — perceptible as "alive", not as broken,
+     - slew limiting caps how fast any of it can move, so nothing ever flashes or strobes.
+   That last point is not cosmetic: fast luminance oscillation in the ~3–30Hz range is a
+   photosensitive-seizure risk, so the slew limiter is a hard safety bound and the update
+   rate is held well below it, not a tuning preference. Users who want none of this can
+   leave it off; it defaults off.
+
+   Applied as a CSS filter over the app's own page, plus (native builds) the window's own
+   brightness attribute — this app's window only. It never touches the system brightness
+   setting or any other app's display. */
+const ScreenChaos=(function(){
+  let en=false, next=0, curB=1, curT=0, curS=1, curH=0;
+  let tgtB=1, tgtT=0, tgtS=1, tgtH=0, amt=0.6;
+  const B_MIN=0.72, T_MAX=0.16, S_MIN=0.90, S_MAX=1.10, H_MAX=6;
+  const SLEW=0.06; // per update; with a 90ms update period this is ~0.7/s max — far below flicker
+  function retarget(){
+    // Targets come off the live chaos cores, not Math.random, so the screen breathes with
+    // the same attractors as the sound rather than being an unrelated random walk.
+    const a=Sensors.enabled?Sensors.val('gx'):(Math.random()*2-1);
+    const b=Sensors.enabled?Sensors.val('mag'):(Math.random()*2-1);
+    const c=Math.random()*2-1, d=Math.random()*2-1;
+    tgtB=1-(Math.abs(a*0.5+c*0.5))*(1-B_MIN)*amt;
+    tgtT=(b*0.6+d*0.4)*T_MAX*amt;
+    tgtS=1+((c*0.7+a*0.3))*((S_MAX-S_MIN)/2)*amt;
+    tgtH=(d*0.8+b*0.2)*H_MAX*amt;
+  }
+  function apply(){
+    const el=document.documentElement;
+    // sepia+hue-rotate approximates a colour-temperature shift without needing a matrix
+    const warm=curT>0?curT:0, cool=curT<0?-curT:0;
+    el.style.filter=`brightness(${curB.toFixed(3)}) saturate(${curS.toFixed(3)}) `+
+      `sepia(${warm.toFixed(3)}) hue-rotate(${(curH-cool*18).toFixed(2)}deg)`;
+    if(window.EMIBridge&&EMIBridge.setWindowBrightness){
+      try{ EMIBridge.setWindowBrightness(curB); }catch(e){}
+    }
+  }
+  function tick(now){
+    if(!en) return;
+    if(now<next) return; next=now+90;
+    if(Math.random()<0.18) retarget();
+    curB+=cl(tgtB-curB,-SLEW,SLEW);
+    curT+=cl(tgtT-curT,-SLEW,SLEW);
+    curS+=cl(tgtS-curS,-SLEW,SLEW);
+    curH+=cl(tgtH-curH,-SLEW*20,SLEW*20);
+    curB=cl(curB,B_MIN,1); curT=cl(curT,-T_MAX,T_MAX);
+    curS=cl(curS,S_MIN,S_MAX); curH=cl(curH,-H_MAX,H_MAX);
+    apply();
+    const el=$('sxState'); if(el)el.textContent=Math.round(curB*100)+'% · '+(curT>=0?'warm':'cool');
+  }
+  function reset(){
+    curB=1;curT=0;curS=1;curH=0;
+    document.documentElement.style.filter='';
+    if(window.EMIBridge&&EMIBridge.setWindowBrightness){ try{ EMIBridge.setWindowBrightness(-1); }catch(e){} }
+    const el=$('sxState'); if(el)el.textContent='off';
+  }
+  return { tick,
+    set enabled(v){ en=v; if(!v)reset(); else{ retarget(); toast('Screen chaos on — bounded, slew-limited'); } },
+    get enabled(){return en;},
+    set amount(v){ amt=cl(v,0,1); }, get amount(){return amt;},
+    get brightness(){return curB;} };
+})();
 
 /* ============ CHAOTIC SCAN CADENCE ENGINE ============
    Shared by the BLE scan (Link tab), the Wi-Fi scan (Detect tab) and the sensor blaster.
@@ -1927,7 +2934,24 @@ const CADENCE_MODES=[
 ];
 function pickCadenceMode(){
   let r=Math.random(), acc=0;
-  for(const m of CADENCE_MODES){ acc+=m.w; if(r<=acc) return m; }
+  const bias=Governor.modeBias; // 1 = untouched; <1 shifts weight toward the quiet modes
+  if(bias>=0.999){
+    for(const m of CADENCE_MODES){ acc+=m.w; if(r<=acc) return m; }
+    return CADENCE_MODES[1];
+  }
+  // Governor de-rating: scale the two heaviest modes' weights down and hand the freed
+  // probability mass to `lurk`. This changes the SHAPE of the duty cycle (less radio-on
+  // time) without ever narrowing the randomness — every mode stays reachable, the draw
+  // stays random, and the audio chaos is untouched. See Governor below.
+  const w=CADENCE_MODES.map(m=>{
+    if(m.k==='marathon') return m.w*bias;
+    if(m.k==='long') return m.w*(0.5+0.5*bias);
+    return m.w;
+  });
+  const freed=CADENCE_MODES.reduce((a,m,i)=>a+(m.w-w[i]),0);
+  const li=CADENCE_MODES.findIndex(m=>m.k==='lurk'); if(li>=0) w[li]+=freed;
+  const tot=w.reduce((a,b)=>a+b,0); r*=tot;
+  for(let i=0;i<CADENCE_MODES.length;i++){ acc+=w[i]; if(r<=acc) return CADENCE_MODES[i]; }
   return CADENCE_MODES[1];
 }
 function makeChaosCadence(label,startFn,stopFn,onMode){
@@ -1937,24 +2961,101 @@ function makeChaosCadence(label,startFn,stopFn,onMode){
     if(!on) return;
     mode=pickCadenceMode(); cycles++;
     if(onMode) try{ onMode(mode.k); }catch(e){}
-    try{ startFn(); }catch(e){}
+    let started=false;
+    try{ startFn(); started=true; }catch(e){}
+    const onMs=rnd(mode.on[0],mode.on[1])*Governor.onScale;
     t1=setTimeout(()=>{
       if(!on) return;
       try{ stopFn(); }catch(e){}
-      t2=setTimeout(step, rnd(mode.off[0],mode.off[1]));
-    }, rnd(mode.on[0],mode.on[1]));
+      t2=setTimeout(step, rnd(mode.off[0],mode.off[1])*Governor.offScale);
+    }, onMs);
   }
   return {
+    // `delay` staggers the very first cycle so several cadences started at the same instant
+    // don't march in lockstep — without it, three scanners toggled together would share a
+    // phase and their combined activity would be a predictable comb rather than chaos.
+    start(delay){
+      if(on) return; on=true; clear();
+      t2=setTimeout(step, delay||0);
+    },
     set enabled(v){
       if(v===on) return;
-      on=v; clear();
-      if(v){ step(); } else { try{ stopFn(); }catch(e){} mode=null; }
+      if(v){ on=true; clear(); t2=setTimeout(step, rnd(0,1200)); }
+      else { on=false; clear(); try{ stopFn(); }catch(e){} mode=null; }
     },
     get enabled(){ return on; },
     get mode(){ return mode?mode.k:'idle'; },
     get cycles(){ return cycles; }
   };
 }
+
+/* ============ CHAOS GOVERNOR ============
+   The brief: crank the chaos hard, but don't damage anything, and self-regulate WITHOUT
+   ever backing off the chaos. Those pull against each other only if you assume "less
+   chaos" is the only lever. It isn't.
+
+   What can actually be harmed by running the radios and sensors flat-out is thermal
+   headroom, battery, and — the subtle one — the platform's own scan budget: Android
+   silently drops Wi-Fi scan requests past its throttle, so an over-eager scanner doesn't
+   scan more, it just gets ignored while still costing power. Same with BLE.
+
+   So the governor never touches the audio engine, the randomizer, the modulation matrix,
+   or the demod guards. Those stay at full chaos permanently. It only reshapes the RADIO
+   duty cycle — how long each scan session runs and how the mode weights are drawn — and it
+   only does so on evidence: measured temperature, battery level/charging state, observed
+   scan-rejection rate, and audio-callback overrun. When the evidence clears, it releases.
+
+   The result: under stress the radios spend more time in `lurk` and less in `marathon`,
+   which is *still* fully random and still covers every mode — the distribution shifts, the
+   entropy doesn't collapse. The noise you actually hear never changes. */
+const Governor=(function(){
+  let therm=0, batt=1, charging=false, scanFail=0, scanTry=0, glitch=0, level=0, note='nominal';
+  let lastEval=0;
+  function noteAudioGlitch(){ glitch=Math.min(20,glitch+1); }
+  function noteScan(ok){ scanTry++; if(!ok)scanFail++; if(scanTry>40){scanTry=Math.round(scanTry*0.5);scanFail=Math.round(scanFail*0.5);} }
+  function evaluate(now){
+    if(now-lastEval<4000) return; lastEval=now;
+    try{
+      if(window.EMIBridge&&EMIBridge.getThermals){
+        const t=JSON.parse(EMIBridge.getThermals()||'{}');
+        if(typeof t.battery==='number') therm=t.battery;
+        if(typeof t.level==='number') batt=cl(t.level/100,0,1);
+        if(typeof t.charging==='boolean') charging=t.charging;
+      }
+    }catch(e){}
+    // 0 = nothing wrong, 3 = back well off. Each contributor is independent evidence.
+    let L=0; const why=[];
+    if(therm>=44){ L=Math.max(L,3); why.push('battery '+therm.toFixed(0)+'°C'); }
+    else if(therm>=41){ L=Math.max(L,2); why.push('battery '+therm.toFixed(0)+'°C'); }
+    else if(therm>=38){ L=Math.max(L,1); why.push('warm'); }
+    if(!charging){
+      if(batt<=0.10){ L=Math.max(L,3); why.push('battery '+Math.round(batt*100)+'%'); }
+      else if(batt<=0.20){ L=Math.max(L,2); why.push('battery '+Math.round(batt*100)+'%'); }
+    }
+    const failRate=scanTry>8?scanFail/scanTry:0;
+    if(failRate>0.5){ L=Math.max(L,2); why.push('scans throttled by OS'); }
+    else if(failRate>0.25){ L=Math.max(L,1); why.push('some scans dropped'); }
+    if(glitch>=8){ L=Math.max(L,2); why.push('audio underruns'); }
+    else if(glitch>=3){ L=Math.max(L,1); why.push('audio strain'); }
+    glitch=Math.max(0,glitch-1); // decay, so a transient blip releases on its own
+    if(L!==level){
+      if(L>level) Alerts.push(L>=3?2:1,`Chaos governor stepped to level ${L} (${why.join(', ')}). Radio duty cycle eased; audio chaos, randomization and the demod guards are untouched.`,'governor');
+      level=L;
+    }
+    note=why.length?why.join(', '):'nominal';
+    const el=$('govState'); if(el)el.textContent=level?('level '+level):'nominal';
+    const el2=$('govWhy'); if(el2)el2.textContent=note;
+    const el3=$('govTherm'); if(el3)el3.textContent=therm?therm.toFixed(1)+'°C':'—';
+    const el4=$('govScan'); if(el4)el4.textContent=scanTry?Math.round(failRate*100)+'% dropped':'—';
+  }
+  return { evaluate, noteAudioGlitch, noteScan,
+    // on-time shrinks with level; off-time grows. Both stay randomized either way.
+    get onScale(){ return [1,0.75,0.5,0.3][level]; },
+    get offScale(){ return [1,1.4,2.2,3.5][level]; },
+    get modeBias(){ return [1,0.7,0.4,0.15][level]; },
+    get level(){ return level; }, get why(){ return note; },
+    get therm(){ return therm; } };
+})();
 
 /* ============ ACCESSORIES (BLE + WiFi companion) ============ */
 const Accessories=(function(){
@@ -2214,7 +3315,15 @@ const Profiles=(function(){
     MOD.forEach(m=>{ if(m.tog&&CTRL[m.tog])CTRL[m.tog].el.setAttribute('aria-pressed',String(!!P[m.tog])); }); }
   function persist(){ try{localStorage.setItem(KEY,JSON.stringify(store));}catch(e){} }
   function load(name){ const s=store[name]||(BUILTIN[name]&&builtinSnap(name)); if(!s){toast('No profile '+name);return;}
-    applySnap(s,morph); active=name; $('profActive').textContent=name; renderList(); }
+    applySnap(s,morph); active=name; $('profActive').textContent=name; renderList();
+    // The modulation TOPOLOGY changes with the profile, not just the dial values — a
+    // user-saved profile carries its own matrix (restored by applySnap above), while a
+    // builtin gets a fresh preset drawn from the library, so the same builtin never runs
+    // the same routing twice in a row. Honours the "auto" switch so a matrix you hand-built
+    // isn't silently replaced when you're cycling profiles.
+    if(mmAuto && !store[name]) mmPresetRandom(true);
+  }
+  let mmAuto=true;
   function builtinSnap(name){ // build a full snapshot from defaults + overrides
     // Baseline matches build()'s own boot default (defOff modules start off) rather than
     // forcing every module on — this used to unconditionally flip all ~38 toggles to true
@@ -2249,7 +3358,9 @@ const Profiles=(function(){
     for(const name in store){ const s=store[name]; if(s&&s.geo) out.push({name,lat:s.geo.lat,lon:s.geo.lon,r:s.geo.r||0.15}); }
     return out; }
   return { init, load, save, del, exportAll, importText, renderList, geoCandidates,
-    set morph(v){morph=v;}, get morph(){return morph;}, get names(){return Object.keys(BUILTIN).concat(Object.keys(store));} };
+    set morph(v){morph=v;}, get morph(){return morph;},
+    set mmAuto(v){mmAuto=v;}, get mmAuto(){return mmAuto;},
+    get names(){return Object.keys(BUILTIN).concat(Object.keys(store));} };
 })();
 
 /* ============ SCENE scheduler + geofence ============ */
@@ -2532,8 +3643,12 @@ const RF=(function(){
       if(window.EMIBridge&&EMIBridge.wifiScan){
         const arr=JSON.parse(EMIBridge.wifiScan()||'[]');
         lastWifi=arr.map(r=>({ssid:r.ssid,bssid:r.bssid,level:r.level,freq:r.freq,caps:r.caps}));
+        // An empty result while the cadence is hammering is how Android's scan throttle
+        // shows up — it doesn't error, it just returns nothing. Feed that to the governor
+        // so it eases the duty cycle instead of burning power on requests being dropped.
+        Governor.noteScan(lastWifi.length>0);
       } else { $('rfState').textContent='no native scan (browser)'; lastWifi=[]; }
-    }catch(e){ lastWifi=[]; }
+    }catch(e){ lastWifi=[]; Governor.noteScan(false); }
     wifiHeuristics(lastWifi); wifiRender(lastWifi); logWifi(lastWifi);
     $('rfState').textContent=lastWifi.length?lastWifi.length+' networks':'idle';
     try{ Wardrive.ingestWifi(lastWifi); }catch(e){}
@@ -2612,6 +3727,62 @@ const RF=(function(){
     get wifiCadenceMode(){return wifiCadence.mode;},
     exportWifiLog(){ if(!wifiScanLog.length){toast('Nothing scanned yet');return;} downloadFile(wifiLogToCsv(),'emi-wifi-scan-log.csv','text/csv'); },
     get lastWifi(){return lastWifi;}, get ACCESSORY_KINDS(){return ACCESSORY_KINDS;} };
+})();
+
+/* ============ SCANNER TRIO ============
+   Three independent chaotic scanners, deliberately not one switch:
+
+     BLE-only   — BLE discovery cycled on its own cadence.
+     Wi-Fi-only — Wi-Fi scans cycled on their own cadence.
+     Combined   — a third, separate cadence that on each burst picks BLE, Wi-Fi, or BOTH
+                  at random, so the two radios sometimes overlap and sometimes don't.
+
+   Running all three at once is the point: three independent random processes on three
+   independent clocks produce a far less predictable aggregate than one process ever can.
+   Each is STAGGERED by a random start offset, because three cadences kicked off in the
+   same millisecond share a phase — their combined activity would come out as a regular
+   comb instead of chaos. The stagger is re-randomized every time they're enabled.
+
+   Every one of these drives the SAME standard platform scans the app already performed.
+   Nothing new goes on the air; only how many independent random clocks decide *when*. */
+const Scanners=(function(){
+  const combined=makeChaosCadence('both',()=>{
+    // Each combined burst independently re-rolls which radio(s) it drives.
+    const r=Math.random();
+    if(r<0.40){ Accessories.scan(); lastPick='ble'; }
+    else if(r<0.80){ RF.wifiScanNow(); lastPick='wifi'; }
+    else { Accessories.scan(); RF.wifiScanNow(); lastPick='both'; }
+  },()=>{
+    try{ Accessories.stop(); }catch(e){}
+  },m=>{ const el=$('scMode'); if(el)el.textContent=m; });
+  let lastPick='—';
+  function setCombined(v){
+    if(v) combined.start(rnd(0,1500)); else combined.enabled=false;
+    const el=$('scMode'); if(el&&!v)el.textContent='idle';
+    if(v) toast('Combined BLE+Wi-Fi cadence on — independent clock, staggered');
+  }
+  function render(){
+    const s=$('scPick'); if(s)s.textContent=lastPick;
+    const c=$('scCycles'); if(c)c.textContent=String(combined.cycles);
+  }
+  // "All three" convenience: enable each with its own random stagger so they interleave.
+  function setAll(v){
+    ['bleChaotic','wifiChaotic','scChaotic'].forEach((id,i)=>{
+      const b=$(id); if(!b)return;
+      b.setAttribute('aria-pressed',String(v));
+    });
+    if(v){
+      setTimeout(()=>Accessories.setChaoticScan(true), rnd(0,400));
+      setTimeout(()=>RF.setChaoticWifi(true), rnd(300,900));
+      setTimeout(()=>setCombined(true), rnd(700,1600));
+      toast('All three scanners armed — staggered starts');
+    } else {
+      Accessories.setChaoticScan(false); RF.setChaoticWifi(false); setCombined(false);
+      toast('All scanners off');
+    }
+  }
+  return { setCombined, setAll, render,
+    get combinedOn(){return combined.enabled;}, get mode(){return combined.mode;} };
 })();
 
 /* ============ SENSOR SCAN BLASTER ============
@@ -2811,6 +3982,265 @@ const CellGuard=(function(){
         const ok=EMIBridge.openNetworkModeSettings();
         toast(ok?'Opened network settings — change the band/mode there':'Could not open network settings');
       } else toast('Native bridge unavailable');
+    } };
+})();
+
+/* ============ SIDE-CHANNEL / INJECTION DEFENCES ============
+   Two different threats, deliberately in one place because they're the same question asked
+   at two layers: "is what I'm reading actually what the hardware/runtime produced?"
+
+   (A) SENSOR INJECTION. MEMS accelerometers and gyroscopes have mechanical resonances —
+       the classic result (Son et al., "Rocking Drones with Intentional Sound Noise";
+       Trippel et al., "WALNUT") is that sound at a device's resonant frequency, typically
+       up around 19-20kHz for phone gyros, couples into the sensing mass and appears in the
+       digital output as motion that never happened. Three signatures distinguish it from
+       real movement, and all three are cheap to compute:
+
+         1. NARROWBAND OUTPUT. Injected motion is driven by a tone, so the sensor stream
+            oscillates at a near-constant rate. Real human motion is broadband and messy.
+            Same envelope-CV maths as the band guards: a Rayleigh-ish envelope means real,
+            a near-constant envelope means driven.
+         2. CROSS-SENSOR INCONSISTENCY. Genuine motion moves accelerometer, gyro AND
+            magnetometer together — you cannot rotate a phone without the accelerometer
+            noticing. Acoustic injection typically excites whichever sensor is at
+            resonance, so one channel goes wild while the others sit still.
+         3. IMPOSSIBLE DYNAMICS. Bounded jerk: a handheld phone doesn't produce sustained
+            gyro rates near the full-scale range, and it never produces exact-repeat sample
+            runs (which indicate a replayed or clamped feed).
+
+       These are FUSED, not used alone — each on its own has a plausible innocent
+       explanation (a phone on a running washing machine is narrowband; a phone flat on a
+       desk has near-zero accel variance). Requiring two independent signatures plus, where
+       available, corroborating ultrasonic mic energy is what keeps this from crying wolf
+       during normal use.
+
+   (B) RUNTIME HIJACK. If something has injected JS into this page or swapped the native
+       bridge, every detector above reports whatever the attacker wants. So: verify the
+       bridge methods are still native code rather than JS stand-ins, verify the primitives
+       the engine depends on haven't been monkey-patched, and hold a reference snapshot
+       taken at load to compare against.
+
+   Everything here REPORTS. Nothing blocks, kills the app, or "responds" — a false positive
+   should cost the user a notification, never their masking session. */
+const SideChannel=(function(){
+  const N=128;
+  const buf={gx:[],gy:[],gz:[],ax:[],ay:[],az:[],mag:[]};
+  let flags=[], score=0, lastCheck=0, integrity=null, baseline=null;
+  function push(k,v){ const a=buf[k]; a.push(v); if(a.length>N)a.shift(); }
+  function stats(a){
+    if(a.length<24) return null;
+    let mean=0; for(const v of a) mean+=v; mean/=a.length;
+    let sd=0, reps=0, maxAbs=0;
+    for(let i=0;i<a.length;i++){ const d=a[i]-mean; sd+=d*d;
+      if(i&&a[i]===a[i-1]) reps++;
+      const m=Math.abs(a[i]); if(m>maxAbs)maxAbs=m; }
+    sd=Math.sqrt(sd/a.length);
+    // envelope CV over |x|: near-zero CV == driven by a tone, ~0.52 == noise-like
+    let em=0; for(const v of a) em+=Math.abs(v); em/=a.length;
+    let esd=0; for(const v of a){ const d=Math.abs(v)-em; esd+=d*d; }
+    esd=Math.sqrt(esd/a.length);
+    const cv=em>1e-6?esd/em:0.5227;
+    return {mean,sd,reps,maxAbs,tonal:cl(1-(cv/0.5227),0,1),energy:em};
+  }
+  /* At-rest per-axis baseline. Absolute thresholds do NOT transfer between handsets — the
+     literature is blunt about it (a one-sided classifier scoring 99.2% on its training
+     device collapsed to ~72-75% on others) — so every test below is a RATIO against this
+     device's own quiet baseline, never a fixed number. */
+  let base=null, baseSamples=0, restSince=0, lastHaptic=0;
+  function axisSigma(k){ const s=stats(buf[k]); return s?s.sd:null; }
+  function noteHaptic(){ lastHaptic=Date.now(); }
+  function recentHaptic(now){ return (now-lastHaptic)<800; }
+  function captureBaseline(now){
+    // Only learn while the phone is genuinely still AND nothing this app does is shaking it.
+    if(running||recentHaptic(now)){ restSince=0; return; }
+    const v=['ax','ay','az','gx','gy','gz'].map(axisSigma);
+    if(v.some(x=>x==null)) return;
+    if(Math.max.apply(null,v) >= 0.02){ restSince=0; return; }
+    if(!restSince){ restSince=now; return; }
+    if(now-restSince<5000) return;                    // 5s of confirmed stillness first
+    const cur=v.map(x=>Math.max(x,1e-4));
+    if(!base){ base=cur; baseSamples=1; }
+    else { for(let i=0;i<6;i++) base[i]=base[i]*0.8+cur[i]*0.2; baseSamples++; }
+  }
+  function checkSensors(){
+    const out=[];
+    if(!Sensors.enabled) return out;
+    const now=Date.now();
+    captureBaseline(now);
+
+    // ---- CONTEXT GATING, which matters more in THIS app than in most ----
+    // A phone's own loudspeaker vibrates its own accelerometer hard enough to recover speech
+    // from it (Spearphone / EarSpy). That is the SAME physical coupling an acoustic injection
+    // attack uses, so while this app is masking, its own output is indistinguishable from the
+    // attack it would be hunting. Haptics are the same story: LRAs resonate at 150-235Hz,
+    // which aliases straight into the sensor band at these sample rates.
+    // A detector ignoring either would fire continuously during normal use — worse than
+    // useless. So it stands down, and SAYS it has stood down rather than reporting "clear"
+    // and implying it looked.
+    if(running) return [{sev:0, msg:'Stood down: the masker is playing. A phone speaker vibrates its own accelerometer exactly the way an acoustic injection attack does (Spearphone/EarSpy), so nothing measured now could distinguish the two. Stop the masker to check.', tag:'sc-idle', info:true}];
+    if(recentHaptic(now)) return [{sev:0, msg:'Stood down: a haptic fired in the last second — LRA resonance aliases into the sensor band.', tag:'sc-idle', info:true}];
+    if(!base||baseSamples<2) return [{sev:0, msg:'Learning this device\'s own at-rest baseline (needs ~5s still with the masker off). Absolute thresholds do not transfer between handsets, so it calibrates per device.', tag:'sc-idle', info:true}];
+
+    const cur=['ax','ay','az','gx','gy','gz'].map(axisSigma);
+    if(cur.some(v=>v==null)) return out;
+    const ratios=cur.map((v,i)=>v/Math.max(base[i],1e-4));
+    const aR=ratios.slice(0,3), gR=ratios.slice(3);
+
+    // ---- ANISOTROPY GATE — the actual discriminator ----
+    // Real motion rotates the gravity vector and therefore excites ALL THREE axes together.
+    // Acoustic injection couples into whichever axis sits at the driven resonance, so
+    // published measurements show affected axes at 3x-31x baseline while the others sit at
+    // 1.02-1.06x. Requiring that shape — one axis far up, another essentially unchanged — is
+    // what separates injection from movement, and it also rejects broadband mechanical
+    // vibration (vehicles, washing machines), which is multi-axis after the handset's own
+    // mechanical coupling.
+    function anis(r){ const mx=Math.max.apply(null,r), mn=Math.min.apply(null,r); return {mx,mn,hit:mx>=3.0&&mn<=1.5}; }
+    const aA=anis(aR), gA=anis(gR);
+    if(!(aA.hit||gA.hit)) return out;
+
+    // ---- CORROBORATION: two independent witnesses before alarming ----
+    const stuck = Math.max.apply(null,['ax','ay','az','gx','gy','gz'].map(function(k){const s=stats(buf[k]);return s?s.reps:0;})) > N*0.55;
+    const ultra = (function(){ const el=$('micUs'); return !!(el&&el.textContent.indexOf('⚠')>=0); })();
+    // Gyro and magnetometer are NOT independent witnesses of each other — a magnetic
+    // adversary disturbs both — so magnetometer agreement is deliberately not counted.
+    const inconsistent = (gA.mx>=3.0 && aA.mx<=1.5) || (aA.mx>=3.0 && gA.mx<=1.5);
+
+    let sigs=1; const parts=['one axis at '+Math.max(aA.mx,gA.mx).toFixed(1)+'x its own at-rest baseline while another sits at '+Math.min(aA.mn,gA.mn).toFixed(2)+'x — real motion moves all three together'];
+    if(inconsistent){ sigs++; parts.push('gyro and accelerometer disagree about whether the phone is moving at all'); }
+    if(stuck){ sigs++; parts.push('repeated identical sample runs (replayed or clamped feed)'); }
+    if(ultra){ sigs++; parts.push('ultrasonic mic energy at the same time'); }
+
+    if(sigs>=2){
+      out.push({sev:ultra?3:2, msg:'Possible sensor injection: '+parts.join('; ')+'. MEMS gyros/accelerometers can be driven by sound at their mechanical resonance, producing motion readings that never happened. Heuristic only — a phone on machinery, in a vehicle, or on a wireless charger can produce a similar shape.', tag:'sensor-inject'});
+    }
+    return out;
+  }
+  /* ---- runtime integrity ---- */
+  function nativeish(fn){
+    try{ return typeof fn==='function' && /\{\s*\[native code\]\s*\}/.test(Function.prototype.toString.call(fn)); }
+    catch(e){ return false; }
+  }
+  function snapshotIntegrity(){
+    const s={ bridge:{}, prims:{} };
+    if(window.EMIBridge){ for(const k in window.EMIBridge){
+      try{ if(typeof EMIBridge[k]==='function') s.bridge[k]=nativeish(EMIBridge[k]); }catch(e){} } }
+    ['random','max','min','abs'].forEach(k=>{ s.prims['Math.'+k]=nativeish(Math[k]); });
+    s.prims['JSON.parse']=nativeish(JSON.parse);
+    s.prims['JSON.stringify']=nativeish(JSON.stringify);
+    s.prims['Array.prototype.map']=nativeish(Array.prototype.map);
+    s.prims['Object.defineProperty']=nativeish(Object.defineProperty);
+    try{ s.prims['AudioContext.createScriptProcessor']=nativeish((window.AudioContext||window.webkitAudioContext).prototype.createScriptProcessor); }catch(e){}
+    try{ s.prims['navigator.mediaDevices.getUserMedia']=nativeish(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia); }catch(e){}
+    return s;
+  }
+  function checkIntegrity(){
+    const out=[]; const cur=snapshotIntegrity();
+    if(!baseline){ baseline=cur; integrity=cur; return out; }
+    const patched=[];
+    for(const k in cur.prims){ if(baseline.prims[k]===true && cur.prims[k]===false) patched.push(k); }
+    for(const k in cur.bridge){ if(baseline.bridge[k]===true && cur.bridge[k]===false) patched.push('EMIBridge.'+k); }
+    // bridge methods that existed at load and have since vanished
+    for(const k in baseline.bridge){ if(!(k in cur.bridge)) patched.push('EMIBridge.'+k+' (removed)'); }
+    if(patched.length){
+      out.push({sev:3, msg:`Runtime integrity: ${patched.join(', ')} ${patched.length===1?'is':'are'} no longer native code — something has replaced ${patched.length===1?'it':'them'} since this page loaded. That is what JS injection or a hooking framework looks like from inside, and it means every other reading in this app should be treated as untrusted.`, tag:'hijack'});
+    }
+    integrity=cur;
+    return out;
+  }
+  function tick(){
+    const now=Date.now();
+    if(Sensors.enabled){
+      const r=Sensors.raw;
+      push('gx',r.gx);push('gy',r.gy);push('gz',r.gz);
+      push('ax',r.ax);push('ay',r.ay);push('az',r.az);push('mag',r.mag);
+    }
+    if(now-lastCheck<6000) return; lastCheck=now;
+    const found=[...checkSensors(),...checkIntegrity()];
+    flags=found;
+    score=found.reduce((a,f)=>Math.max(a,f.sev),0);
+    found.forEach(f=>{ if(f.info) return; if(!recent(f.tag)) { mark(f.tag); Alerts.push(f.sev,f.msg,f.tag); } });
+    render();
+  }
+  const seen={};
+  function recent(t){ return seen[t] && Date.now()-seen[t]<300000; }
+  function mark(t){ seen[t]=Date.now(); }
+  function render(){
+    const info=flags.length&&flags.every(f=>f.info);
+    const st=$('scgState'); if(st){ st.textContent=score?('level '+score):(info?'stood down':'clear');
+      st.className='tag'+(score?' pill':''); }
+    const el=$('scgList'); if(!el)return;
+    if(!flags.length){ el.innerHTML='<div class="muted">No injection or hijack signatures. Sensor streams look physically plausible and the runtime primitives are still native.</div>'; return; }
+    el.innerHTML='';
+    flags.forEach(f=>{ const it=document.createElement('div'); it.className='alert'+(f.info?'':(f.sev>=3?' crit':' warn'));
+      const s=document.createElement('span'); s.textContent=f.msg; it.appendChild(s); el.appendChild(it); });
+  }
+  return { tick, render, snapshotIntegrity, noteHaptic,
+    get score(){return score;}, get flags(){return flags;},
+    recheck(){ lastCheck=0; tick(); toast(score?('Side-channel: level '+score):'Side-channel: clear'); } };
+})();
+
+/* ============ PRIVILEGE TIERS ============
+   UI over PrivilegeBridge. The one job here beyond rendering is to be honest about which
+   tier can do what — see the panel copy and PrivilegeBridge.kt. */
+const Privilege=(function(){
+  let last=null;
+  function refresh(quiet){
+    if(!(window.EMIPriv&&EMIPriv.getTiers)){
+      const t=$('pvTag'); if(t)t.textContent='browser preview';
+      if(!quiet) toast('Native bridge unavailable');
+      return null;
+    }
+    let d=null;
+    try{ d=JSON.parse(EMIPriv.getTiers()||'{}'); }catch(e){ return null; }
+    last=d;
+    const el=$('pvList'); if(el){
+      el.innerHTML='';
+      (d.tiers||[]).forEach(t=>{
+        const it=document.createElement('div'); it.className='item';
+        const nm=document.createElement('div'); nm.className='n'; nm.textContent=t.name;
+        it.appendChild(nm);
+        const st=document.createElement('span');
+        st.className='pill'+(t.active?' ok':'');
+        st.textContent=t.active?'active':(t.available?'available':'absent');
+        it.appendChild(st);
+        const can=document.createElement('span'); can.className='rssi'; can.style.flex='1';
+        can.textContent=t.can; it.appendChild(can);
+        el.appendChild(it);
+        const note=document.createElement('div'); note.className='muted';
+        note.style.cssText='margin:-4px 0 6px 8px;font-size:9.5px';
+        note.textContent='✗ '+t.cannot+' · '+t.how;
+        el.appendChild(note);
+      });
+    }
+    const active=(d.tiers||[]).filter(t=>t.active).length;
+    const tg=$('pvTag'); if(tg) tg.textContent=active+' active';
+    const pr=$('pvProt'); if(pr) pr.textContent=d.forceStopProtected?'force-stop protected'
+      :(d.forceStopProtectionPossible?'protection available':'protection unavailable');
+    return d;
+  }
+  return { refresh, get last(){return last;},
+    protect(){
+      if(!(window.EMIPriv&&EMIPriv.enableForceStopProtection)){ toast('Native bridge unavailable'); return; }
+      try{
+        const r=JSON.parse(EMIPriv.enableForceStopProtection(true)||'{}');
+        toast(r.reason||(r.ok?'Protected':'Failed'));
+        if(!r.ok) Alerts.push(1,'Force-stop protection not applied: '+(r.reason||'unknown'),'privilege');
+        refresh(true);
+      }catch(e){ toast('Failed'); }
+    },
+    admin(){ if(window.EMIPriv&&EMIPriv.requestDeviceAdmin){ EMIPriv.requestDeviceAdmin();
+      setTimeout(()=>refresh(true),3000); } else toast('Native bridge unavailable'); },
+    dhizuku(){
+      if(!(window.EMIPriv&&EMIPriv.requestDhizuku)){ toast('Native bridge unavailable'); return; }
+      try{ const r=JSON.parse(EMIPriv.requestDhizuku()||'{}'); toast(r.reason||'Requested');
+        setTimeout(()=>refresh(true),4000);
+      }catch(e){ toast('Dhizuku request failed'); }
+    },
+    adb(){
+      const c=(window.EMIPriv&&EMIPriv.adbCommand)?EMIPriv.adbCommand()
+        :'adb shell dpm set-device-owner com.ant.emichaosbg/.EmiDeviceAdminReceiver';
+      try{ navigator.clipboard.writeText(c); toast('Copied: '+c); }
+      catch(e){ toast(c); }
     } };
 })();
 
@@ -3311,7 +4741,7 @@ function draw(now){
     const wcm=$('wifiCadMode'); if(wcm&&RF.wifiCadenceMode!=='idle')wcm.textContent=RF.wifiCadenceMode;
   }
   Mic.tick();
-  if(--anomCd<=0){ anomCd=45; Anomaly.tick(); Accessories.meshRender(); CellGuard.poll(); } // ~throttled, native-bridge-backed reads
+  if(--anomCd<=0){ anomCd=45; Anomaly.tick(); Accessories.meshRender(); CellGuard.poll(); Scanners.render(); SideChannel.tick(); } // ~throttled, native-bridge-backed reads
   const dp=$('page-detect'); if(dp&&dp.classList.contains('on')) drawSpectrum();
   requestAnimationFrame(draw);
 }
@@ -3378,7 +4808,59 @@ $('hapTest').addEventListener('click',()=>Haptics.test());
 
 /* modulation matrix */
 $('mmAdd').addEventListener('click',()=>{MODMATRIX.push({src:'gx',dst:'aRate',depth:.4});mmRender();});
-$('mmClear').addEventListener('click',()=>{MODMATRIX.length=0;mmRender();});
+$('mmClear').addEventListener('click',()=>{MODMATRIX.length=0;mmRender();$('mmPreset').textContent='cleared';toast('Matrix cleared');});
+mmPresetRender();
+$('mmPresetLoad').addEventListener('click',()=>mmPresetApply(+$('mmPresetSel').value));
+$('mmPresetRand').addEventListener('click',()=>{ const i=(Math.random()*MM_PRESETS.length)|0;
+  $('mmPresetSel').value=String(i); mmPresetApply(i); });
+$('mmAuto').addEventListener('click',()=>{ const b=$('mmAuto'),v=b.getAttribute('aria-pressed')!=='true';
+  b.setAttribute('aria-pressed',String(v)); Profiles.mmAuto=v; toast('Auto-swap '+(v?'on':'off')); });
+
+/* band guards, governor, screen chaos */
+$('bgEn').addEventListener('click',()=>{ const b=$('bgEn'),v=b.getAttribute('aria-pressed')!=='true';
+  b.setAttribute('aria-pressed',String(v)); BandGuard.enabled=v; });
+$('sxEn').addEventListener('click',()=>{ const b=$('sxEn'),v=b.getAttribute('aria-pressed')!=='true';
+  b.setAttribute('aria-pressed',String(v)); ScreenChaos.enabled=v; });
+$('sxAmt').addEventListener('input',e=>{ ScreenChaos.amount=+e.target.value;
+  $('sxAmtR').textContent=Math.round(e.target.value*100)+'%'; });
+
+/* scanner trio */
+$('scChaotic').addEventListener('click',()=>{ const b=$('scChaotic'),v=b.getAttribute('aria-pressed')!=='true';
+  b.setAttribute('aria-pressed',String(v)); Scanners.setCombined(v); });
+$('scAll').addEventListener('click',()=>Scanners.setAll(true));
+$('scNone').addEventListener('click',()=>Scanners.setAll(false));
+
+/* BadJack DSP rack */
+buildBadJackUI();
+$('bjEn').addEventListener('click',()=>{ const b=$('bjEn'),v=b.getAttribute('aria-pressed')!=='true';
+  b.setAttribute('aria-pressed',String(v)); BadJack.params.on=v?1:0;
+  BadJack.reset(); $('bjTag').textContent=v?'active':'off';
+  toast(v?'BadJack rack on — this app’s audio only':'BadJack rack off'); });
+async function loadBundledDdc(){
+  try{
+    const r=await fetch('dsp/BadJack_BassLite_SmoothTop.ddc');
+    const txt=await r.text();
+    const secs=BadJack.parseDdc(txt,sr);
+    if(!secs||secs.error){ toast('DDC parse failed'+(secs&&secs.error?': '+secs.error:'')); return; }
+    BadJack.setDdc(secs,'BassLite SmoothTop'); BadJack.params.ddcOn=1;
+    $('ddcTag').textContent=secs.length+' biquads';
+    toast('DDC loaded — '+secs.length+' sections');
+  }catch(e){ toast('DDC load failed'); }
+}
+$('ddcLoad').addEventListener('click',loadBundledDdc);
+$('ddcClear').addEventListener('click',()=>{ BadJack.setDdc(null,''); BadJack.params.ddcOn=0;
+  $('ddcTag').textContent='none'; toast('DDC cleared'); });
+$('ddcApply').addEventListener('click',()=>{
+  const txt=$('ddcBox').value.trim(); if(!txt){toast('Paste a .ddc/.vdc first');return;}
+  const secs=BadJack.parseDdc(txt,sr);
+  if(!secs){ toast('Not a recognised DDC (need SR_ lines, 5 floats per biquad)'); return; }
+  if(secs.error){ toast('Rejected: '+secs.error+' — would be unstable'); return; }
+  BadJack.setDdc(secs,'pasted'); BadJack.params.ddcOn=1;
+  $('ddcTag').textContent=secs.length+' biquads'; toast('DDC applied — '+secs.length+' sections');
+});
+$('convEn').addEventListener('click',()=>{ const b=$('convEn'),v=b.getAttribute('aria-pressed')!=='true';
+  b.setAttribute('aria-pressed',String(v)); BadJack.params.convOn=v?1:0;
+  $('convTag').textContent=v?'on':'off'; Dsp.setIrEnabled(v); });
 
 /* accessories */
 $('bleScan').addEventListener('click',()=>Accessories.scan());
@@ -3422,6 +4904,13 @@ $('cgSms0').addEventListener('click',()=>CellGuard.checkSilentSms());
 $('cgBand').addEventListener('click',()=>CellGuard.openBandSettings());
 
 /* background resilience */
+$('scgRecheck').addEventListener('click',()=>SideChannel.recheck());
+$('pvRefresh').addEventListener('click',()=>Privilege.refresh());
+$('pvProtect').addEventListener('click',()=>Privilege.protect());
+$('pvAdmin').addEventListener('click',()=>Privilege.admin());
+$('pvDhizuku').addEventListener('click',()=>Privilege.dhizuku());
+$('pvAdb').addEventListener('click',()=>Privilege.adb());
+Privilege.refresh(true);
 $('rsRefresh').addEventListener('click',()=>Resilience.refresh());
 $('rsFix').addEventListener('click',()=>Resilience.requestExemption());
 $('rsAppSettings').addEventListener('click',()=>Resilience.openAppSettings());

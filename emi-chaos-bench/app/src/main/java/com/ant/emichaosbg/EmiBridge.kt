@@ -433,6 +433,32 @@ class EmiBridge(private val ctx: Context, private val web: WebView) : SensorEven
         }
     }
 
+    /**
+     * Sets THIS WINDOW's brightness override (WindowManager.LayoutParams.screenBrightness).
+     * Pass -1 to release the override and go back to following the system setting.
+     *
+     * Scoped to this app's own window on purpose: it does not touch
+     * Settings.System.SCREEN_BRIGHTNESS, so it cannot change the device's brightness for
+     * anything else, and it evaporates the moment this window loses focus. Values are
+     * clamped to a floor well above black — screen chaos should be perceptible, never
+     * leave the user unable to read their own screen.
+     */
+    @JavascriptInterface
+    fun setWindowBrightness(v: Float) {
+        val act = ctx as? android.app.Activity ?: return
+        main.post {
+            try {
+                val lp = act.window.attributes
+                lp.screenBrightness = if (v < 0f) {
+                    android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                } else {
+                    max(0.35f, min(v, 1.0f))
+                }
+                act.window.attributes = lp
+            } catch (_: Exception) {}
+        }
+    }
+
     /** Opens this app's own system settings page (permissions / special app access), the
      *  screen where an appops-level change would have to be made deliberately by a human. */
     @JavascriptInterface

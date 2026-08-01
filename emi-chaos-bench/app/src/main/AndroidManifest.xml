@@ -59,6 +59,9 @@
          everything degrades gracefully with it absent. -->
     <queries>
         <package android:name="moe.shizuku.privileged.api" />
+        <!-- Dhizuku: the device-owner-backed alternative privileged channel. Also entirely
+             optional; presence is checked so the UI can tell the user which tiers exist. -->
+        <package android:name="com.rosan.dhizuku" />
     </queries>
 
     <!-- allowBackup=false / no cross-device restore: the app's saved profiles, trusted-network
@@ -92,6 +95,27 @@
             android:name=".MaskerService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+
+        <!-- Device-admin entry point. Inert until a human explicitly activates it (Settings)
+             or provisions this app as device owner over adb. Its only purpose is resilience:
+             setUserControlDisabledPackages (API 30+) is the one supported way on stock
+             Android to stop an app being silently force-stopped. The declared policy set
+             (res/xml/device_admin.xml) is deliberately minimal — no wipe, no password
+             control, no login watching. exported=true is required on API 31+ for a receiver
+             with an intent-filter; BIND_DEVICE_ADMIN means only the system can bind it. -->
+        <receiver
+            android:name=".EmiDeviceAdminReceiver"
+            android:label="@string/app_name"
+            android:description="@string/admin_description"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Optional Shizuku entry point. No-op unless the user has separately installed and
              activated Shizuku (ADB-paired or rooted) and explicitly grants this app permission

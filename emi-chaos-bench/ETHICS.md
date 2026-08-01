@@ -182,6 +182,45 @@ deep-links to the OS's own network settings so **you** make the change with that
 context in hand. Same shape as every other call in this file — the app observes and
 tells you; it doesn't reach for the radio.
 
+**Round 3.6 (DSP rack, privileged tiers, screen chaos).** Three notes worth
+recording, because in each case the easy version of the feature was the unsafe
+one.
+
+*The DSP rack does not go system-wide, on purpose.* The request was for
+JamesDSP-style effects "to the phone". Rootless JamesDSP achieves that by
+attaching an AudioEffect to the global output mix, which requires granting it
+a signature-level permission (DUMP) through Shizuku or adb. That is precisely
+the exposure: a permission that broad, held persistently by a third-party app,
+means whatever compromises that app inherits a tap on every sound the device
+produces — calls, notifications, everything, including audio from apps that
+never consented to it. What shipped is the same effect chain running
+in-process over this app's own generated buffer: no AudioEffect, no global
+session, no DUMP, no Shizuku in the path, no reach into any other app's audio.
+The honest trade is stated in the UI rather than buried: these effects shape
+the masker's output and nothing else on the phone.
+
+*Screen chaos is bounded for a medical reason, not an aesthetic one.* Driving
+display brightness off a chaos attractor is trivial to write and easy to get
+dangerously wrong: luminance oscillation in roughly the 3–30Hz band is a
+photosensitive-epilepsy trigger. The slew limiter and update period are
+therefore hard safety bounds sitting far below that range, not tuning
+parameters, and brightness can only ever dim relative to the user's own
+setting — never brighten past it, never approach unreadable. It is also scoped
+to this app's window and never writes the system brightness setting.
+
+*The privileged tiers are described as unequal because they are.* It would
+have been easy, and wrong, to present Dhizuku as a drop-in Shizuku fallback.
+Dhizuku's process API spawns inside a normal app UID, so shell output through
+it is no more privileged than the app's own — the read-only `dumpsys`
+diagnostics genuinely cannot survive Shizuku's absence, and the UI says so
+instead of quietly returning empty results that look like "nothing found".
+What device-owner-backed tiers add instead is real and different:
+`setUserControlDisabledPackages` makes the app resistant to being silently
+force-stopped. The device-admin policy set requested is deliberately minimal —
+no wipe-data, no reset-password, no login monitoring — because a masking app
+holding those powers would make its own admin receiver a more valuable target
+than the app it is meant to protect.
+
 ## Use it lawfully
 
 Mask your own conversations, in your own space, with the consent of the people
