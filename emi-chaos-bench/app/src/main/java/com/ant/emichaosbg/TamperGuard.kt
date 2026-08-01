@@ -24,8 +24,56 @@ import java.security.MessageDigest
  */
 class TamperGuard(private val ctx: Context) {
 
+    // The last completed scan, served INSTANTLY to the page. The scan itself is heavy and must
+    // never run on the caller's thread — see getIntegrityStatus.
+    @Volatile private var cached: String? = null
+    @Volatile private var scanning = false
+    private val bg = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "emi-tamper").apply { isDaemon = true }
+    }
+
+    /**
+     * NON-BLOCKING. Returns the last scan immediately; never runs the scan on the caller.
+     *
+     * THE FREEZE THIS FIXES. This used to run the full integrity scan inline and return its
+     * result — and a synchronous @JavascriptInterface call BLOCKS THE WEBVIEW'S JS THREAD until
+     * it returns. The scan does blocking TCP connect() on three Frida ports (up to ~450ms of
+     * timeouts), reads /proc/self/maps, hashes the signing cert and stats a dozen root paths.
+     * Half a second of frozen UI every time the Security panel polled — reported as "keeps
+     * freezing, half the Security tab broken". Nothing about the check needs to be on the JS
+     * thread; it only needs its RESULT there.
+     *
+     * So the page gets whatever the last background scan produced (or a "scanning" placeholder
+     * the first time), and a scan is kicked off on a background thread if one is not already
+     * running. The result is picked up by the next poll. refreshIntegrity() forces a fresh one.
+     */
     @JavascriptInterface
     fun getIntegrityStatus(): String {
+        kickScan()
+        return cached ?: JSONObject()
+            .put("scanning", true)
+            .put("clean", true)          // provisional; not a verdict, the UI shows "checking"
+            .put("pending", true)
+            .put("findings", JSONArray())
+            .toString()
+    }
+
+    /** Force a fresh scan; the page reads the result on its next getIntegrityStatus poll. */
+    @JavascriptInterface
+    fun refreshIntegrity() { cached = null; kickScan() }
+
+    private fun kickScan() {
+        if (scanning) return
+        synchronized(this) {
+            if (scanning) return
+            scanning = true
+        }
+        bg.execute {
+            try { cached = runIntegrityScan() } catch (_: Throwable) {} finally { scanning = false }
+        }
+    }
+
+    private fun runIntegrityScan(): String {
         val o = JSONObject()
         val findings = JSONArray()
 
@@ -48,6 +96,8 @@ class TamperGuard(private val ctx: Context) {
 
         o.put("findings", findings)
         o.put("clean", findings.length() == 0)
+        o.put("scanning", false)
+        o.put("checkedAt", System.currentTimeMillis())
         return o.toString()
     }
 

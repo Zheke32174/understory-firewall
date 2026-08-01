@@ -6206,7 +6206,16 @@ const Anomaly=(function(){
     try{
       if(!window.EMITamper||!EMITamper.getIntegrityStatus){ const t=$('tgTag'); if(t)t.textContent='browser preview';
         if(force){ toast('No native bridge — integrity check needs the installed app'); } return; }
+      if(force&&EMITamper.refreshIntegrity){ try{ EMITamper.refreshIntegrity(); }catch(e){} }
       const s=JSON.parse(EMITamper.getIntegrityStatus()||'{}');
+      // The native check is now non-blocking: the first read returns pending while the scan
+      // runs on a background thread (it used to freeze the whole tab for ~half a second doing
+      // blocking Frida-port connects on the JS thread). Show "checking", not a false "clean".
+      if(s.pending||s.scanning){
+        const t=$('tgTag'); if(t){ t.textContent='checking…'; t.className='tag'; }
+        ['tgSig','tgDbg','tgFrida','tgRoot'].forEach(id=>{ const e=$(id); if(e)e.textContent='…'; });
+        return;
+      }
       const sig=$('tgSig'); if(sig)sig.textContent=s.signatureOk?'ok':'mismatch';
       const dbg=$('tgDbg'); if(dbg)dbg.textContent=s.debuggerAttached?'attached':'none';
       const fr=$('tgFrida'); if(fr)fr.textContent=s.fridaSuspicion?'suspicious':'clean';
@@ -6405,7 +6414,11 @@ const Escalation=(function(){
       const l=$('egList'); if(l)l.innerHTML='<div class="muted">Runs in the installed app; a browser preview has no process to inspect.</div>';
       return;
     }
-    try{ last=JSON.parse(force?EMIEscalation.scan():EMIEscalation.cached()); }catch(e){ last=null; }
+    // Never call EMIEscalation.scan() from here: it is synchronous and reads /proc + mounts on
+    // the JS thread, which froze the Security tab. A forced refresh kicks a background scan and
+    // we render the cached result; the fresh one lands on the next poll.
+    if(force&&EMIEscalation.refresh){ try{ EMIEscalation.refresh(); }catch(e){} }
+    try{ last=JSON.parse(EMIEscalation.cached()); }catch(e){ last=null; }
     if(!last){ set('egState','error'); return; }
     const n=last.count||0;
     /* NEVER RUN IS NOT CLEAN. The cached() sentinel used to carry clean:true, and this line

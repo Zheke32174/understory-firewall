@@ -282,9 +282,28 @@ class EscalationGuard(private val ctx: Context, private val log: SecureLog) {
  * not a detector.
  */
 class EscalationBridge(private val guard: EscalationGuard) {
+    @Volatile private var scanning = false
+    private val bg = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "emi-escal").apply { isDaemon = true }
+    }
+
+    /**
+     * KEPT for callers that truly want to block, but the page must NOT: scan() reads
+     * /proc/self/maps, /proc/self/status and the mount table, and a synchronous
+     * @JavascriptInterface call runs on — and blocks — the WebView's JS thread. The page's
+     * forced refresh used to call this directly and froze the Security tab. Use [refresh].
+     */
     @JavascriptInterface
     fun scan(): String = guard.scan()
 
     @JavascriptInterface
     fun cached(): String = guard.cached()
+
+    /** NON-BLOCKING forced refresh: runs scan() off-thread; page reads cached() next poll. */
+    @JavascriptInterface
+    fun refresh() {
+        if (scanning) return
+        synchronized(this) { if (scanning) return; scanning = true }
+        bg.execute { try { guard.scan() } catch (_: Throwable) {} finally { scanning = false } }
+    }
 }
