@@ -2725,7 +2725,8 @@ const Sensors=(function(){
     const a=e.acceleration||{}; const m=Math.hypot(a.x||0,a.y||0,a.z||0); raw.shake=n(m/12);
     if(m>13 && perfNow()-lastA>250){ lastA=perfNow(); onShake(); } }
   function geo(p){ const c=p.coords; raw.spd=n(((c.speed||0)/15)); raw.hdg=n(((c.heading||0)/180)-1);
-    raw.alt=n(((c.altitude||0)/400)); Sensors.lat=c.latitude; Sensors.lon=c.longitude; Scene.geoCheck(c.latitude,c.longitude); }
+    raw.alt=n(((c.altitude||0)/400)); Sensors.lat=c.latitude; Sensors.lon=c.longitude; Scene.geoCheck(c.latitude,c.longitude);
+    try{ Wardrive.crumb(); }catch(e){} }
   function bridge(){ try{ if(window.EMIBridge&&EMIBridge.getSensors){ const s=JSON.parse(EMIBridge.getSensors());
       for(const k in s) if(k in raw) raw[k]=s[k]; } }catch(e){} }
   function onShake(){ if(!enabled)return; toast('Shake → randomize'); randomizeAll(); }
@@ -3606,6 +3607,19 @@ const Mic=(function(){
         : 'getUserMedia unavailable on this browser/WebView.');
       return;
     }
+    // Before the first attempt: if the masking foreground service is already running, it was
+    // started as mediaPlayback-only and Android has therefore refused mic capture for the
+    // whole process. Re-assert it now that RECORD_AUDIO is held so it re-declares the
+    // microphone type. This is the actual fix for the reported NotReadableError, and it has
+    // to happen BEFORE getUserMedia rather than as a retry, because the refusal is decided
+    // by the service's declared type, not by the capture request.
+    try{
+      if(window.EMIBridge&&EMIBridge.refreshMicForegroundType){
+        const refreshed=EMIBridge.refreshMicForegroundType();
+        diag.fgsRefreshed=refreshed;
+        if(refreshed) await new Promise(r=>setTimeout(r,350));
+      }
+    }catch(e){ diag.fgsRefreshError=String(e); }
     let lastErr=null;
     // Some WebView/OEM builds reject the advanced constraint set below (OverconstrainedError)
     // even though a plain mic request would succeed — try the strict constraints first, then
@@ -3615,6 +3629,16 @@ const Mic=(function(){
       try{ stream=await navigator.mediaDevices.getUserMedia(constraints); lastErr=null;
         diag.attempts.push({constraints,ok:true}); break; }
       catch(e){ lastErr=e; diag.attempts.push({constraints,ok:false,name:e&&e.name,message:e&&e.message}); }
+    }
+    // One more attempt after an explicit service refresh — covers the case where the
+    // service had to be re-declared and the platform needed a moment to apply it.
+    if(lastErr && window.EMIBridge && EMIBridge.refreshMicForegroundType){
+      try{
+        EMIBridge.refreshMicForegroundType();
+        await new Promise(r=>setTimeout(r,600));
+        stream=await navigator.mediaDevices.getUserMedia({audio:true});
+        lastErr=null; diag.attempts.push({constraints:{audio:true},ok:true,afterFgsRefresh:true});
+      }catch(e){ diag.attempts.push({constraints:{audio:true},ok:false,afterFgsRefresh:true,name:e&&e.name,message:e&&e.message}); }
     }
     if(lastErr){
       diag.outcome='getUserMedia-failed';
@@ -4785,9 +4809,45 @@ const Wardrive=(function(){
     // Only mark a BSSID "seen" once it's actually been logged with a real fix — otherwise
     // an AP scanned in the gap before the first GPS fix arrives gets marked seen anyway and
     // is silently skipped forever afterward, since it never gets a second chance.
-    list.forEach(r=>{ if(r.bssid && !apsSeen.has(r.bssid)){
-        if(log('wifi',{ssid:r.ssid,bssid:r.bssid,level:r.level})) apsSeen.set(r.bssid,r.ssid);
-      } });
+    list.forEach(r=>{
+      if(!r.bssid) return;
+      const prev=apsSeen.get(r.bssid);
+      if(!prev){
+        if(log('wifi',{ssid:r.ssid,bssid:r.bssid,level:r.level}))
+          apsSeen.set(r.bssid,{ssid:r.ssid,lat:Sensors.lat,lon:Sensors.lon,t:Date.now()});
+        return;
+      }
+      // RE-SIGHTING AFTER MOVING. Logging each AP exactly once for all time is very likely
+      // what made this look broken on a real drive: you get one point per AP ever, so the
+      // track stops growing the moment you've passed everything nearby, and driving the same
+      // street again adds nothing at all. Real wardriving wants repeated observations of the
+      // same AP from different positions — that is what builds coverage and what lets a
+      // transmitter be located. So re-log once the phone has moved a meaningful distance
+      // from wherever this AP was last recorded.
+      if(Sensors.lat==null||prev.lat==null) return;
+      if(metresBetween(prev.lat,prev.lon,Sensors.lat,Sensors.lon)>=RELOG_M){
+        if(log('wifi',{ssid:r.ssid,bssid:r.bssid,level:r.level}))
+          apsSeen.set(r.bssid,{ssid:r.ssid,lat:Sensors.lat,lon:Sensors.lon,t:Date.now()});
+      }
+    });
+  }
+  function metresBetween(a,b,c,d){
+    const R=6371000, tr=x=>x*Math.PI/180;
+    const dLat=tr(c-a), dLon=tr(d-b);
+    const h=Math.sin(dLat/2)**2+Math.cos(tr(a))*Math.cos(tr(c))*Math.sin(dLon/2)**2;
+    return R*2*Math.asin(Math.sqrt(h));
+  }
+  const RELOG_M=60;   // re-log an AP once you've moved this far from where it was last logged
+  /* Breadcrumb: drop a bare position point whenever you've moved far enough, independent of
+     any AP. Without it the export holds only AP sightings, so any stretch of road without
+     Wi-Fi is a hole and the exported "route" isn't a route. It also means the track visibly
+     grows while driving even where there's nothing to see — the feedback that was missing. */
+  let lastCrumb=null;
+  const CRUMB_M=25;
+  function crumb(){
+    if(!on||Sensors.lat==null) return;
+    if(lastCrumb && metresBetween(lastCrumb.lat,lastCrumb.lon,Sensors.lat,Sensors.lon)<CRUMB_M) return;
+    if(log('track',{})) lastCrumb={lat:Sensors.lat,lon:Sensors.lon};
   }
   function updUi(){
     const p=$('wdPoints'); if(p)p.textContent=String(track.length);
@@ -4871,7 +4931,7 @@ const Wardrive=(function(){
       : 'Healthy — new APs will log as they are seen.';
     return JSON.stringify(d,null,1);
   }
-  return { enable, disable, clearLog, setAutoScan, ingestWifi, tick:updUi, diagnostics,
+  return { enable, disable, clearLog, setAutoScan, ingestWifi, crumb, tick:updUi, diagnostics,
     exportGpx(){ if(!track.length){toast('Nothing logged yet');return;} download(toGpx(),'emi-wardrive.gpx','application/gpx+xml'); },
     exportCsv(){ if(!track.length){toast('Nothing logged yet');return;} download(toCsv(),'emi-wardrive.csv','text/csv'); },
     get on(){return on;} };

@@ -460,6 +460,26 @@ class EmiBridge(private val ctx: Context, private val web: WebView) : SensorEven
     }
 
     /**
+     * Re-assert the foreground service so it picks up the MICROPHONE type.
+     *
+     * The FGS type is fixed at the moment startForeground() runs. If the masker was started
+     * before the mic was enabled — the normal order — the service is alive as mediaPlayback
+     * only, and Android refuses mic capture for the whole process no matter what happens
+     * afterwards. Restarting the service with the mic permission now held re-declares the
+     * type and clears the refusal without interrupting audio (the Web Audio graph lives in
+     * the WebView, not in the service).
+     */
+    @JavascriptInterface
+    fun refreshMicForegroundType(): Boolean {
+        if (!MaskerService.isRunning) return false
+        if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return false
+        return try {
+            ContextCompat.startForegroundService(ctx, Intent(ctx, MaskerService::class.java))
+            true
+        } catch (_: Exception) { false }
+    }
+
+    /**
      * Ground truth for "why won't the mic start". WebView only ever reports
      * NotReadableError / "Could not start audio source", which conflates several very
      * different causes. This opens an AudioRecord natively and reports what actually

@@ -30,6 +30,33 @@ BLE/Wi-Fi field tools (accessory pairing, sensor telemetry, profiles,
 geofencing, anomaly detection) and porting those *interaction and detection*
 ideas — never any transmit capability — onto an audio masker.
 
+## 3.7.1 — wardriving actually builds a route now, and a second mic mechanism
+
+**Wardriving: found the behavioural cause, not just the throttling one.** 3.6.1 fixed the scan
+*budget* starvation, but the deeper problem was that each AP was logged **exactly once, ever**.
+On a real drive that means the track stops growing the moment you've passed everything nearby,
+and driving the same street again adds nothing at all — which looks exactly like "it stopped
+working". Two changes:
+
+- **Re-log an AP once you've moved ≥60m** from where it was last recorded. Repeated
+  observations of the same transmitter from different positions are the entire point — that's
+  what builds coverage and what makes a signal locatable.
+- **Breadcrumb track points every ≥25m**, independent of any AP. Without them the export
+  contains only AP sightings, so a stretch of road with no Wi-Fi is a hole and the "route"
+  isn't a route.
+
+> Verified by simulating a 1.4km drive: 21 track points and 4 unique APs, with the GPX
+> containing both breadcrumb and Wi-Fi waypoints — and the track continuing to grow after the
+> scan budget engaged, which is what keeps the route continuous.
+
+**Mic: a second, distinct mechanism.** The foreground-service *type* is fixed at the moment
+`startForeground()` runs. The normal order of operations — start the masker, then enable the
+mic — therefore leaves the service alive as `mediaPlayback` only, and Android refuses mic
+capture for the whole process regardless of what happens afterwards. Adding the type to the
+manifest fixes a *fresh* start but not that sequence. `Mic.enable()` now re-asserts the
+service before its first `getUserMedia` attempt so the microphone type is re-declared, with a
+further retry after an explicit refresh.
+
 ## 3.7 — Pulse
 
 **Mic: diagnosed from the diagnostic dump, and it was never a permission problem.**
