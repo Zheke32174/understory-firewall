@@ -31,11 +31,16 @@ import java.util.concurrent.atomic.AtomicBoolean
  *         parent-domain semantics, NXDOMAIN/zero-IP sinkhole, upstream forward
  *         to a plaintext resolver (system or user-set IP), per-app attribution,
  *         event logging.
- *   NOT IMPLEMENTED (stubbed cleanly, see [UpstreamResolver]): encrypted-
- *         resolver routing (DoT/DoH/DNSCrypt/Tor upstream). The forward goes to
- *         a PLAINTEXT UDP resolver. The UI must not claim the upstream is
- *         encrypted. Pair this with system Private DNS (S4) for an encrypted
- *         upstream on the *system* resolver path — that is the honest story.
+ *   REAL (added): ENCRYPTED upstream via DNS-over-TLS (RFC 7858). When a DoT
+ *         hostname is configured, allowed queries forward over verified TLS to
+ *         :853 (SNI + HTTPS endpoint identification, fail-closed on a bad cert),
+ *         framed with the DNS-over-TCP length prefix — see [UpstreamResolver.dot].
+ *         This is the in-tunnel encrypted upstream that InviZible Pro / RethinkDNS
+ *         centre on, native here rather than via a bundled resolver daemon. Blank
+ *         hostname ⇒ the plaintext UDP path below.
+ *   STILL NOT IMPLEMENTED: DoH/DNSCrypt/Tor upstreams (DoT is the implemented
+ *         encrypted transport). System Private DNS (S4) remains available for the
+ *         system resolver path.
  *   IPv6 DNS: not filtered here (parser is v4). The tun claims only the v4 DNS
  *         route, so v6 DNS is not captured — it flows normally, unfiltered. The
  *         UI states this boundary.
@@ -118,12 +123,17 @@ class DnsFilterTun(
     class UpstreamResolver private constructor(
         private val resolverIp: InetAddress,
         private val encrypted: Boolean,
+        /** SNI + certificate-verification hostname for DoT. Null on the plaintext path. */
+        private val tlsHostname: String?,
     ) {
         fun describe(): String =
-            if (encrypted) "encrypted (NOT IMPLEMENTED — falls back to plaintext)"
+            if (encrypted) "DNS-over-TLS → $tlsHostname (${resolverIp.hostAddress}:853), verified"
             else "plaintext UDP ${resolverIp.hostAddress}:53"
 
-        fun resolve(service: VpnService, query: ByteArray): ByteArray? {
+        fun resolve(service: VpnService, query: ByteArray): ByteArray? =
+            if (encrypted) resolveDot(service, query) else resolvePlaintext(service, query)
+
+        private fun resolvePlaintext(service: VpnService, query: ByteArray): ByteArray? {
             val socket = DatagramSocket()
             return try {
                 if (!service.protect(socket)) return null
@@ -140,29 +150,88 @@ class DnsFilterTun(
             }
         }
 
+        /**
+         * REAL DNS-over-TLS (RFC 7858) — the encrypted upstream InviZible Pro and RethinkDNS
+         * centre on, done natively inside the filter tunnel rather than by bundling a resolver
+         * daemon. The underlying TCP socket is [VpnService.protect]ed BEFORE the TLS handshake so
+         * the forward bypasses our own tun; SNI is set and endpoint identification is set to
+         * "HTTPS" so the handshake FAILS CLOSED on a certificate/hostname mismatch — an
+         * encrypted resolver that does not authenticate its peer is theatre, so this refuses to
+         * fall back to plaintext on failure (it returns null and the query simply goes
+         * unanswered, which the caller surfaces). Frames the query with the 2-byte length prefix
+         * DoT uses (DNS-over-TCP framing).
+         */
+        private fun resolveDot(service: VpnService, query: ByteArray): ByteArray? {
+            var raw: java.net.Socket? = null
+            var ssl: javax.net.ssl.SSLSocket? = null
+            return try {
+                raw = java.net.Socket()
+                if (!service.protect(raw)) return null
+                raw.connect(java.net.InetSocketAddress(resolverIp, 853), DNS_TIMEOUT_MS)
+                val factory = javax.net.ssl.SSLSocketFactory.getDefault() as javax.net.ssl.SSLSocketFactory
+                ssl = factory.createSocket(raw, tlsHostname, 853, true) as javax.net.ssl.SSLSocket
+                ssl.soTimeout = DNS_TIMEOUT_MS
+                ssl.sslParameters = ssl.sslParameters.apply {
+                    if (tlsHostname != null) serverNames = listOf(javax.net.ssl.SNIHostName(tlsHostname))
+                    endpointIdentificationAlgorithm = "HTTPS"   // fail closed on bad cert/hostname
+                }
+                ssl.startHandshake()                            // throws on verification failure
+                val out = ssl.outputStream
+                out.write((query.size ushr 8) and 0xff)
+                out.write(query.size and 0xff)
+                out.write(query)
+                out.flush()
+                val ins = ssl.inputStream
+                val hi = ins.read(); val lo = ins.read()
+                if (hi < 0 || lo < 0) return null
+                val len = (hi shl 8) or lo
+                if (len <= 0 || len > 65_535) return null
+                val resp = ByteArray(len)
+                var off = 0
+                while (off < len) {
+                    val n = ins.read(resp, off, len - off)
+                    if (n < 0) break
+                    off += n
+                }
+                if (off == len) resp else null
+            } catch (_: Throwable) {
+                null   // fail closed — never silently downgrade to plaintext
+            } finally {
+                runCatching { ssl?.close() }
+                runCatching { raw?.close() }
+            }
+        }
+
         companion object {
             /** Default resolver if the user's IP is blank/malformed. */
             private const val DEFAULT_IP = "1.1.1.1"
 
-            /** Plaintext UDP resolver at [ip] (e.g. "1.1.1.1"). The honest,
-             *  implemented path. Total: a blank/garbage IP falls back to
-             *  [DEFAULT_IP] rather than throwing at establish time. */
+            /** Plaintext UDP resolver at [ip]. A blank/garbage IP falls back to [DEFAULT_IP]. */
             fun plaintext(ip: String): UpstreamResolver {
                 val addr = runCatching { InetAddress.getByName(ip.trim().ifBlank { DEFAULT_IP }) }
                     .getOrElse { InetAddress.getByName(DEFAULT_IP) }
-                return UpstreamResolver(addr, encrypted = false)
+                return UpstreamResolver(addr, encrypted = false, tlsHostname = null)
             }
 
             /**
-             * STUB for encrypted-resolver routing (DoT/DoH/DNSCrypt/Tor). Not
-             * implemented — returns a plaintext resolver so DNS still works, and
-             * is flagged [encrypted]=true only so [describe] can state honestly
-             * that encryption is NOT active. Callers MUST NOT present this as an
-             * encrypted upstream. The real encrypted path today is system
-             * Private DNS (S4).
+             * REAL encrypted upstream: DNS-over-TLS to [ip] on :853, authenticated against
+             * [hostname]. [hostname] is required — DoT without a verified hostname is not
+             * encryption you can trust. Known-good pairs are in [DOT_PRESETS].
              */
-            fun encryptedStub(fallbackIp: String): UpstreamResolver =
-                UpstreamResolver(InetAddress.getByName(fallbackIp), encrypted = true)
+            fun dot(ip: String, hostname: String): UpstreamResolver {
+                val addr = runCatching { InetAddress.getByName(ip.trim().ifBlank { DEFAULT_IP }) }
+                    .getOrElse { InetAddress.getByName(DEFAULT_IP) }
+                return UpstreamResolver(addr, encrypted = true, tlsHostname = hostname.trim())
+            }
+
+            /** Curated DoT resolvers (ip → SNI/verification hostname). */
+            val DOT_PRESETS: List<Triple<String, String, String>> = listOf(
+                Triple("Cloudflare", "1.1.1.1", "cloudflare-dns.com"),
+                Triple("Quad9 (malware-blocking)", "9.9.9.9", "dns.quad9.net"),
+                Triple("Google", "8.8.8.8", "dns.google"),
+                Triple("AdGuard (ad+tracker-blocking)", "94.140.14.14", "dns.adguard-dns.com"),
+                Triple("Mullvad (no-log)", "194.242.2.2", "dns.mullvad.net"),
+            )
         }
     }
 

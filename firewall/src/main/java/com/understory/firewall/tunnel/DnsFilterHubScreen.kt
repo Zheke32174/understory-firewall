@@ -9,6 +9,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -407,10 +410,12 @@ private fun BlocklistCard() {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun UpstreamCard() {
     val ctx = LocalContext.current
     var ip by remember { mutableStateOf(FirewallSettings.getUpstreamDnsIp(ctx)) }
+    var dotHost by remember { mutableStateOf(FirewallSettings.getDotHostname(ctx)) }
     var style by remember { mutableStateOf(BlocklistRepository.answerStyle(ctx)) }
     var saved by remember { mutableStateOf<String?>(null) }
 
@@ -418,9 +423,15 @@ private fun UpstreamCard() {
         Text("Upstream resolver", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
         Text(
-            "Allowed queries are forwarded to this resolver over PLAINTEXT UDP. " +
-                "Encrypted-resolver routing (DoT/DoH/DNSCrypt/Tor) is not implemented in " +
-                "the tunnel yet — for an encrypted upstream, set system Private DNS (DoT).",
+            if (dotHost.isNotBlank())
+                "Allowed queries forward over VERIFIED DNS-over-TLS (RFC 7858) to the resolver " +
+                    "IP on :853, authenticated against the DoT hostname — fail-closed on a bad " +
+                    "certificate. This is encryption inside the tunnel itself, independent of " +
+                    "system Private DNS."
+            else
+                "Allowed queries forward over PLAINTEXT UDP. To encrypt the in-tunnel upstream, " +
+                    "set a DoT hostname below (pick a preset) — that switches this resolver to " +
+                    "verified DNS-over-TLS. Leaving it blank keeps plaintext UDP.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -432,6 +443,26 @@ private fun UpstreamCard() {
             label = { Text("Resolver IP (e.g. 1.1.1.1)") },
             modifier = Modifier.fillMaxWidth(),
         )
+        Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+        OutlinedTextField(
+            value = dotHost,
+            onValueChange = { dotHost = it },
+            singleLine = true,
+            label = { Text("DoT hostname (blank = plaintext UDP)") },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+        // One-tap encrypted presets: fill IP + verified hostname together so they always match.
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(UnderstoryTheme.spacing.xs),
+        ) {
+            DnsFilterTun.UpstreamResolver.DOT_PRESETS.forEach { (name, presetIp, host) ->
+                AssistChip(
+                    onClick = { ip = presetIp; dotHost = host },
+                    label = { Text(name.substringBefore(" (")) },
+                )
+            }
+        }
         Spacer(Modifier.height(UnderstoryTheme.spacing.sm))
         SwitchRow(
             label = "Sinkhole with NXDOMAIN (off = 0.0.0.0)",
@@ -445,7 +476,10 @@ private fun UpstreamCard() {
         Spacer(Modifier.height(UnderstoryTheme.spacing.sm))
         SecureButton(onClick = {
             FirewallSettings.setUpstreamDnsIp(ctx, ip)
-            saved = "Saved. Re-arm the tunnel to apply."
+            FirewallSettings.setDotHostname(ctx, dotHost)
+            saved = if (dotHost.isNotBlank())
+                "Saved — verified DoT. Re-arm the tunnel to apply."
+            else "Saved — plaintext UDP. Re-arm the tunnel to apply."
         }) { Text("Save resolver") }
         saved?.let {
             Spacer(Modifier.height(UnderstoryTheme.spacing.sm))

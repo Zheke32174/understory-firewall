@@ -267,11 +267,14 @@ class FirewallVpnService : VpnService() {
         tunFd = newTun
 
         val attributor = ConnectionAttributor(applicationContext)
-        // Upstream resolver: plaintext UDP to the user-set IP (default 1.1.1.1).
-        // Encrypted-resolver routing is a documented stub (see DnsFilterTun).
-        val upstream = DnsFilterTun.UpstreamResolver.plaintext(
-            FirewallSettings.getUpstreamDnsIp(this),
-        )
+        // Upstream resolver: real verified DNS-over-TLS when a DoT hostname is configured, else
+        // plaintext UDP. The encrypted path is no longer a stub (see DnsFilterTun.UpstreamResolver).
+        val dnsIp = FirewallSettings.getUpstreamDnsIp(this)
+        val dotHost = FirewallSettings.getDotHostname(this)
+        val upstream = if (dotHost.isNotBlank())
+            DnsFilterTun.UpstreamResolver.dot(dnsIp, dotHost)
+        else
+            DnsFilterTun.UpstreamResolver.plaintext(dnsIp)
         val answerStyle = BlocklistRepository.answerStyle(this)
 
         val filter = DnsFilterTun(

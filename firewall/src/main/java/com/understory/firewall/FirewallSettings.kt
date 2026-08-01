@@ -36,6 +36,7 @@ object FirewallSettings {
     private const val K_AUDIT_ACKNOWLEDGED = "audit_acknowledged"
     private const val K_TUNNEL_MODE = "tunnel_mode"
     private const val K_UPSTREAM_DNS_IP = "tunnel_upstream_dns_ip"
+    private const val K_DOT_HOSTNAME = "tunnel_dot_hostname"
 
     // ---- Legacy keys (read once during migration, then deleted) ----
     private const val K_LEGACY_BLOCKLIST = "blocklist"
@@ -170,6 +171,23 @@ object FirewallSettings {
     fun setUpstreamDnsIp(ctx: Context, ip: String) {
         prefs(ctx).edit().putString(K_UPSTREAM_DNS_IP, ip.trim()).apply()
     }
+
+    /**
+     * The in-tunnel DNS-over-TLS verification hostname. Non-blank ⇒ the DNS-filter tunnel
+     * forwards allowed queries over DoT (RFC 7858) to [getUpstreamDnsIp]:853, authenticated
+     * against this hostname (fail-closed on cert/hostname mismatch). Blank ⇒ plaintext UDP.
+     * This is the encrypted-upstream path that replaces the old stub — it is real, verified DoT
+     * inside the tunnel, independent of system Private DNS.
+     */
+    fun getDotHostname(ctx: Context): String =
+        prefs(ctx).getString(K_DOT_HOSTNAME, "")?.trim().orEmpty()
+
+    fun setDotHostname(ctx: Context, hostname: String) {
+        prefs(ctx).edit().putString(K_DOT_HOSTNAME, hostname.trim()).apply()
+    }
+
+    /** True when an in-tunnel DoT hostname is configured. */
+    fun isTunnelDotEnabled(ctx: Context): Boolean = getDotHostname(ctx).isNotBlank()
 
     // ---------------------------------------------------------------
     // DNS provider
