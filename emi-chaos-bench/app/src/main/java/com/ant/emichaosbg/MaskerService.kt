@@ -31,15 +31,65 @@ class MaskerService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        destroyHeadless()
         try { wakeLock?.let { if (it.isHeld) it.release() } } catch (_: Exception) {}
         wakeLock = null
         super.onDestroy()
     }
 
-    /** If the task is swiped away while masking is active, keep the service alive — the
-     *  whole point of background mode is that closing the UI doesn't stop the masking. */
+    /**
+     * Swiping the app off the recents screen destroys the Activity — and with it the WebView
+     * that is actually generating the sound. `stopWithTask="false"` keeps THIS SERVICE alive,
+     * but a surviving service with no WebView produces silence, which is worse than stopping:
+     * a notification that claims to be masking while nothing comes out.
+     *
+     * So on task removal the service stands up its own headless WebView, loads the same page,
+     * and tells it to start. It is never attached to a window — it exists only to keep the
+     * Web Audio graph running inside a process the system is now willing to keep, because a
+     * foreground service with a wake lock is holding it up.
+     *
+     * If that WebView cannot be created for any reason we stop the service outright rather
+     * than leave a lying notification behind.
+     */
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
+        if (!isRunning) return
+        try {
+            startHeadless()
+        } catch (_: Throwable) {
+            stopSelf()
+        }
+    }
+
+    private var headless: android.webkit.WebView? = null
+
+    private fun startHeadless() {
+        if (headless != null) return
+        val wv = android.webkit.WebView(this)
+        wv.settings.javaScriptEnabled = true
+        wv.settings.domStorageEnabled = true
+        wv.settings.mediaPlaybackRequiresUserGesture = false
+        wv.settings.allowFileAccess = true
+        wv.addJavascriptInterface(EmiBridge(this, wv), "EMIBridge")
+        wv.webViewClient = object : android.webkit.WebViewClient() {
+            override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
+                // Auto-start the masker in the headless copy. Guarded so a page that has
+                // already started doesn't double-start.
+                view?.evaluateJavascript(
+                    "(function(){try{var g=document.getElementById('go');" +
+                    "if(g&&!document.body.classList.contains('live'))g.click();}catch(e){}})()",
+                    null
+                )
+            }
+        }
+        wv.loadUrl("file:///android_asset/index.html")
+        headless = wv
+    }
+
+    private fun destroyHeadless() {
+        try { headless?.loadUrl("about:blank") } catch (_: Exception) {}
+        try { headless?.destroy() } catch (_: Exception) {}
+        headless = null
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

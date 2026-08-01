@@ -459,6 +459,20 @@ class EmiBridge(private val ctx: Context, private val web: WebView) : SensorEven
         }
     }
 
+    // ---- Native microphone fallback ----------------------------------------------------
+    // Used when WebView's getUserMedia refuses on a device where the OS can demonstrably
+    // capture. Same privacy invariant as the web path: only derived numbers cross the bridge.
+    private val nativeMic by lazy { NativeMic(ctx) }
+
+    @JavascriptInterface
+    fun startNativeMic(): String = nativeMic.start()
+
+    @JavascriptInterface
+    fun stopNativeMic() { nativeMic.stop() }
+
+    @JavascriptInterface
+    fun nativeMicData(): String = nativeMic.snapshot()
+
     /**
      * Re-assert the foreground service so it picks up the MICROPHONE type.
      *

@@ -27,6 +27,16 @@
     <!-- Mic is used ONLY for local voice-activity detection (VAD) to drive reactive masking.
          Raw audio is analysed in-process and never recorded to disk or sent anywhere. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- REQUIRED BY CHROMIUM'S AUDIO-INPUT PATH, and its absence is why getUserMedia failed
+         with NotReadableError on a device where the OS could demonstrably capture.
+         WebView routes microphone capture through the same audio stack WebRTC uses, which
+         calls into AudioManager (mode/focus/routing) while opening an input stream. Without
+         MODIFY_AUDIO_SETTINGS those calls fail and the stream never opens — surfacing as a
+         bare "Could not start audio source". A plain native AudioRecord does NOT need this
+         permission, which is exactly why the native probe reported nativeCaptureOk=true and
+         recordingState=RECORDING while WebView kept failing in the same process. It is a
+         normal (install-time) permission: no runtime prompt. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- INTERNET is used ONLY for a LAN WebSocket mesh link to companion accessories/nodes
          (phones, OpenWRT routers, a Rayhunter device's own UI). No audio leaves the device. -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -109,7 +119,8 @@
         <service
             android:name=".MaskerService"
             android:exported="false"
-            android:foregroundServiceType="mediaPlayback|microphone" />
+            android:foregroundServiceType="mediaPlayback|microphone"
+            android:stopWithTask="false" />
 
         <!-- Device-admin entry point. Inert until a human explicitly activates it (Settings)
              or provisions this app as device owner over adb. Its only purpose is resilience:

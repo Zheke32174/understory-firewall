@@ -11,8 +11,8 @@ android {
         applicationId = "com.ant.emichaosbg"
         minSdk = 26
         targetSdk = 34
-        versionCode = 12
-        versionName = "3.7.1-pulse"
+        versionCode = 13
+        versionName = "3.8-persist"
     }
 
     buildTypes {

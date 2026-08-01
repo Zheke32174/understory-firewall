@@ -258,6 +258,36 @@
       </div>
     </div>
     <div class="sect">
+      <div class="head"><span class="t">Scan stutter</span><span class="tag" id="ssRate">0/s</span>
+        <div class="sw" id="ssEn" aria-pressed="false"></div></div>
+      <div class="body">
+        <div class="row"><div class="cell full"><small>Severity <span id="ssAmtR">50%</span></small>
+          <input id="ssAmt" type="range" min="0" max="1" step="0.01" value="0.5"></div></div>
+        <div class="grid">
+          <div class="stat"><small>Bursts</small><b id="ssCount">0</b></div>
+          <div class="stat"><small>Mode</small><b id="ssMode">idle</b></div>
+        </div>
+        <div class="muted">The sound-and-app stutter that happened when the BLE chaotic cadence ran with
+          <b>Bluetooth switched off</b> — restored as its own function, and now identical whether Bluetooth is on
+          or off.
+          <br><br>
+          <b>What was actually causing it:</b> <code>EMIBridge.bleScan()</code> is a <i>synchronous</i>
+          JavaScript-to-native bridge call, and the audio engine is a ScriptProcessorNode — which also runs on the
+          main thread. With Bluetooth off that native call returns instantly (the LE scanner is null), so the
+          cadence fired far more often and hammered the main thread with bridge round-trips and DOM writes. Those
+          collide with the audio callback's real-time window and cause buffer underruns: the stutter. With
+          Bluetooth on, Android's scan limiter slowed the cadence and the collisions became rare, so it vanished.
+          <br><br>
+          This reproduces the <i>same mechanism</i> rather than imitating the sound — real synchronous bridge
+          bursts and DOM churn at chaotic intervals — but using a <b>Bluetooth-independent</b> call, so the
+          adapter state no longer changes the timing. The audible glitch (short holds and drops, exactly what a
+          stalled or dropped buffer sounds like) is also asserted directly in the audio path so the effect is
+          reliable rather than dependent on how fast a given phone's bridge happens to be. The burst is bounded
+          and the main thread is never held long enough to risk an ANR — it is a deliberate effect now, not an
+          accident being re-enacted.</div>
+      </div>
+    </div>
+    <div class="sect">
       <div class="head"><span class="t">Chaos governor</span><span class="tag" id="govState">nominal</span></div>
       <div class="body">
         <div class="grid">
@@ -1669,6 +1699,15 @@ const BadJack=(function(){
     let avoLen=0,avoBufs=1,avoSlot=0;
     if(avoOn){ ensureAvo();
       avoBufs=Math.max(1,Math.min(p.avoBufs|0,AVO_MAX_BUFS));
+      // Shrinking the "Buffers" slider mid-run used to strand playback on a slot that
+      // recording no longer targets: recording only ever picks < avoBufs, so a higher slot
+      // stops receiving fresh audio while playback keeps reading it. The only escape was the
+      // per-wrap re-draw gated on Repeat probability, which at its maximum of 99 is a 1%
+      // chance per wrap — tens of seconds of stale, decaying audio.
+      // Clamp PLAYBACK only. Deliberately not avo_record_buffer: an in-flight recording that
+      // began on a now-out-of-range slot would have its tail spliced into slot 0, corrupting
+      // a slot actively being written. Recording self-corrects on its next cycle anyway.
+      if(avo_playback_buffer>=avoBufs) avo_playback_buffer=avoBufs-1;
       avoSlot=Math.floor(avoMaxLen/AVO_MAX_BUFS);
       avoLen=Math.max(16,Math.min(Math.round(p.avoLen*sr/1000),avoSlot-1));
     }
@@ -1821,8 +1860,10 @@ function applyModIn(){ const saved={}; const routes=Sensors.enabled?MODMATRIX:[]
   return saved; }
 function applyModOut(saved){ for(const k in saved)P[k]=saved[k]; }
 
+let ssHoldL=0, ssHoldR=0;
 function proc(e){
   const procT0=perfNow();
+  const ssOn=ScanStutter.enabled;
   schedule(procT0);
   const saved=applyModIn();
   const L=e.outputBuffer.getChannelData(0), Rr=e.outputBuffer.getChannelData(1), n=L.length, E=P.en;
@@ -2187,6 +2228,13 @@ function proc(e){
     l=Math.tanh(l*P.drive)*P.lv; r=Math.tanh(r*P.drive)*P.lv;
     if(Math.abs(pl*P.drive)>2.2||Math.abs(pr*P.drive)>2.2)clipCount++;
     if(!isFinite(l))l=0; if(!isFinite(r))r=0;
+    // Scan stutter: reproduce the underrun artifact in the output itself.
+    if(ssOn){
+      const g=ScanStutter.step();
+      if(g===1){ l=ssHoldL; r=ssHoldR; }        // hold — what a stalled callback sounds like
+      else if(g===2){ l=0; r=0; }               // drop — the gap in a dropped buffer
+      else { ssHoldL=l; ssHoldR=r; }
+    }
     L[i]=l; Rr[i]=r;
   }
   // Capture ring is filled from the SYNTHESIS output, BEFORE the BadJack rack. Two reasons,
@@ -2202,7 +2250,6 @@ function proc(e){
   let rmsAcc=0;
   for(let i=0;i<n;i++){ const m=(L[i]+Rr[i])*.5; cap[capW]=m; capW=(capW+1)%CAP; rmsAcc+=m*m;
     BandGuard.feedLow(m); }
-  BandGuard.feedLong(Math.sqrt(rmsAcc/Math.max(1,n)), n);
   // Rack runs last, exactly where the ported EEL's @sample block sits in JamesDSP's chain.
   BadJack.process(L,Rr,n);
   applyModOut(saved);
@@ -2474,31 +2521,29 @@ const BandGuard=(function(){
     lowAcc+=s;
     if(++lowN>=LOW_DEC){ lowBuf[lowW]=lowAcc/LOW_DEC; lowW=(lowW+1)%LOWCAP;
       lowAcc=0; lowN=0; if(lowFilled<LOWCAP)lowFilled++; }
-  }
-  // long decimated envelope buffer for the infrasound guard (~5.5s @ ~187Hz)
-  const LONG=1024, LDEC=256; const longBuf=new Float32Array(LONG);
-  let longW=0, longAcc=0, longN=0, longFilled=0;
-  const state=BANDS.map(b=>({k:b.k, score:0, am:0, energy:0, quiet:true, streak:0, trips:0}));
-  let cursor=0, next=0, en=true, lastTrip='—';
-
-  /* Fed from the audio path once per buffer — cheap: one abs+accumulate per sample slot. */
-  /* Fed once per audio buffer with that buffer's RMS and its LENGTH.
-     The length matters: this used to divide LDEC by a hard-coded 128 on the assumption that
-     proc() delivers ~1024-sample buffers, which made the resulting rate a function of
-     whatever buffer size the device actually chose. The infrasound lag->frequency mapping is
-     derived from that rate, so a wrong rate silently mislabels every infrasound reading.
-     Now the decimation counts real SAMPLES, so the emitted rate is exactly sr/LDEC no matter
-     what buffer size the platform hands us. */
-  let longSampleAcc=0;
-  function feedLong(rms,nSamples){
-    const n=nSamples||1;
-    longAcc+=rms*n; longSampleAcc+=n;
-    if(longSampleAcc>=LDEC){
-      longBuf[longW]=longAcc/longSampleAcc; longW=(longW+1)%LONG;
+    // INFRASOUND ENVELOPE, accumulated PER SAMPLE.
+    // This previously took one RMS value per audio buffer. With 2048-sample buffers that is
+    // one entry every 2048 samples — 23.4Hz — while longRate() reported sr/LDEC = 187.5Hz,
+    // an 8x overstatement that mislabelled every infrasound reading and left the top of the
+    // band above the ring's real Nyquist entirely unpoliced.
+    // Draining a backlog would not have fixed it either: there was only ONE value per buffer,
+    // so emitting it repeatedly would fabricate resolution that was never captured. The only
+    // honest fix is to accumulate at sub-buffer granularity, which is what this does — the
+    // emitted rate is now genuinely sr/LDEC regardless of the platform's buffer size.
+    longAcc+=Math.abs(s);
+    if(++longSampleAcc>=LDEC){
+      longBuf[longW]=longAcc/LDEC; longW=(longW+1)%LONG;
       longAcc=0; longSampleAcc=0;
       if(longFilled<LONG) longFilled++;
     }
   }
+  // long decimated envelope buffer for the infrasound guard (~5.5s @ ~187Hz)
+  const LONG=1024, LDEC=256; const longBuf=new Float32Array(LONG);
+  let longW=0, longAcc=0, longSampleAcc=0, longFilled=0;
+  const state=BANDS.map(b=>({k:b.k, score:0, am:0, energy:0, quiet:true, streak:0, trips:0}));
+  let cursor=0, next=0, en=true, lastTrip='—';
+
+  /* Fed from the audio path once per buffer — cheap: one abs+accumulate per sample slot. */
   /** Emitted sample rate of longBuf, used to turn lags into frequencies honestly. */
   function longRate(){ return sr/LDEC; }
   /* Mean-removed normalised autocovariance, max over a lag set. Returns 0 when the input
@@ -2706,7 +2751,7 @@ const BandGuard=(function(){
     });
     const lt=$('bgLast'); if(lt)lt.textContent=lastTrip;
   }
-  return { tick, feedLong, feedLow, render,
+  return { tick, feedLow, render,
     set enabled(v){en=v;}, get enabled(){return en;},
     get bands(){return state;}, get lastTrip(){return lastTrip;} };
 })();
@@ -3023,9 +3068,16 @@ const CADENCE_MODES=[
   {k:'marathon', w:0.13, on:[15000,60000], off:[2000,12000]},
   {k:'lurk',     w:0.13, on:[200,900],     off:[8000,30000]}
 ];
-function pickCadenceMode(){
+function pickCadenceMode(governed){
   let r=Math.random(), acc=0;
-  const bias=Governor.modeBias; // 1 = untouched; <1 shifts weight toward the quiet modes
+  // UNGOVERNED CADENCES DRAW FROM THE RAW TABLE, ALWAYS.
+  // The governor exists for the Wi-Fi/sensor side, where the platform's own scan budget and
+  // thermal load are real. BLE was never the problem and must never be de-rated: its
+  // behaviour is the thing that was wanted, and 3.7 accidentally started damping it by moving
+  // Governor.evaluate() into the display loop, where it runs constantly instead of only while
+  // audio is playing. That made the governor able to step up and reshape the BLE cadence in a
+  // way it never did before. BLE now runs unconditionally free.
+  const bias=governed?Governor.modeBias:1;
   if(bias>=0.999){
     for(const m of CADENCE_MODES){ acc+=m.w; if(r<=acc) return m; }
     return CADENCE_MODES[1];
@@ -3045,20 +3097,21 @@ function pickCadenceMode(){
   for(let i=0;i<CADENCE_MODES.length;i++){ acc+=w[i]; if(r<=acc) return CADENCE_MODES[i]; }
   return CADENCE_MODES[1];
 }
-function makeChaosCadence(label,startFn,stopFn,onMode){
+function makeChaosCadence(label,startFn,stopFn,onMode,opts){
+  const governed=!!(opts&&opts.governed);
   let on=false, t1=null, t2=null, mode=null, cycles=0;
   function clear(){ if(t1){clearTimeout(t1);t1=null;} if(t2){clearTimeout(t2);t2=null;} }
   function step(){
     if(!on) return;
-    mode=pickCadenceMode(); cycles++;
+    mode=pickCadenceMode(governed); cycles++;
     if(onMode) try{ onMode(mode.k); }catch(e){}
     let started=false;
     try{ startFn(); started=true; }catch(e){}
-    const onMs=rnd(mode.on[0],mode.on[1])*Governor.onScale;
+    const onMs=rnd(mode.on[0],mode.on[1])*(governed?Governor.onScale:1);
     t1=setTimeout(()=>{
       if(!on) return;
       try{ stopFn(); }catch(e){}
-      t2=setTimeout(step, rnd(mode.off[0],mode.off[1])*Governor.offScale);
+      t2=setTimeout(step, rnd(mode.off[0],mode.off[1])*(governed?Governor.offScale:1));
     }, onMs);
   }
   return {
@@ -3152,6 +3205,91 @@ const ChaosPulse=(function(){
     get enabled(){return on;},
     set intensity(v){ intensity=cl(v,0,1); }, get intensity(){return intensity;},
     get pulses(){return pulses;}, get rate(){return lastRate;}
+  };
+})();
+
+/* ============ SCAN STUTTER — the Bluetooth-off artifact, deliberately reproduced ============
+   WHAT THIS IS. With Bluetooth switched off, running the BLE chaotic cadence produced an
+   audible stutter in the masking sound and a visible hitch in the app. That was wanted, and
+   losing it was my error — it is restored here as its own function, and it now behaves the
+   same whether Bluetooth is on or off.
+
+   WHAT ACTUALLY CAUSED IT. `EMIBridge.bleScan()` is a SYNCHRONOUS JavaScript-to-native bridge
+   call, and the audio engine is a ScriptProcessorNode — which also runs on the main thread.
+   With Bluetooth off the native call returns immediately (the LE scanner is null), so the
+   cadence fired far more often and hammered the main thread with bridge round-trips and DOM
+   writes. Those collide with the audio callback's real-time window and cause buffer
+   underruns — that is the stutter. With Bluetooth on, Android's scan limiter slowed the
+   cadence, the collisions became rare, and the effect disappeared.
+
+   HOW IT IS REPRODUCED HONESTLY. The same mechanism, not an imitation: bursts of real
+   synchronous bridge calls plus DOM churn at chaotic intervals. It deliberately uses a
+   BLUETOOTH-INDEPENDENT bridge call, so timing no longer depends on the adapter state and the
+   behaviour is identical either way.
+
+   The audible glitch is ALSO asserted directly (a short hold/drop applied in proc()) so the
+   effect is reliable instead of depending on how fast a given device's bridge happens to be.
+   Bounded on purpose: the burst is capped and the main thread is never held long enough to
+   risk an ANR. This is a deliberate audio effect now, not an accident being re-enacted. */
+const ScanStutter=(function(){
+  let intensity=0.5, bursts=0, lastRate=0, rateN=0, rateT=0;
+  let holdSamples=0, dropSamples=0;
+  function pulse(){
+    // 1) The real cause: synchronous bridge round-trips on the main thread.
+    const calls=1+Math.round(intensity*14);
+    try{
+      if(window.EMIBridge){
+        for(let i=0;i<calls;i++){
+          if(EMIBridge.getSensors) EMIBridge.getSensors();
+          else if(EMIBridge.getThermals) EMIBridge.getThermals();
+        }
+      }
+    }catch(e){}
+    // 2) DOM churn — the other half of the original main-thread load.
+    if(Math.random()<0.5) toast('scan…');
+    // 3) Assert the audible glitch so it does not depend on device bridge speed.
+    if(Math.random()<0.6) holdSamples=Math.round(rnd(40,300+intensity*900));
+    else dropSamples=Math.round(rnd(20,120+intensity*400));
+    bursts++; rateN++;
+    const now=perfNow();
+    if(now-rateT>1000){ lastRate=rateN*1000/(now-rateT); rateN=0; rateT=now;
+      const el=$('ssRate'); if(el)el.textContent=lastRate.toFixed(0)+'/s';
+      const c=$('ssCount'); if(c)c.textContent=String(bursts); }
+  }
+  // Its own timer rather than the shared cadence engine. The shared modes include multi-second
+  // 'long'/'marathon' phases, which fire a single burst every few seconds — far too sparse to
+  // be the effect. The original artifact hit on EVERY scan cycle, and with Bluetooth off those
+  // cycles were rapid, so the character of it is frequent irregular hits. Rate scales with
+  // severity (~2/s up to ~30/s) and every interval is randomised so it never becomes a
+  // metronome. Capped well below the audio buffer rate so it glitches the sound rather than
+  // drowning it.
+  let on=false, timer=null;
+  function step(){
+    if(!on) return;
+    pulse();
+    const perSec=2+intensity*intensity*28;
+    const gap=1000/perSec;
+    timer=setTimeout(step, rnd(gap*0.25, gap*1.9));
+    const el=$('ssMode'); if(el)el.textContent=intensity>0.66?'heavy':(intensity>0.33?'moderate':'light');
+  }
+  return {
+    set enabled(v){
+      if(v===on) return; on=v;
+      if(timer){clearTimeout(timer);timer=null;}
+      if(v){ rateT=perfNow(); rateN=0; step(); toast('Scan stutter on — works with Bluetooth on or off'); }
+      else { holdSamples=0; dropSamples=0;
+        const el=$('ssRate'); if(el)el.textContent='0/s';
+        const m=$('ssMode'); if(m)m.textContent='idle'; } },
+    get enabled(){ return on; },
+    set intensity(v){ intensity=cl(v,0,1); }, get intensity(){ return intensity; },
+    get bursts(){ return bursts; },
+    /* Consumed per sample by proc(): 0 = normal, 1 = hold previous sample, 2 = drop. */
+    step:function(){
+      if(holdSamples>0){ holdSamples--; return 1; }
+      if(dropSamples>0){ dropSamples--; return 2; }
+      return 0;
+    },
+    get active(){ return holdSamples>0||dropSamples>0; }
   };
 })();
 
@@ -3590,7 +3728,7 @@ const Mic=(function(){
   // Persistent diagnostic snapshot, replacing "read the toast before it vanishes." Filled in
   // on every enable() attempt, success or failure, so a report of "still broken, different
   // message" can be answered from what actually happened instead of another guess.
-  let lastDiag=null;
+  let lastDiag=null, nativeMode=false, nativeBins=null, nativeRate=48000;
   function nativePermState(){
     try{ if(window.EMIBridge&&EMIBridge.getMicPermissionState) return JSON.parse(EMIBridge.getMicPermissionState()); }catch(e){}
     return null;
@@ -3640,6 +3778,23 @@ const Mic=(function(){
         lastErr=null; diag.attempts.push({constraints:{audio:true},ok:true,afterFgsRefresh:true});
       }catch(e){ diag.attempts.push({constraints:{audio:true},ok:false,afterFgsRefresh:true,name:e&&e.name,message:e&&e.message}); }
     }
+    // NATIVE FALLBACK. If WebView won't open the mic but the OS can — proven on at least one
+    // device, where a native AudioRecord reached RECORDSTATE_RECORDING in the same process at
+    // the same moment — run the analysis natively instead of losing the feature. Same derived
+    // values, same privacy invariant (only numbers cross the bridge, never samples).
+    if(lastErr && window.EMIBridge && EMIBridge.startNativeMic){
+      try{
+        const r=EMIBridge.startNativeMic();
+        diag.nativeMicStart=r;
+        if(String(r).indexOf('ok')===0){
+          nativeMode=true; enabled=true; lastErr=null;
+          $('micEn').setAttribute('aria-pressed','true');
+          diag.outcome='native-fallback';
+          toast('Mic on via the native analyser — WebView refused, the OS did not.');
+          return;
+        }
+      }catch(e){ diag.nativeMicStart='threw: '+(e&&e.message); }
+    }
     if(lastErr){
       diag.outcome='getUserMedia-failed';
       // Surface the real DOMException name — a bare "permission denied" toast used to hide
@@ -3686,6 +3841,8 @@ const Mic=(function(){
   }
   function disable(){
     enabled=false;
+    if(nativeMode){ nativeMode=false; nativeBins=null;
+      try{ if(window.EMIBridge&&EMIBridge.stopNativeMic) EMIBridge.stopNativeMic(); }catch(e){} }
     if(stream){ try{stream.getTracks().forEach(t=>t.stop());}catch(e){} } stream=null;
     if(src){ try{src.disconnect();}catch(e){} } src=null; an=null;
     const e1=$('micEn'); if(e1)e1.setAttribute('aria-pressed','false');
@@ -3696,6 +3853,33 @@ const Mic=(function(){
     if(savedLv!=null){ setPval('lv',savedLv); flushDirty(); savedLv=null; }
   }
   function tick(){
+    // Native path: pull the derived values the analyser computed and drive the exact same UI
+    // and downstream consumers the WebView path drives.
+    if(nativeMode){
+      let d=null;
+      try{ d=JSON.parse(EMIBridge.nativeMicData()||'{}'); }catch(e){ return; }
+      if(!d.running) return;
+      nativeRate=d.sampleRate||48000;
+      if(Array.isArray(d.bins)){ if(!nativeBins||nativeBins.length!==d.bins.length) nativeBins=new Uint8Array(d.bins.length);
+        for(let i=0;i<d.bins.length;i++) nativeBins[i]=d.bins[i]; }
+      const level=cl(d.speech||0,0,1);
+      vadFloor=vadFloor*0.98+level*0.006;
+      const above=level>vadFloor*1.8+0.04;
+      vadHold=above?Math.min(20,vadHold+2):Math.max(0,vadHold-1);
+      vadActive=vadHold>4;
+      Sensors.feed({mic:level});
+      const lvEl=$('micLv'); if(lvEl)lvEl.textContent=(level*100).toFixed(0)+'%';
+      const bar=$('micBar'); if(bar)bar.style.width=(cl(level,0,1)*100)+'%';
+      const vd=$('micVad'); if(vd)vd.textContent=vadActive?'speech':'quiet';
+      const us=$('micUs');
+      const ul=cl(d.ultra||0,0,1);
+      if(us) us.textContent=ul>0.35?'⚠ possible':(ul*100).toFixed(0)+'%';
+      if(ul>0.35 && !ultraFlag){ ultraFlag=true;
+        Alerts.push(2,'Ultrasonic band (≥18kHz) shows sustained energy — possible inaudible-command injection. Heuristic only. (native analyser)','sonic-demod'); }
+      else if(ul<=0.35) ultraFlag=false;
+      reactive(level,vadActive);
+      return;
+    }
     if(!enabled||!an) return;
     an.getByteFrequencyData(freqBuf);
     const binHz=actx.sampleRate/an.fftSize;
@@ -3743,7 +3927,10 @@ const Mic=(function(){
     }
   }
   function setMode(m){ mode=m; }
-  function spectrumData(){ return an?{buf:freqBuf,sampleRate:actx.sampleRate,fftSize:an.fftSize}:null; }
+  function spectrumData(){
+    if(nativeMode) return nativeBins?{buf:nativeBins,sampleRate:nativeRate,fftSize:nativeBins.length*2}:null;
+    return an?{buf:freqBuf,sampleRate:actx.sampleRate,fftSize:an.fftSize}:null;
+  }
   return { enable, disable, tick, setMode, diagnostics, get enabled(){return enabled;}, get vadActive(){return vadActive;}, spectrumData };
 })();
 
@@ -3903,7 +4090,7 @@ const RF=(function(){
   // never escalated. Nothing is transmitted beyond an ordinary scan.
   const wifiCadence=makeChaosCadence('wifi',()=>{ wifiScanNow('chaos'); },()=>{},m=>{
     const el=$('wifiCadMode'); if(el)el.textContent=m;
-  });
+  },{governed:true});
   function setChaoticWifi(v){
     wifiCadence.enabled=v;
     if(v) toast('Chaotic Wi-Fi cadence on — standard scans, randomized timing');
@@ -4091,7 +4278,7 @@ const SensorBlast=(function(){
   }
   const cadence=makeChaosCadence('sensors',blast,()=>{},m=>{
     const el=$('sbMode'); if(el)el.textContent=m;
-  });
+  },{governed:true});
   return {
     set enabled(v){ cadence.enabled=v;
       if(v) toast('Sensor blasts on — receive-only polling, randomized bursts');
@@ -5143,6 +5330,10 @@ $('mmAuto').addEventListener('click',()=>{ const b=$('mmAuto'),v=b.getAttribute(
 /* band guards, governor, screen chaos */
 $('bgEn').addEventListener('click',()=>{ const b=$('bgEn'),v=b.getAttribute('aria-pressed')!=='true';
   b.setAttribute('aria-pressed',String(v)); BandGuard.enabled=v; });
+$('ssEn').addEventListener('click',()=>{ const b=$('ssEn'),v=b.getAttribute('aria-pressed')!=='true';
+  b.setAttribute('aria-pressed',String(v)); ScanStutter.enabled=v; });
+$('ssAmt').addEventListener('input',e=>{ ScanStutter.intensity=+e.target.value;
+  $('ssAmtR').textContent=Math.round(e.target.value*100)+'%'; });
 $('cpEn').addEventListener('click',()=>{ const b=$('cpEn'),v=b.getAttribute('aria-pressed')!=='true';
   b.setAttribute('aria-pressed',String(v)); ChaosPulse.enabled=v; });
 $('cpAmt').addEventListener('input',e=>{ ChaosPulse.intensity=+e.target.value;
