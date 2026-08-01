@@ -148,6 +148,69 @@ class NetGuard(private val ctx: Context, private val log: SecureLog) {
             lastNetHandle = netHandle
         }
 
+        /* ---- INTERCEPTION / CENSORSHIP POSTURE, without this app sending anything -------
+           This is the RKNHardering capability, redesigned. That tool probes: it reaches out to
+           test whether traffic is being blocked, redirected or inspected. Doing the same here
+           would mean this app generating its own outbound traffic, which is a posture it does
+           not have and should not gain quietly — a counter-surveillance tool that phones out is
+           a contradiction.
+
+           The redesign: ANDROID ALREADY PROBES. The platform runs its own connectivity
+           validation against every network it joins and stores the verdict. Reading that
+           verdict costs nothing, sends nothing, and answers most of the same question — is
+           this network delivering traffic honestly, or is something in the middle. */
+        try {
+            val caps = cm?.getNetworkCapabilities(cm.activeNetwork)
+            val validated = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) ?: false
+            val portal = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL) ?: false
+            o.put("validated", validated)
+            o.put("captivePortal", portal)
+            if (portal) flag(2, "captive-portal",
+                "This network is intercepting traffic and redirecting it to a portal. That is " +
+                "normal for hotel and public Wi-Fi, and it is also exactly the position an " +
+                "attacker needs: everything you send passes through equipment that has already " +
+                "demonstrated it will rewrite your traffic. Treat anything unencrypted on this " +
+                "network as read.")
+            else if (!validated && caps != null) flag(1, "unvalidated",
+                "Android's own connectivity check did not validate this network. Traffic is not " +
+                "reaching the internet as expected — a dead connection looks like this, and so " +
+                "does one where something in the middle is interfering with the check.")
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+                o.put("notSuspended", caps?.hasCapability(
+                    NetworkCapabilities.NET_CAPABILITY_NOT_SUSPENDED) ?: true)
+
+            // A system-wide HTTP proxy routes traffic through someone else's server by
+            // configuration rather than by attack. Legitimate on managed devices; on a personal
+            // one it is worth knowing about, because nothing about it is visible day to day.
+            val lp2 = if (cm?.activeNetwork != null) cm.getLinkProperties(cm.activeNetwork!!) else null
+            val proxy = lp2?.httpProxy
+            if (proxy != null) {
+                val where = (proxy.host ?: "?") + ":" + proxy.port
+                o.put("httpProxy", where)
+                flag(2, "proxy",
+                    "A system HTTP proxy is configured on this connection ($where). All proxied " +
+                    "traffic is terminated by that server, which can see and alter anything not " +
+                    "end-to-end encrypted. This is a configuration, not an intrusion — but if you " +
+                    "did not set it, someone or something else did.")
+            } else o.put("httpProxy", "")
+
+            // Plaintext DNS is the cheapest place to observe or redirect someone. Not a finding
+            // on its own — it is the default nearly everywhere — but it is the difference
+            // between your lookups being private and being a log entry on the network.
+            val pdns = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
+                (lp2?.isPrivateDnsActive ?: false) else false
+            o.put("dnsEncrypted", pdns)
+            o.put("dnsNote", if (pdns)
+                "Private DNS (DNS-over-TLS) is active, so your lookups are encrypted to the " +
+                "resolver and the local network cannot read or rewrite them."
+            else
+                "Private DNS is off, so DNS lookups leave in plaintext. Whoever runs this network " +
+                "can see every name you resolve and can answer with whatever they choose. That is " +
+                "the default on most networks; turning it on is under Settings > Network > " +
+                "Private DNS.")
+        } catch (_: Throwable) {}
+
         // ---- Tunnel posture ---------------------------------------------------------------
         try {
             val caps = cm?.getNetworkCapabilities(cm.activeNetwork)

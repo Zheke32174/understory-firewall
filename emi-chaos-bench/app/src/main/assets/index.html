@@ -1246,6 +1246,9 @@
             <div class="stat"><small>VPN</small><b id="ngVpn">—</b></div>
             <div class="stat"><small>Private DNS</small><b id="ngPdns">—</b></div>
             <div class="stat"><small>ARP readable</small><b id="ngArp">—</b></div>
+            <div class="stat"><small>Validated</small><b id="ngVal">—</b></div>
+            <div class="stat"><small>Captive portal</small><b id="ngPortal">—</b></div>
+            <div class="stat"><small>HTTP proxy</small><b id="ngProxy">—</b></div>
           </div>
           <div class="row"><div class="cell full"><button class="btn" id="ngScan">Check now</button></div></div>
           <div id="ngList"></div>
@@ -1271,7 +1274,23 @@
             This deliberately does <i>not</i> probe a remote resolver or fetch a canary URL to test for
             DPI: that would mean this app generating traffic of its own, which is a posture it does not
             have and should not gain quietly. If ARP is unreadable (Android 10+ restricts it on many
-            builds) it says so, rather than reporting a clean network it never actually looked at.</div>
+            builds) it says so, rather than reporting a clean network it never actually looked at.
+            <br><br>
+            <b>Interception posture, without probing.</b> RKNHardering answers "is my traffic being
+            blocked, redirected or inspected" by <i>reaching out</i> and testing. Doing that here would
+            mean this app generating its own outbound traffic — a counter-surveillance tool that phones
+            out is a contradiction. The redesign: <b>Android already probes.</b> The platform validates
+            every network it joins and stores the verdict, so reading it costs nothing and sends nothing.
+            <br>· <b>Captive portal</b> — the network is intercepting and redirecting traffic. Normal for
+            hotel and public Wi-Fi, and also exactly the position an attacker needs: everything passes
+            through equipment that has already shown it will rewrite your traffic.
+            <br>· <b>Not validated</b> — traffic is not reaching the internet as expected. A dead
+            connection looks like this; so does one where something is interfering with the check.
+            <br>· <b>System HTTP proxy</b> — all proxied traffic is terminated by someone else's server,
+            which can read and alter anything not end-to-end encrypted. A configuration rather than an
+            intrusion, but if you did not set it, something else did.
+            <br>· <b>Private DNS</b> — with it off, lookups leave in plaintext and whoever runs the
+            network sees every name you resolve and can answer with whatever they like.</div>
         </div>
       </div>
       <div class="sect">
@@ -6540,6 +6559,9 @@ const NetSec=(function(){
     set('ngVpn', last.vpn===true?'on':(last.vpn===false?'off':'—'));
     set('ngPdns', last.privateDns===true?(last.privateDnsName||'on'):(last.privateDns===false?'off':'—'));
     set('ngArp', last.arpReadable===false?'restricted':'yes');
+    set('ngVal', last.validated===true?'yes':(last.validated===false?'NO':'—'));
+    set('ngPortal', last.captivePortal===true?'YES':(last.captivePortal===false?'no':'—'));
+    set('ngProxy', last.httpProxy?last.httpProxy:'none');
     const L=$('ngList'); if(!L) return;
     L.innerHTML='';
     const add=(title,rows)=>{
