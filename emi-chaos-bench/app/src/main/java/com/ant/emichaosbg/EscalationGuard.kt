@@ -194,6 +194,7 @@ class EscalationGuard(private val ctx: Context, private val log: SecureLog) {
         o.put("count", findings.length())
         o.put("checkedAt", System.currentTimeMillis())
         o.put("clean", findings.length() == 0)
+        o.put("ran", true)
         o.put("note", "Reports only. Nothing here blocks, kills or degrades the app. An attacker " +
             "with kernel control can defeat every check above — this raises the cost of a quiet " +
             "compromise, it does not prove there isn't one.")
@@ -202,8 +203,33 @@ class EscalationGuard(private val ctx: Context, private val log: SecureLog) {
         return o.toString()
     }
 
-    fun cached(): String = (lastReport ?: JSONObject().put("clean", true).put("count", 0)
-        .put("note", "not yet run")).toString()
+    /**
+     * NEVER-RUN IS NOT CLEAN, AND THIS USED TO SAY IT WAS.
+     *
+     * The sentinel was `{clean:true, count:0, note:"not yet run"}` — byte-identical to a genuine
+     * all-clear on the only two fields any consumer branches on, with the disclaimer parked in a
+     * `note` that neither the native screen nor the page ever reads.
+     *
+     * It is reachable on the ordinary path, not a corner: the background scan lives on
+     * MaskerService's timer, and that service only starts when the user presses Start on the
+     * masker. Open the app without masking, look at the escalation panel, and a detector that
+     * has made ZERO observations of tracer attachment, W^X pages, fileless execution, injected
+     * libraries or hook frameworks reported "clean".
+     *
+     * For a tool whose entire job is answering "has anything got inside this app", that is the
+     * worst possible default. NetGuard and CellSecurity already got this right — both return
+     * `ok:false, reason:"not yet run"` and both consumers render it — so this was the odd one
+     * out rather than a considered choice.
+     */
+    fun cached(): String = (lastReport ?: JSONObject()
+        .put("ran", false)
+        .put("clean", false)
+        .put("ok", false)
+        .put("count", 0)
+        .put("reason", "not yet run")
+        .put("note", "This check has not run yet. That is NOT an all-clear — nothing has been " +
+            "looked at. It runs on the masking service's timer, so start the masker, or press " +
+            "Scan now.")).toString()
 
     // ------------------------------------------------------------------ helpers
 

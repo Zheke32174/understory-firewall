@@ -46,6 +46,8 @@ class ShellView(
     private val content = FrameLayout(ctx)
     private val tabs = ArrayList<Button>()
     private val ui = Handler(Looper.getMainLooper())
+    /** Declared before init{} uses it — Kotlin initialises properties in declaration order. */
+    private var poll: Runnable? = null
     private var security: SecurityScreen? = null
     private var logs: LogsScreen? = null
     private var data: DataScreen? = null
@@ -105,16 +107,38 @@ class ShellView(
         // Native screens poll their own state rather than being pushed to. Slow on purpose:
         // these readings change on the order of minutes, and the freeze this app already had
         // came from exactly this kind of loop calling something expensive too often.
-        ui.postDelayed(object : Runnable {
+        poll = object : Runnable {
             override fun run() {
-                when (current) {
-                    "Security" -> security?.refresh(force = false)
-                    "Data" -> data?.refresh()
-                    // Logs deliberately absent: its refresh decrypts records.
+                // GATED ON BEING ATTACHED AND SHOWN. This reposted itself unconditionally, so it
+                // outlived the Activity — holding this View, the WebView and every native screen
+                // through the Handler's message queue — and kept doing binder and /proc work
+                // while the app was backgrounded, competing with the audio callback for exactly
+                // the thread the masker needs. A refresh loop for a screen nobody is looking at
+                // is pure cost.
+                if (!isAttachedToWindow) return
+                if (windowVisibility == View.VISIBLE) {
+                    when (current) {
+                        "Security" -> security?.refresh(force = false)
+                        "Data" -> data?.refresh()
+                        // Logs deliberately absent: its refresh decrypts records.
+                    }
                 }
                 ui.postDelayed(this, 5000)
             }
-        }, 2500)
+        }
+        ui.postDelayed(poll!!, 2500)
+    }
+
+    override fun onDetachedFromWindow() {
+        // Cancel rather than rely on the isAttachedToWindow check alone: a pending message still
+        // holds a reference until it fires.
+        poll?.let { ui.removeCallbacks(it) }
+        super.onDetachedFromWindow()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        poll?.let { ui.removeCallbacks(it); ui.postDelayed(it, 1500) }
     }
 
     private fun show(name: String) {

@@ -64,9 +64,13 @@ class InvariantsTest {
         val declared = VaultBridge::class.java.declaredMethods
             .filter { java.lang.reflect.Modifier.isPublic(it.modifiers) }
             .map { it.name }.toSortedSet()
+        // readDetailed was added deliberately: read() returns a bare array and therefore cannot
+        // distinguish "no findings" from "the log would not open", which had the page printing
+        // an all-clear over a vault that was failing to decrypt. It is READ-ONLY and adds no
+        // destructive capability — the rule this file exists to protect is untouched.
         assertEquals(
             "the page-facing vault API changed — this set is deliberate, widen it only on purpose",
-            sortedSetOf("append", "count", "exportCsv", "exportJson", "read", "verify"),
+            sortedSetOf("append", "count", "exportCsv", "exportJson", "read", "readDetailed", "verify"),
             declared
         )
     }

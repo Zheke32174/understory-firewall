@@ -1058,8 +1058,26 @@ class EmiBridge(private val ctx: Context, private val web: WebView) : SensorEven
     fun deliverBleDevice(deviceJson: String) =
         postJs("window.__emiBleReport([" + deviceJson + "])")
 
+    /**
+     * Releases what belongs to the ACTIVITY. It must not stop the service.
+     *
+     * This called setForeground(false), which stops MaskerService — so ordinary Activity
+     * destruction killed the foreground service, and with it the background scanning, the
+     * escalation timer, the cell checks and the BLE follower detection. Every one of those
+     * exists specifically to keep observing while the UI is gone; tearing them down when the UI
+     * goes is precisely inverted. A configuration change is enough to trigger it.
+     *
+     * Sensors, GNSS and the GATT connection are Activity-scoped and are still released here.
+     * Whether masking runs is the user's decision, expressed through Start/Stop, and nothing
+     * else should revoke it.
+     */
     fun shutdown() {
-        stopSensors(); bleStop(); setForeground(false); stopGnss()
+        stopSensors(); stopGnss()
         try { activeGatt?.close() } catch (_: Exception) {}
+    }
+
+    /** Explicit teardown for when the user really means stop — wired to the page's stop(). */
+    fun shutdownAndStopService() {
+        shutdown(); bleStop(); setForeground(false)
     }
 }

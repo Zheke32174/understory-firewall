@@ -213,8 +213,20 @@ class SecurityScreen(ctx: Context) : ScrollView(ctx) {
             out
         }, { out ->
             out["esc"]?.let { o ->
-                escTag.text = if (o.optBoolean("clean", true)) "clean" else "${o.optInt("count")} finding(s)"
-                escVals[0].text = if (o.optBoolean("clean", true)) "clean" else "flagged"
+                // "clean" defaulting to TRUE was the bug: a report that has never been produced
+                // must not read as an all-clear. Both the chip and the verdict now branch on
+                // whether the check actually ran.
+                val ran = o.optBoolean("ran", false)
+                escTag.text = when {
+                    !ran -> "NEVER RUN — not an all-clear"
+                    o.optBoolean("clean") -> "clean"
+                    else -> "${o.optInt("count")} finding(s)"
+                }
+                escVals[0].text = when {
+                    !ran -> "not run"
+                    o.optBoolean("clean") -> "clean"
+                    else -> "flagged"
+                }
                 escVals[1].text = o.optInt("tracerPid", 0).let { if (it > 0) "PID $it" else "none" }
                 escVals[2].text = o.opt("wxRegions")?.toString() ?: "\u2014"
                 escVals[3].text = o.opt("fileless")?.toString() ?: "\u2014"
@@ -261,10 +273,33 @@ class SecurityScreen(ctx: Context) : ScrollView(ctx) {
             out["net"]?.let { o ->
                 if (o.optBoolean("ok", true)) {
                     val dup = o.optJSONArray("duplicateMacs")?.length() ?: 0
+                    /* THE ARP TABLE IS USUALLY UNREADABLE, AND THAT WAS BEING HIDDEN.
+                     *
+                     * NetGuard computes arpReadable and puts it in the JSON with a comment
+                     * saying a silent empty result "reads as 'all good', which is the most
+                     * dangerous thing a security readout can do" — and then this screen, its
+                     * only consumer, dropped the field.
+                     *
+                     * On Android 10+ /proc/net/arp is unreadable to ordinary apps on most
+                     * builds, so this is the DEFAULT state, not an edge case. With it
+                     * unreadable there are no entries, so no duplicate MACs and no gateway MAC:
+                     * both ARP-poisoning detections are structurally dead, and the card
+                     * rendered "nothing anomalous / Devices 0 / Duplicate MACs 0" — pixel
+                     * identical to a LAN that was examined and found clean.
+                     */
+                    if (!o.optBoolean("arpReadable", true)) {
+                        netTag.text = "ARP TABLE UNREADABLE — LAN checks did not run"
+                        netVals[0].text = "n/a"
+                        netVals[1].text = "n/a"
+                        netVals[2].text = "n/a"
+                    } else {
                     netTag.text = if (dup > 0) "$dup duplicate MAC(s)" else "nothing anomalous"
                     netVals[0].text = o.optInt("arpEntries", 0).toString()
                     netVals[1].text = dup.toString()
                     netVals[2].text = o.optString("gatewayMac", "\u2014")
+                    }
+                    // VPN / captive portal / proxy come from the connectivity stack, not the
+                    // ARP table, so they remain valid either way.
                     netVals[3].text = if (o.optBoolean("vpn")) "on" else "off"
                     netVals[4].text = if (o.optBoolean("captivePortal")) "YES" else "no"
                     netVals[5].text = o.optString("httpProxy", "").ifBlank { "none" }

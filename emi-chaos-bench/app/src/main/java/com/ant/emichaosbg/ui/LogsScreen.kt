@@ -167,13 +167,32 @@ class LogsScreen(ctx: Context) : ScrollView(ctx) {
     private fun loadEntries() {
         tag.text = "loading…"
         bg {
-            val raw = log.read(80)
-            val arr = runCatching { JSONArray(raw) }.getOrElse { JSONArray() }
+            val res = runCatching { JSONObject(log.read(80)) }.getOrElse { JSONObject() }
+            val arr = res.optJSONArray("entries") ?: JSONArray()
+            val truncated = res.optBoolean("truncated")
+            val stoppedAt = res.optLong("stoppedAt", -1)
+            val headCount = res.optLong("headCount", -1)
+            val why = res.optString("stoppedBecause")
             post {
                 entries.removeAllViews()
-                if (arr.length() == 0) {
+                // "No findings recorded yet." over a log that would not OPEN is the single most
+                // misleading sentence this screen can print, and it was printing it: read()
+                // swallowed the decrypt failure and returned a short list. An empty log and an
+                // unreadable one now say different things.
+                if (truncated) {
+                    entries.addView(Nx.finding(context, 3,
+                        "READ INCOMPLETE — this is NOT an empty log.\n\n" +
+                        "Records shown: ${arr.length()}" +
+                        (if (stoppedAt >= 0) "   ·   reading stopped at #$stoppedAt" else "") +
+                        (if (headCount >= 0) "   ·   the head counts $headCount" else "") +
+                        (if (why.isNotBlank()) "\n\n$why" else "") +
+                        "\n\nThe records past that point are still on disk. They could not be " +
+                        "authenticated, so they cannot be shown. Press VERIFY for the diagnosis."),
+                        LinearLayout.LayoutParams(-1, -2).apply { topMargin = Nx.dp(context, 6) })
+                }
+                if (arr.length() == 0 && !truncated) {
                     entries.addView(Nx.body(context, "No findings recorded yet."))
-                } else {
+                } else if (arr.length() > 0) {
                     for (i in 0 until arr.length()) {
                         val o = arr.optJSONObject(i) ?: continue
                         entries.addView(row(o), LinearLayout.LayoutParams(-1, -2)

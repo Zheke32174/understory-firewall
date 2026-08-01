@@ -6377,6 +6377,18 @@ const Escalation=(function(){
     try{ last=JSON.parse(force?EMIEscalation.scan():EMIEscalation.cached()); }catch(e){ last=null; }
     if(!last){ set('egState','error'); return; }
     const n=last.count||0;
+    /* NEVER RUN IS NOT CLEAN. The cached() sentinel used to carry clean:true, and this line
+       rendered it as an all-clear — for a check that had made zero observations. It is the
+       ordinary state on launch, because the scan runs on the masking service's timer and that
+       service only starts when the user presses Start. */
+    if(last.ran===false){
+      set('egState','NEVER RUN'); set('egVerdict','not run');
+      set('egTracer','—'); set('egWx','—'); set('egFileless','—'); set('egForeign','—'); set('egSelinux','—');
+      const l0=$('egList'); if(l0) l0.innerHTML='<div class="muted"><b>This check has not run yet — that is not an all-clear.</b> '+
+        'Nothing has been inspected for tracer attachment, W^X pages, fileless execution, injected libraries or hook frameworks. '+
+        'It runs on the masking service’s timer, so start the masker, or press <b>Scan now</b>.</div>';
+      return;
+    }
     set('egState', last.clean?'clean':(n+' finding'+(n===1?'':'s')));
     set('egVerdict', last.clean?'clean':'flagged');
     set('egTracer', last.tracerPid?('PID '+last.tracerPid):(last.tracerPid===0?'none':'—'));

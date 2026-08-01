@@ -214,8 +214,19 @@ class ScanEngine(private val ctx: Context, private val log: SecureLog) {
         val prev = lastRaised[key]
         if (prev != null && now - prev < COALESCE_MS) return
         lastRaised[key] = now
-        try { log.append(sev, msg, badge, "native") ; findings++ } catch (_: Throwable) {}
+        /* COUNT WHAT WAS ACTUALLY STORED. append() RETURNS a Boolean and this discarded it,
+         * incrementing `findings` whether or not the record reached the vault. On the device
+         * whose log stopped accepting readable records, the panel therefore kept counting up
+         * findings that could never be read back — the number on screen and the evidence on
+         * disk diverged silently, which is the one thing a counter-surveillance readout must
+         * not do. Failures are now counted separately and surfaced, so "we found 40 things"
+         * and "we stored 40 things" can be compared. */
+        val stored = try { log.append(sev, msg, badge, "native") } catch (_: Throwable) { false }
+        if (stored) findings++ else notStored++
     }
+
+    /** Findings that were raised but did NOT reach the vault. Surfaced in [snapshot]. */
+    @Volatile private var notStored = 0
 
     // ---------------------------------------------------------------- readout
 
@@ -223,6 +234,11 @@ class ScanEngine(private val ctx: Context, private val log: SecureLog) {
     fun snapshot(): String {
         val o = JSONObject()
         o.put("running", running)
+        if (notStored > 0) {
+            o.put("notStored", notStored)
+            o.put("storeWarning", "$notStored finding(s) were detected but could NOT be written " +
+                "to the encrypted log. What you see here is not fully backed by stored evidence.")
+        }
         o.put("wifiScans", wifiScans)
         o.put("findings", findings)
         o.put("lastScanAt", lastScanAt)

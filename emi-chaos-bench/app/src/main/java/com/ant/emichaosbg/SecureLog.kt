@@ -424,17 +424,60 @@ class SecureLog(private val ctx: Context) {
         }
     }
 
-    /** Newest first, which is the order the UI shows them in. */
+    /**
+     * Newest first, which is the order the UI shows them in.
+     *
+     * A TRUNCATED READ IS REPORTED, NOT SWALLOWED. This caught a decrypt failure into lastError
+     * — a field the Logs screen never reads — and returned however many records it managed. With
+     * an empty or early-failing log that produced a screen saying "No findings recorded yet."
+     * over a vault that had hundreds of records it simply could not authenticate. On a device
+     * whose head counted 830 records and whose reader stopped at 279, that sentence was the
+     * opposite of the truth.
+     *
+     * So read() now returns an OBJECT carrying the records plus how the read ended. Callers that
+     * want the bare array can still take `entries`; callers that render must be able to tell
+     * "nothing was ever recorded" from "the log would not open".
+     */
     fun read(limit: Int): String {
         synchronized(lock) {
             val all = ArrayList<JSONObject>()
-            try { walk { _, o, _ -> all.add(o) } }
-            catch (e: Exception) { lastError = "read stopped early: ${e.javaClass.simpleName}" }
+            var stopped: String? = null
+            var resyncs = 0
+            try {
+                walk(onGap = { _, _ -> resyncs++ }) { _, o, _ -> all.add(o) }
+            } catch (e: Exception) {
+                stopped = "${e.javaClass.simpleName}: ${e.message ?: "no detail"}"
+                lastError = "read stopped early: ${e.javaClass.simpleName}"
+            }
             val out = JSONArray()
             all.asReversed().take(limit.coerceIn(1, 1000)).forEach { out.put(it) }
-            return out.toString()
+            val head = readHead()
+            val o = JSONObject()
+                .put("entries", out)
+                .put("readable", all.size.toLong())
+                .put("headCount", head.count)
+            if (resyncs > 0) o.put("resyncs", resyncs)
+            if (stopped != null) {
+                o.put("truncated", true)
+                o.put("stoppedAt", all.size.toLong())
+                o.put("stoppedBecause", stopped)
+                o.put("note", "Reading stopped after ${all.size} record(s) on an authentication " +
+                    "failure. The rest are still on disk and are NOT shown here — this is not an " +
+                    "empty log.")
+            } else if (head.count > all.size) {
+                o.put("truncated", true)
+                o.put("stoppedAt", all.size.toLong())
+                o.put("note", "The head counts ${head.count} records but only ${all.size} could " +
+                    "be read.")
+            }
+            return o.toString()
         }
     }
+
+    /** Bare array, for the page bridge's existing contract. Prefer [read]. */
+    fun readEntriesOnly(limit: Int): String =
+        runCatching { JSONObject(read(limit)).optJSONArray("entries")?.toString() }
+            .getOrNull() ?: "[]"
 
     /**
      * O(1). This used to call walk{}, which DECRYPTS EVERY RECORD, in order to increment a
@@ -658,8 +701,13 @@ class VaultBridge(ctx: Context) {
         return log.append(sev, msg, badge, "webview")
     }
 
+    /** Unchanged contract for the page: a bare array. Health lives in [readDetailed]. */
     @JavascriptInterface
-    fun read(limit: Int): String = log.read(limit)
+    fun read(limit: Int): String = log.readEntriesOnly(limit)
+
+    /** Records PLUS whether the read was truncated — see SecureLog.read. */
+    @JavascriptInterface
+    fun readDetailed(limit: Int): String = log.read(limit)
 
     @JavascriptInterface
     fun count(): String = JSONObject().put("count", log.count()).toString()
