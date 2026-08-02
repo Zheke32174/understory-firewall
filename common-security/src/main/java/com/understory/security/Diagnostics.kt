@@ -70,7 +70,13 @@ object Diagnostics {
     fun log(tag: String, message: String, level: Level = Level.INFO) {
         val ev = Event(
             timestampMs = System.currentTimeMillis(),
-            elapsedMs = SystemClock.elapsedRealtime(),
+            // Framework call, so it is guarded for the same reason the sink dispatch below is:
+            // logging must never be able to destabilize the thing it is observing. Concretely,
+            // on the JVM unit-test classpath android.jar is stubbed and every method throws
+            // "not mocked" — so an unguarded call here means ANY logic that logs is untestable
+            // off-device, and a diagnostic line becomes the reason a caller crashes. 0 is the
+            // honest reading of "no monotonic clock available".
+            elapsedMs = runCatching { SystemClock.elapsedRealtime() }.getOrDefault(0L),
             tag = tag,
             level = level,
             message = message,
@@ -78,11 +84,14 @@ object Diagnostics {
         events.add(ev)
         // Bound the ring. Removal from front is O(1) on a deque.
         while (events.size > MAX_EVENTS) events.pollFirst()
-        // Mirror to logcat too — useful when adb IS available.
-        when (level) {
-            Level.INFO -> android.util.Log.i("UnderstoryDiag", "[$tag] $message")
-            Level.WARN -> android.util.Log.w("UnderstoryDiag", "[$tag] $message")
-            Level.ERROR -> android.util.Log.e("UnderstoryDiag", "[$tag] $message")
+        // Mirror to logcat too — useful when adb IS available. Guarded for the same reason: the
+        // in-memory ring above is the real record, and it is already written by this point.
+        runCatching {
+            when (level) {
+                Level.INFO -> android.util.Log.i("UnderstoryDiag", "[$tag] $message")
+                Level.WARN -> android.util.Log.w("UnderstoryDiag", "[$tag] $message")
+                Level.ERROR -> android.util.Log.e("UnderstoryDiag", "[$tag] $message")
+            }
         }
         // Dispatch to registered sinks. Sink failures are swallowed —
         // a broken sink must not destabilize logging itself.

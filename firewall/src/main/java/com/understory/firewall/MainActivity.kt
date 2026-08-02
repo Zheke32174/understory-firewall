@@ -15,7 +15,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.core.view.WindowCompat
-import com.understory.security.KeepAliveBackHandler
+import com.understory.security.nav.SuiteNavHost
+import com.understory.security.nav.rememberSuiteNav
 import com.understory.security.SuiteAttestation
 import com.understory.security.Tamper
 import com.understory.security.TestingMode
@@ -191,31 +192,19 @@ private fun FirewallRoot(
     deepLink: androidx.compose.runtime.MutableState<FirewallRoute?> =
         androidx.compose.runtime.mutableStateOf(null),
 ) {
-    // A REAL BACK STACK, not a flat route. Every menu used to call backToMain(), so back from a
-    // sub-sub-menu (e.g. Limits → Diagnostics, or TierOverview → AppFirewall → PolicyControls →
-    // Elevation) jumped all the way to the top instead of up one level — reported directly. The
-    // stack pushes on navigate and pops one on back, so back walks the hierarchy the way the user
-    // descended it. rememberSaveable-backed so it survives rotation/process death.
-    val backStack = rememberSaveable(
-        saver = androidx.compose.runtime.saveable.listSaver(
-            save = { it.toList() },
-            restore = { androidx.compose.runtime.mutableStateListOf<String>().apply { addAll(it) } },
-        ),
-    ) { androidx.compose.runtime.mutableStateListOf(FirewallRoute.Main.name) }
-    val routeName = backStack.last()
-    val route = remember(routeName) { FirewallRoute.valueOf(routeName) }
-    val setRoute: (FirewallRoute) -> Unit = {
-        if (backStack.last() != it.name) {
-            Diagnostics.log("firewall.Root", "push: ${backStack.last()} → ${it.name}")
-            backStack.add(it.name)
-        }
+    // The suite's one navigation primitive (common-security `SuiteNav`). Godwall already had a
+    // real back stack, but it required EVERY route arm below to hand-write
+    // `BackHandler { backToMain() }` — 23 copies, and the defect returns silently the moment a
+    // new screen omits one. SuiteNavHost owns the single handler instead, so omission is no
+    // longer expressible. Same primitive Yojimbo, Genji, Masamune and Chaos Orb navigate through.
+    val nav = rememberSuiteNav(home = FirewallRoute.Main, tag = "firewall.nav")
+    val route = remember(nav.current) {
+        runCatching { FirewallRoute.valueOf(nav.current) }.getOrDefault(FirewallRoute.Main)
     }
-    // "back" now pops ONE level. Name kept as backToMain across the call sites for a small diff;
-    // from a screen opened directly off Main, popping one IS Main, so those cases are unchanged,
-    // while deeper screens correctly step up one. At the root the KeepAliveBackHandler minimises.
-    val backToMain: () -> Unit = {
-        if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
-    }
+    val setRoute: (FirewallRoute) -> Unit = { nav.push(it) }
+    // Kept under the old name so the ~40 call sites below are unchanged: it always meant
+    // "go up one", and now it is literally that.
+    val backToMain: () -> Unit = { nav.back() }
 
     // Consume a one-shot deep-link route (e.g. a Posture Watch notification
     // tap). Navigate once, then clear so a recomposition/config-change can't
@@ -228,81 +217,65 @@ private fun FirewallRoot(
         }
     }
 
+    SuiteNavHost(nav = nav) { _ ->
     when (route) {
         FirewallRoute.Main -> {
-            KeepAliveBackHandler("firewall.Root.Main")
             EgressDashboardScreen(
                 onOpen = setRoute,
             )
         }
         FirewallRoute.TunnelPosture -> {
-            androidx.activity.compose.BackHandler { backToMain() }
             TunnelPostureScreen(onBack = backToMain)
         }
         FirewallRoute.Audit -> {
-            androidx.activity.compose.BackHandler { backToMain() }
             AuditScreen(onBack = backToMain)
         }
         FirewallRoute.Dns -> {
-            androidx.activity.compose.BackHandler { backToMain() }
             DnsHardeningScreen(onBack = backToMain)
         }
         FirewallRoute.Traffic -> {
-            androidx.activity.compose.BackHandler { backToMain() }
             TrafficScreen(onBack = backToMain)
         }
         FirewallRoute.Restrict -> {
-            androidx.activity.compose.BackHandler { backToMain() }
             RestrictScreen(onBack = backToMain)
         }
         FirewallRoute.Canary -> {
-            androidx.activity.compose.BackHandler { backToMain() }
             CanaryScreen(onBack = backToMain)
         }
         FirewallRoute.Posture -> {
-            androidx.activity.compose.BackHandler { backToMain() }
             PostureScreen(onBack = backToMain)
         }
         FirewallRoute.Limits -> {
-            androidx.activity.compose.BackHandler { backToMain() }
             LimitsScreen(onBack = backToMain, onDiagnostics = { setRoute(FirewallRoute.Diagnostics) })
         }
         FirewallRoute.StandaloneHub -> {
-            androidx.activity.compose.BackHandler { backToMain() }
             StandaloneHubScreen(activity = activity, onBack = backToMain)
         }
         FirewallRoute.Diagnostics -> {
-            androidx.activity.compose.BackHandler { backToMain() }
             DiagnosticsScreen(onBack = backToMain)
         }
         FirewallRoute.PostureWatch -> {
-            androidx.activity.compose.BackHandler { backToMain() }
             PostureWatchScreen(onBack = backToMain)
         }
         FirewallRoute.Elevation -> {
-            androidx.activity.compose.BackHandler { backToMain() }
             ElevationScreen(onBack = backToMain)
         }
         FirewallRoute.ArpGuard -> {
-            androidx.activity.compose.BackHandler { backToMain() }
             ArpGuardScreen(
                 onBack = backToMain,
                 onOpenElevation = { setRoute(FirewallRoute.Elevation) },
             )
         }
         FirewallRoute.Rebinding -> {
-            androidx.activity.compose.BackHandler { backToMain() }
             RebindAuditScreen(
                 onBack = backToMain,
                 onOpenEngine = { setRoute(FirewallRoute.StandaloneHub) },
             )
         }
         FirewallRoute.MockLocation -> {
-            androidx.activity.compose.BackHandler { backToMain() }
             MockLocationScreen(onBack = backToMain)
         }
         FirewallRoute.AppFirewall -> {
-            androidx.activity.compose.BackHandler { backToMain() }
             com.understory.firewall.policy.PolicyFirewallScreen(
                 onBack = backToMain,
                 onOpenElevation = { setRoute(FirewallRoute.Elevation) },
@@ -311,22 +284,18 @@ private fun FirewallRoot(
             )
         }
         FirewallRoute.PolicyControls -> {
-            androidx.activity.compose.BackHandler { backToMain() }
             com.understory.firewall.policy.PolicyControlsScreen(
                 onBack = backToMain,
                 onOpenElevation = { setRoute(FirewallRoute.Elevation) },
             )
         }
         FirewallRoute.AppManager -> {
-            androidx.activity.compose.BackHandler { backToMain() }
             AppManagerScreen(onBack = backToMain)
         }
         FirewallRoute.TailscaleChain -> {
-            androidx.activity.compose.BackHandler { backToMain() }
             com.understory.firewall.tailscale.TailscaleChainScreen(onBack = backToMain)
         }
         FirewallRoute.TierOverview -> {
-            androidx.activity.compose.BackHandler { backToMain() }
             TierOverviewScreen(
                 onOpenPolicy = { setRoute(FirewallRoute.AppFirewall) },
                 onOpenTunnel = { setRoute(FirewallRoute.DnsFilterHub) },
@@ -337,7 +306,6 @@ private fun FirewallRoot(
             )
         }
         FirewallRoute.DnsFilterHub -> {
-            androidx.activity.compose.BackHandler { backToMain() }
             com.understory.firewall.tunnel.DnsFilterHubScreen(
                 activity = activity,
                 onBack = backToMain,
@@ -345,15 +313,14 @@ private fun FirewallRoot(
             )
         }
         FirewallRoute.Visibility -> {
-            androidx.activity.compose.BackHandler { backToMain() }
             com.understory.firewall.tunnel.VisibilityScreen(
                 onBack = backToMain,
                 onOpenTunnel = { setRoute(FirewallRoute.DnsFilterHub) },
             )
         }
         FirewallRoute.RootTier -> {
-            androidx.activity.compose.BackHandler { backToMain() }
             com.understory.firewall.root.RootTierScreen(onBack = backToMain)
         }
+    }
     }
 }

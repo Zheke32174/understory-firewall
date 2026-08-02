@@ -20,6 +20,11 @@
     <string name="cd_reveal">Reveal</string>
     <string name="cd_hide">Hide</string>
     <string name="cd_password_hidden">Password hidden</string>
+    <string name="cd_more">More destinations</string>
+
+    <!-- Shared navigation chrome (SuiteNavShell) -->
+    <string name="nav_more">More</string>
+    <string name="nav_more_header">More</string>
 
     <!-- Screen states -->
     <string name="state_loading">Loading…</string>

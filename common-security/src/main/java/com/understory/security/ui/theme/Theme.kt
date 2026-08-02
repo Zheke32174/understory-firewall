@@ -49,6 +49,20 @@ enum class UnderstoryAccent(val seed: Color) {
     FIREWALL(Color(0xFFE7B24A)),     // signal amber
     ANTIVIRUS(Color(0xFFEC6B5E)),    // alert coral
     MANAGER(Color(0xFF2FD3C3)),      // electric teal — control-plane authority
+
+    // ---- The named five. ----
+    //
+    // Yojimbo and Genji BOTH shipped as MANAGER, so on device they were the same
+    // app in two icons — the reported "make menu appearances unique and matching"
+    // failure. Matching comes from the shared neutrals, type scale, spacing and
+    // chrome (SuiteNavShell); unique comes from exactly one thing, the seed. So
+    // each of the five now owns a hue no sibling uses, spaced far enough apart to
+    // be told apart at a glance on the same dark ground.
+    GODWALL(Color(0xFFE7B24A)),      // signal amber — the wall; keeps FIREWALL's hue by lineage
+    YOJIMBO(Color(0xFF2FD3C3)),      // electric teal — the retainer holding the keys
+    GENJI(Color(0xFFB07CF5)),        // arc violet — hooks and rewrites, the trickster tier
+    MASAMUNE(Color(0xFFFF7A45)),     // forge orange — the second OS, hot metal
+    CHAOS_ORB(Color(0xFF4FE0FF)),    // ion cyan — emission, the loudest thing in the suite
 }
 
 /**
