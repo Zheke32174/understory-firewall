@@ -2,6 +2,8 @@ package com.understory.firewall.tunnel
 
 import android.net.VpnService
 import android.os.ParcelFileDescriptor
+import com.understory.firewall.chain.ChainDialer
+import com.understory.firewall.chain.EndpointChain
 import com.understory.net.engine.DnsBlocklist
 import com.understory.net.engine.DnsMessage
 import com.understory.net.engine.VpnPacketParser
@@ -237,14 +239,19 @@ class DnsFilterTun(
             }
         }
 
-        /** Protect a fresh TCP socket, connect to [resolverIp]:[port], wrap in a verified TLS layer. */
+        /**
+         * Open the transport to [resolverIp]:[port] and wrap it in a verified TLS layer.
+         *
+         * The underlying TCP carrier comes from [openCarrier], which routes through the
+         * egress chain when one is configured. TLS is layered ON TOP of the carrier, so
+         * the resolver's certificate is still verified END-TO-END: a proxy hop in the
+         * middle carries only ciphertext and cannot see or forge DNS answers.
+         */
         private fun openVerifiedTls(
             service: VpnService,
             port: Int,
         ): Pair<java.net.Socket, javax.net.ssl.SSLSocket>? {
-            val raw = java.net.Socket()
-            if (!service.protect(raw)) { runCatching { raw.close() }; return null }
-            raw.connect(java.net.InetSocketAddress(resolverIp, port), DNS_TIMEOUT_MS)
+            val raw = openCarrier(service, port) ?: return null
             val factory = javax.net.ssl.SSLSocketFactory.getDefault() as javax.net.ssl.SSLSocketFactory
             val ssl = factory.createSocket(raw, tlsHostname, port, true) as javax.net.ssl.SSLSocket
             ssl.soTimeout = DNS_TIMEOUT_MS
@@ -254,6 +261,41 @@ class DnsFilterTun(
             }
             ssl.startHandshake()                            // throws on verification failure
             return raw to ssl
+        }
+
+        /**
+         * The TCP carrier under the TLS layer — a REAL use of the egress chain.
+         *
+         * When an [EndpointChain] is configured and enabled, the encrypted-DNS upstream is
+         * dialled THROUGH the chain ([ChainDialer]) instead of straight out, so DNS is the
+         * first traffic class Godwall actually routes multi-hop. When no chain is enabled,
+         * this is the plain protected socket as before.
+         *
+         * FAIL CLOSED: if a chain is enabled but cannot be established (an unlinked hop, or
+         * a hop that refused), this returns null and the query goes UNANSWERED rather than
+         * silently egressing direct. Quietly bypassing a chain the user turned on would
+         * misrepresent their coverage, which is the one thing this codebase does not do.
+         *
+         * Note the boundary: only the TCP-based encrypted transports (DoT/DoH) ride the
+         * chain. The plaintext UDP path does not — SOCKS5 UDP ASSOCIATE is not implemented,
+         * and pretending otherwise would be exactly the kind of false claim we refuse.
+         */
+        private fun openCarrier(service: VpnService, port: Int): java.net.Socket? {
+            val hops = if (EndpointChain.isEnabled(service)) EndpointChain.hops(service) else emptyList()
+            if (hops.isEmpty()) {
+                val raw = java.net.Socket()
+                if (!service.protect(raw)) { runCatching { raw.close() }; return null }
+                raw.connect(java.net.InetSocketAddress(resolverIp, port), DNS_TIMEOUT_MS)
+                return raw
+            }
+            val target = resolverIp.hostAddress ?: return null
+            return when (val r = ChainDialer.dial(service, hops, target, port, DNS_TIMEOUT_MS)) {
+                is ChainDialer.Result.Connected -> r.socket
+                is ChainDialer.Result.Unavailable -> {
+                    Diagnostics.error(TAG, "encrypted DNS not sent — chain unavailable: ${r.reason}")
+                    null
+                }
+            }
         }
 
         /** Read exactly [len] bytes or return null if the stream ends early. */

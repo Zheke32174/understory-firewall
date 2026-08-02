@@ -108,4 +108,10 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.material3:material3")
+
+    // JVM unit tests for the pure-logic pieces: the SOCKS5 / HTTP-CONNECT
+    // handshakes and the hop-persistence round trip. All three are framing code
+    // where a silent one-byte or one-field mistake changes where traffic actually
+    // goes, so they carry tests that run off-device.
+    testImplementation("junit:junit:4.13.2")
 }
