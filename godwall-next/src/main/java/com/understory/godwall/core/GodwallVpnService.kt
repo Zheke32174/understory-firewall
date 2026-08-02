@@ -56,6 +56,24 @@ class GodwallVpnService : VpnService() {
     private var attributor: ConnectionAttributor? = null
 
     /**
+     * True while the Go mesh data plane owns the tun on this service.
+     *
+     * This flag is the fix for the concrete architectural defect the salvage pass found in the
+     * predecessor: two data planes each calling `VpnService.Builder.establish()` on the same
+     * service, with nothing reconciling them. Android replaces the previous descriptor when a
+     * second one is established, so in that build the DNS filter's reader was left blocked on a
+     * descriptor that no longer carried traffic — while the UI reported both as running.
+     *
+     * There is one slot, one service, and one tun. When Go mints it, our own DNS pump is torn
+     * down and the state line says so. When Go gives it back, the DNS filter is re-established.
+     * The arbitration is between Godwall's own two data planes; no other app is involved in it.
+     */
+    @Volatile private var meshHoldsTun = false
+
+    /** Set while [teardown] runs, so a mesh callback fired by our own stop does not re-arm. */
+    @Volatile private var tearingDown = false
+
+    /**
      * Link the mesh data plane here, and here only.
      *
      * This call site is the whole reason the mesh works at all. The previous build's equivalent
@@ -206,7 +224,38 @@ class GodwallVpnService : VpnService() {
         return VpnPacketParser.buildIpv4UdpResponse(pkt, payload)
     }
 
+    /**
+     * Go established a tun on this service. Called from the mesh bridge.
+     *
+     * Our DNS pump is stopped rather than left running: its descriptor has just been superseded,
+     * so continuing to read it would be a thread blocked on a dead fd behind a UI claiming the
+     * filter was live.
+     */
+    fun onMeshTunEstablished() {
+        meshHoldsTun = true
+        running.set(false)
+        runCatching { tun?.close() }
+        tun = null
+        worker = null
+        Diagnostics.log(TAG, "mesh node took the tun — DNS filter paused")
+        EngineState.publish(
+            EngineState.Phase.UP,
+            getString(R.string.engine_detail_mesh_holds_tun),
+        )
+    }
+
+    /** Go reported its tunnel up or down. Down hands the tun back to the DNS filter. */
+    fun onMeshTunnelStatus(up: Boolean) {
+        if (up || !meshHoldsTun || tearingDown) return
+        meshHoldsTun = false
+        Diagnostics.log(TAG, "mesh node released the tun — restoring the DNS filter")
+        runCatching { establish() }.onFailure {
+            EngineState.publish(EngineState.Phase.FAILED, "${it.javaClass.simpleName}: ${it.message}")
+        }
+    }
+
     private fun teardown(why: String) {
+        tearingDown = true
         // The node runs inside this slot, so it goes down with it. Leaving Go holding a tun we
         // just closed would leave a half-live tunnel the UI could not describe.
         runCatching { Mesh.stop(applicationContext) }
@@ -215,6 +264,8 @@ class GodwallVpnService : VpnService() {
         tun = null
         worker = null
         attributor = null
+        meshHoldsTun = false
+        tearingDown = false
         EngineState.publish(EngineState.Phase.DOWN, why)
     }
 

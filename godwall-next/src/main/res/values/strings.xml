@@ -189,4 +189,17 @@
     <string name="tamper_reason">This copy of Godwall failed an integrity or attestation check
         and won\'t run. That protects you from a tampered or repackaged build. Reinstall from a
         trusted source.</string>
+    <!-- Verification controls: turning "configured" into "checked". -->
+    <string name="dns_test">Test this upstream now</string>
+    <string name="dns_test_running">Testing…</string>
+    <string name="chain_test">Dial the chain now</string>
+
+    <!-- Privileged per-app tier -->
+    <string name="apps_deny">Deny all networks</string>
+    <string name="apps_deny_unavailable">Deny all networks — unavailable</string>
+    <string name="apps_deny_help">Platform firewall chain: no Wi-Fi, no mobile, no VPN. This is the packet-level denial, and it needs the privileged shell from Yojimbo.</string>
+    <string name="apps_protected">Protected (%1$s) — Godwall will not deny this one, because cutting it could take the device or Godwall itself off the network.</string>
+    <string name="apps_apply_denials">Re-apply network denials</string>
+
+    <string name="engine_detail_mesh_holds_tun">the mesh node holds the tun; DNS filtering is paused while it does</string>
 </resources>
