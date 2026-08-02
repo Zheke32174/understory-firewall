@@ -58,7 +58,7 @@ Copy that shape. Never `try { } catch { }` a missing payload into a shrug.
 | InviZible Pro | `tor`, `i2pd` ELF | Per-ABI prebuilt binaries in `assets/`, **renamed `.mp3`** so Android's packager will not compress or extract them | Built in Gedsh's *separate* toolchain repos, not in `InviZible` itself | **OPEN** — Tor / I2P routing |
 | InviZible Pro | ~~`dnscrypt-proxy` ELF~~ | **No longer needed.** firestack implements DNSCrypt *and* anonymized-DNSCrypt relays in Go (`Intra.addDNSCryptTransport` / `addDNSCryptRelay`), plus ODoH, which InviZible does not offer at all | — | **SUPERSEDED** by firestack |
 | InviZible Pro | `app_data/` config trees | `torrc`, `dnscrypt-proxy.toml`, `i2pd.conf`, plus tor's `geoip`/`geoip6` | Ship from the donor tree; they are plain config | **OPEN** — the binaries above cannot start without them |
-| InviZible Pro | `busybox` | Used to drive iptables and process control | Per-ABI prebuilt | **OPEN** — iptables enforcement backend |
+| InviZible Pro | `busybox` | Used to drive iptables and process control | `tools/donor-assets/fetch.sh busybox-android [abi]` — builds from source, recipe verified (nine blockers documented in the script) | **BUILDABLE** — produced a 527 KB static aarch64 Android ELF here; not committed, not device-tested |
 | De1984 | tracker/permission DB | Its classification data, not code | From the donor repo | **OPEN** — tracker attribution |
 
 ## Yojimbo

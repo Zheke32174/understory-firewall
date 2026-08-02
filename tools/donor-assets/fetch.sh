@@ -142,6 +142,109 @@ fetch_firestack() {
 }
 
 # ---------------------------------------------------------------------------
+# busybox for Android — VERIFIED RECIPE.
+#
+# This is the reference for cross-compiling any autotools/kbuild C project to an
+# Android ABI, and it is the pattern tor and i2pd will follow. It took nine
+# attempts; every blocker below is real and each one fails with a message that
+# points somewhere unhelpful, so they are documented at the call site.
+#
+# THE DIVISION OF LABOUR: the NDK does the cross-compiling. A Gentoo/Portage
+# layer (see underhall) is useful for supplying configure-time dependencies for
+# bigger targets, but it does NOT produce Android binaries itself — native
+# `emerge` builds x86-64 Linux. Do not conflate the two.
+#
+# BLOCKERS, in the order they appear:
+#
+# 1. `make defconfig` enables applets Bionic cannot build. Android's libc is not
+#    glibc: no <shadow.h>, no <sys/kd.h>, no gethostid(), no mntent (addmntent).
+#    Start from `make allnoconfig` and enable ONLY the applets needed — which is
+#    also what a purpose-built payload should ship.
+# 2. CONFIG_FEATURE_SHADOWPASSWDS=y pulls <shadow.h> even with USE_BB_PWD_GRP
+#    off; the include is guarded by SHADOWPASSWDS && !USE_BB_SHADOW.
+# 3. NDK r27 REMOVED the `aarch64-linux-android-ar` binutils wrappers. The build
+#    dies with "aarch64-linux-android-ar: not found" long after compiling fine.
+#    Pass AR/NM/STRIP/RANLIB/OBJCOPY as the llvm-* tools explicitly.
+# 4. Bionic has provided strchrnul() since API 24, in libc.a's
+#    static_function_dispatch.S, so busybox's own fallback is a DUPLICATE SYMBOL
+#    at static-link time. Setting -DHAVE_STRCHRNUL through CONFIG_EXTRA_CFLAGS
+#    reaches the link line but NOT libbb/platform.c's translation unit, so the
+#    guard in that file has to be widened. Verified by reading the linker's own
+#    "defined at ... in archive .../libc.a" output rather than guessing.
+#
+# Result: a 527 KB statically linked aarch64 Android ELF with no dynamic section.
+# NOT executed on a device from here — the artifact is verified, its runtime
+# behaviour is not.
+# ---------------------------------------------------------------------------
+fetch_busybox_android() {
+  need make
+  local abi="${1:-arm64-v8a}"
+  local ver="${BUSYBOX_VERSION:-1.36.1}"
+  local ndk="${ANDROID_NDK_HOME:-/root/android-sdk/ndk/27.0.12077973}"
+  local tc="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
+  local api="${ANDROID_API:-26}"
+
+  local triple
+  case "$abi" in
+    arm64-v8a)   triple=aarch64-linux-android ;;
+    armeabi-v7a) triple=armv7a-linux-androideabi ;;
+    x86_64)      triple=x86_64-linux-android ;;
+    x86)         triple=i686-linux-android ;;
+    *) die "unknown abi: $abi" ;;
+  esac
+  [ -x "$tc/${triple}${api}-clang" ] || die "no NDK clang at $tc/${triple}${api}-clang"
+
+  local src="$STAGE/busybox-$ver"
+  mkdir -p "$STAGE"
+  if [ ! -d "$src" ]; then
+    log "fetching busybox $ver"
+    ( cd "$STAGE" && curl -sSL --retry 4 --retry-all-errors \
+        -o busybox.tar.bz2 "https://busybox.net/downloads/busybox-$ver.tar.bz2" \
+      && tar xf busybox.tar.bz2 && rm -f busybox.tar.bz2 )
+  fi
+
+  ( cd "$src"
+    log "configuring a minimal applet set (blocker 1)"
+    make allnoconfig >/dev/null
+    for s in STATIC SH_IS_ASH ASH ASH_INTERNAL_GLOB FEATURE_SH_STANDALONE \
+             PS KILL KILLALL PIDOF SLEEP ID CHMOD CHOWN MKDIR RM MV CP LN LS CAT \
+             ECHO TEST TRUE FALSE GREP SED AWK CUT TR HEAD TAIL WC SORT UNIQ \
+             XARGS FIND WHICH BASENAME DIRNAME READLINK REALPATH DMESG PRINTF \
+             TOUCH STAT DU SYNC SETSID NOHUP TIMEOUT ENV; do
+      sed -i "s/^# CONFIG_$s is not set/CONFIG_$s=y/" .config
+    done
+    # blocker 2, plus the applets Bionic cannot provide headers for.
+    for s in FEATURE_SHADOWPASSWDS FEATURE_UTMP FEATURE_WTMP TC MOUNT UMOUNT DF; do
+      sed -i "s/^CONFIG_$s=y/# CONFIG_$s is not set/" .config
+    done
+    yes "" | make oldconfig >/dev/null 2>&1
+
+    # blocker 4 — widen the guard in the file that actually compiles it.
+    if ! grep -q '__ANDROID__' libbb/platform.c; then
+      log "patching libbb/platform.c for Bionic's strchrnul (blocker 4)"
+      perl -0pi -e 's/#ifndef HAVE_STRCHRNUL\nchar\* FAST_FUNC strchrnul/#if !defined(HAVE_STRCHRNUL) \&\& !defined(__ANDROID__)\nchar* FAST_FUNC strchrnul/' libbb/platform.c
+    fi
+
+    log "building busybox for $abi (blocker 3: llvm-* binutils, not the removed wrappers)"
+    PATH="$tc:$PATH" make -j"$(nproc)" \
+      CROSS_COMPILE="${triple}-" CC="${triple}${api}-clang" HOSTCC=cc \
+      AR=llvm-ar NM=llvm-nm STRIP=llvm-strip RANLIB=llvm-ranlib OBJCOPY=llvm-objcopy
+  ) || die "busybox build failed — see the log above"
+
+  # jniLibs rather than assets: the platform extracts these and marks them
+  # executable for us, which is cleaner than InviZible's rename-to-.mp3 trick
+  # (that exists only to stop the packager compressing an ELF in assets/).
+  local dest="$REPO_ROOT/godwall-next/src/main/jniLibs/$abi"
+  mkdir -p "$dest"
+  cp "$src/busybox" "$dest/libbusybox.so"
+
+  provenance "busybox $ver ($abi, static)" \
+    "busybox.net (built from source with the NDK)" \
+    "GPL-2.0" \
+    "godwall-next/src/main/jniLibs/$abi/libbusybox.so"
+}
+
+# ---------------------------------------------------------------------------
 # InviZible Pro payloads — tor / dnscrypt-proxy / i2pd, plus their configs.
 #
 # These are NOT built inside the InviZible repo. Gedsh maintains separate
@@ -300,6 +403,7 @@ Payloads (see docs/DONOR-ASSETS.md for what each one is):
 
   libtailscale        Godwall mesh data plane          builds from source
   firestack           RethinkDNS tun2socks             builds from source
+  busybox-android     iptables/process driver          builds from source (VERIFIED)
   invizible           tor/dnscrypt/i2pd + configs      configs auto, binaries manual
   lsposed             Genji runtime hook engine        manual build
   termux-bootstrap    (documented boundary, not fetched)
@@ -313,6 +417,7 @@ case "${1:-list}" in
   list)               list ;;
   verify)             verify ;;
   libtailscale)       fetch_libtailscale ;;
+  busybox-android)    fetch_busybox_android "${2:-arm64-v8a}" ;;
   firestack)          fetch_firestack ;;
   invizible)          fetch_invizible ;;
   lsposed)            fetch_lsposed ;;
