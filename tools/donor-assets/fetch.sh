@@ -245,6 +245,257 @@ fetch_busybox_android() {
 }
 
 # ---------------------------------------------------------------------------
+# Shared cross prefix — zlib + OpenSSL for aarch64 Android. VERIFIED.
+#
+# Both tor and i2pd link the SAME static zlib and OpenSSL, so they are built
+# once into $STAGE/prefix and reused. Splitting this out is not tidiness: a
+# second OpenSSL cross-build is ~8 minutes and ~200 MB of objects on a disk
+# that runs at 86% here, and building it twice risks the two payloads linking
+# subtly different crypto.
+#
+# BLOCKERS, both real:
+#
+# 1. zlib.net serves an HTML courtesy page for the tarball URL under some
+#    egress paths, not the gzip — `tar` then dies on "not in gzip format"
+#    pointing at a file that downloaded "fine". Pull zlib from the GitHub
+#    release mirror (madler/zlib), whose bytes are the tarball.
+# 2. OpenSSL's Android target is `android-arm64` with -D__ANDROID_API__ passed
+#    as a Configure define, NOT via CFLAGS. Build `build_libs` + `install_dev`
+#    only — the apps and man pages are dead weight and blow the disk budget.
+#    It installs into $PREFIX/lib (not lib64) here; callers glob lib* anyway.
+# ---------------------------------------------------------------------------
+_cross_env() {
+  # Emits the NDK cross toolchain env for aarch64. `eval "$(_cross_env)"`.
+  local ndk="${ANDROID_NDK_HOME:-/root/android-sdk/ndk/27.0.12077973}"
+  local tc="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
+  local api="${ANDROID_API:-26}"
+  [ -x "$tc/aarch64-linux-android${api}-clang" ] || die "no NDK clang at $tc (set ANDROID_NDK_HOME to an r27+ NDK)"
+  cat <<EOF
+export NDK='$ndk' TC='$tc' API='$api' TARGET=aarch64-linux-android
+export PATH="$tc:\$PATH"
+export CC=aarch64-linux-android${api}-clang CXX=aarch64-linux-android${api}-clang++
+export AR=llvm-ar RANLIB=llvm-ranlib STRIP=llvm-strip NM=llvm-nm
+EOF
+}
+
+_build_cross_prefix() {
+  need curl; need make; need tar
+  local prefix="$STAGE/prefix"
+  if [ -f "$prefix/lib/libcrypto.a" ] && [ -f "$prefix/lib/libz.a" ]; then
+    log "cross prefix already built at $prefix (zlib + openssl)"; return 0
+  fi
+  mkdir -p "$STAGE"
+  eval "$(_cross_env)"
+
+  log "building zlib 1.3.1 (blocker 1: GitHub mirror, not zlib.net)"
+  ( cd "$STAGE"
+    curl -sSL --retry 4 --retry-all-errors -o zlib.tar.gz \
+      https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz
+    tar xf zlib.tar.gz && rm -f zlib.tar.gz
+    cd zlib-1.3.1
+    CHOST="$TARGET" ./configure --prefix="$prefix" --static >/dev/null
+    make -j"$(nproc)" >/dev/null && make install >/dev/null )
+  [ -f "$prefix/lib/libz.a" ] || die "zlib build produced no libz.a"
+
+  log "building OpenSSL 3.3.2 static (blocker 2: android-arm64 target, libs only)"
+  ( cd "$STAGE"
+    curl -sSL --retry 4 -o openssl.tar.gz \
+      https://github.com/openssl/openssl/releases/download/openssl-3.3.2/openssl-3.3.2.tar.gz
+    tar xf openssl.tar.gz && rm -f openssl.tar.gz
+    cd openssl-3.3.2
+    ./Configure android-arm64 -D__ANDROID_API__="$API" no-shared no-tests no-ui-console \
+      --prefix="$prefix" --openssldir="$prefix/ssl" >/dev/null
+    make -j"$(nproc)" build_libs >/dev/null
+    make install_dev >/dev/null )
+  [ -f "$prefix/lib/libcrypto.a" ] || die "openssl build produced no libcrypto.a"
+
+  # Reclaim the build trees; the prefix is all tor/i2pd need downstream.
+  rm -rf "$STAGE/zlib-1.3.1" "$STAGE/openssl-3.3.2"
+  log "cross prefix ready: $prefix (libz.a, libssl.a, libcrypto.a)"
+}
+
+# ---------------------------------------------------------------------------
+# tor for Android — VERIFIED RECIPE. Produces a static aarch64 Android ELF.
+#
+# The binary InviZible ships as assets/tor.mp3. Built here from upstream source
+# against the shared cross prefix (zlib + OpenSSL) plus a static libevent.
+#
+# BLOCKERS, in order, each documented because each fails pointing elsewhere:
+#
+# 1. libevent must be cross-configured with --host and pointed at the OpenSSL
+#    prefix via CPPFLAGS/LDFLAGS/PKG_CONFIG_PATH, static-only. Miss this and
+#    tor's configure "cannot find libevent" long after libevent "installed".
+# 2. tor's configure probes getentropy() by RUNNING a test — impossible when
+#    cross-compiling, so it guesses wrong and the link fails on a missing
+#    symbol. Force ac_cv_func_getentropy=no; Bionic has getrandom underneath.
+# 3. The NDK's cross tools are not prefixed with the host triple, so tor's
+#    tool-name sanity check aborts configure. --disable-tool-name-check.
+# 4. THE LINK ONE. OpenSSL's dso_dlfcn.o references dlopen/dlsym; Bionic keeps
+#    those in libdl, separate from libc. tor's link line omits -ldl and dies
+#    with "undefined reference to dlfcn_bind_func" AFTER compiling everything.
+#    Re-run make with LIBS="-ldl" to append it to the final link only.
+#
+# Result: a ~20 MB static aarch64 ELF (no INTERP, no dynamic section) — so it
+# needs NO ELF repatching and runs under any uid once marked +x. Verified by
+# readelf; NOT executed on a device from here.
+# ---------------------------------------------------------------------------
+fetch_tor_android() {
+  need curl; need make; need tar
+  local ver="${TOR_VERSION:-0.4.8.13}"
+  local prefix="$STAGE/prefix"
+  _build_cross_prefix
+  eval "$(_cross_env)"
+
+  log "building static libevent 2.1.12 against the OpenSSL prefix (blocker 1)"
+  ( cd "$STAGE"
+    [ -d libevent-2.1.12-stable ] || {
+      curl -sSL --retry 4 -o libevent.tar.gz \
+        https://github.com/libevent/libevent/releases/download/release-2.1.12-stable/libevent-2.1.12-stable.tar.gz
+      tar xf libevent.tar.gz && rm -f libevent.tar.gz; }
+    cd libevent-2.1.12-stable
+    ./configure --host="$TARGET" --prefix="$prefix" \
+      --disable-shared --enable-static --disable-samples --disable-libevent-regress \
+      CPPFLAGS="-I$prefix/include" LDFLAGS="-L$prefix/lib" \
+      PKG_CONFIG_PATH="$prefix/lib/pkgconfig" >/dev/null
+    make -j"$(nproc)" >/dev/null && make install >/dev/null )
+  [ -f "$prefix/lib/libevent.a" ] || die "libevent build produced no libevent.a"
+
+  log "building tor $ver (blockers 2,3: getentropy + tool-name-check)"
+  ( cd "$STAGE"
+    curl -sSL --retry 4 -o tor.tar.gz "https://dist.torproject.org/tor-$ver.tar.gz"
+    tar xf tor.tar.gz && rm -f tor.tar.gz
+    cd "tor-$ver"
+    ./configure --host="$TARGET" --prefix="$prefix" --enable-static-tor \
+      --disable-asciidoc --disable-systemd --disable-manpage --disable-html-manual \
+      --disable-unittests --disable-tool-name-check --disable-module-relay \
+      --with-openssl-dir="$prefix" --with-libevent-dir="$prefix" --with-zlib-dir="$prefix" \
+      --enable-static-openssl --enable-static-libevent --enable-static-zlib \
+      CPPFLAGS="-I$prefix/include" LDFLAGS="-L$prefix/lib" \
+      PKG_CONFIG_LIBDIR="$prefix/lib/pkgconfig" ac_cv_func_getentropy=no >/dev/null
+    # blocker 4: append -ldl to the final link. First pass may fail at link;
+    # LIBS="-ldl" makes the same make invocation succeed.
+    make -j"$(nproc)" LIBS="-ldl" >/dev/null )
+  local built="$STAGE/tor-$ver/src/app/tor"
+  [ -f "$built" ] || die "tor build reported success but produced no $built"
+
+  local abi="arm64-v8a"
+  local dest="$REPO_ROOT/godwall-next/src/main/jniLibs/$abi"
+  mkdir -p "$dest"
+  "$TC/llvm-strip" -o "$dest/libtor.so" "$built"
+
+  provenance "tor $ver ($abi, static)" \
+    "dist.torproject.org (built from source with the NDK)" \
+    "BSD-3-Clause" \
+    "godwall-next/src/main/jniLibs/$abi/libtor.so"
+}
+
+# ---------------------------------------------------------------------------
+# i2pd for Android — VERIFIED RECIPE. Produces a static aarch64 Android ELF.
+#
+# The binary InviZible ships as assets/i2pd.mp3. Built from PurpleI2P/i2pd
+# against the shared cross prefix (OpenSSL + zlib) and a cross-built Boost.
+#
+# BLOCKERS, in order:
+#
+# 1. Boost must be built for Android FIRST — filesystem, program_options,
+#    atomic, system. bootstrap.sh builds b2 for the host; a user-config.jam
+#    then points b2 at the NDK clang++ with llvm-ar/llvm-ranlib and -fPIC.
+#    link=static runtime-link=shared variant=release, target-os=android.
+# 2. i2pd's CMake finds Boost through its cmake package config, and under a
+#    cross toolchain CMake's find_root_path logic hides host-installed configs.
+#    So Boost must be `install`ed (not just staged) to get the cmake configs,
+#    and each component config dir passed explicitly (-Dboost_filesystem_DIR
+#    ... plus -DBoost_DIR) with -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH.
+#    Auto-discovery alone fails with "Could NOT find Boost" mid-configure.
+# 3. Build the daemon target: -DWITH_STATIC=ON -DWITH_BINARY=ON. OpenSSL/zlib
+#    come from the shared prefix via explicit -DOPENSSL_*/-DZLIB_* paths.
+#
+# Result: a ~17.5 MB stripped static aarch64 ELF (EXEC, no dynamic section,
+# `main` exported, ~53k i2p symbols) — no repatching, runs under any uid once
+# marked +x. Verified by readelf/nm; NOT executed on a device from here.
+# ---------------------------------------------------------------------------
+fetch_i2pd_android() {
+  need curl; need git; need cmake; need ninja; need tar
+  local prefix="$STAGE/prefix"
+  local boostprefix="$STAGE/boost-android"
+  local boostver="${BOOST_VERSION:-1.85.0}"
+  local boostund="boost_${boostver//./_}"
+  _build_cross_prefix
+  eval "$(_cross_env)"
+
+  if [ ! -d "$boostprefix/lib/cmake" ]; then
+    log "cross-building Boost $boostver for Android (blocker 1)"
+    ( cd "$STAGE"
+      [ -d "$boostund" ] || {
+        curl -sSL --retry 4 -o boost.tar.gz \
+          "https://archives.boost.io/release/$boostver/source/$boostund.tar.gz"
+        tar xf boost.tar.gz && rm -f boost.tar.gz; }
+      cd "$boostund"
+      ./bootstrap.sh --with-libraries=filesystem,program_options,atomic,system >/dev/null
+      cat > user-config.jam <<EOF
+using clang : android
+  : $TC/aarch64-linux-android${API}-clang++
+  : <archiver>$TC/llvm-ar
+    <ranlib>$TC/llvm-ranlib
+    <compileflags>-fPIC
+  ;
+EOF
+      ./b2 -j"$(nproc)" --user-config=user-config.jam \
+        toolset=clang-android target-os=android \
+        link=static runtime-link=shared variant=release \
+        --with-filesystem --with-program_options --with-atomic --with-system \
+        --prefix="$boostprefix" install >/dev/null )
+    [ -d "$boostprefix/lib/cmake" ] || die "Boost install produced no cmake configs"
+    rm -rf "$STAGE/$boostund"
+  else
+    log "Boost already installed at $boostprefix"
+  fi
+
+  local src="$STAGE/i2pd-src"
+  [ -d "$src" ] || {
+    log "cloning PurpleI2P/i2pd"
+    git clone --depth 1 https://github.com/PurpleI2P/i2pd "$src"; }
+
+  log "configuring i2pd (blocker 2: explicit per-component Boost cmake dirs)"
+  local bp="$boostprefix/lib/cmake"
+  rm -rf "$STAGE/i2pd-build"; mkdir -p "$STAGE/i2pd-build"
+  ( cd "$STAGE/i2pd-build"
+    cmake -G Ninja \
+      -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
+      -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM="android-$API" \
+      -DWITH_STATIC=ON -DWITH_BINARY=ON -DWITH_LIBRARY=ON \
+      -DCMAKE_CXX_FLAGS="-DANDROID_BINARY" \
+      -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH \
+      -DBoost_DIR="$bp/Boost-$boostver" \
+      -Dboost_headers_DIR="$bp/boost_headers-$boostver" \
+      -Dboost_filesystem_DIR="$bp/boost_filesystem-$boostver" \
+      -Dboost_program_options_DIR="$bp/boost_program_options-$boostver" \
+      -Dboost_atomic_DIR="$bp/boost_atomic-$boostver" \
+      -Dboost_system_DIR="$bp/boost_system-$boostver" \
+      -DCMAKE_PREFIX_PATH="$boostprefix;$prefix" \
+      -DOPENSSL_ROOT_DIR="$prefix" -DOPENSSL_INCLUDE_DIR="$prefix/include" \
+      -DOPENSSL_SSL_LIBRARY="$prefix/lib/libssl.a" \
+      -DOPENSSL_CRYPTO_LIBRARY="$prefix/lib/libcrypto.a" \
+      -DZLIB_ROOT="$prefix" -DZLIB_INCLUDE_DIR="$prefix/include" \
+      -DZLIB_LIBRARY="$prefix/lib/libz.a" \
+      "$src/build" >/dev/null
+    log "building i2pd (blocker 3: static daemon target — 94 objects, a few minutes)"
+    ninja >/dev/null )
+  local built="$STAGE/i2pd-build/i2pd"
+  [ -f "$built" ] || die "i2pd build reported success but produced no $built"
+
+  local abi="arm64-v8a"
+  local dest="$REPO_ROOT/godwall-next/src/main/jniLibs/$abi"
+  mkdir -p "$dest"
+  "$TC/llvm-strip" -o "$dest/libi2pd.so" "$built"
+
+  provenance "i2pd ($abi, static)" \
+    "github.com/PurpleI2P/i2pd (built from source with the NDK)" \
+    "BSD-3-Clause" \
+    "godwall-next/src/main/jniLibs/$abi/libi2pd.so"
+}
+
+# ---------------------------------------------------------------------------
 # InviZible Pro payloads — tor / dnscrypt-proxy / i2pd, plus their configs.
 #
 # These are NOT built inside the InviZible repo. Gedsh maintains separate
@@ -276,11 +527,15 @@ fetch_invizible() {
 
   The tor / dnscrypt-proxy / i2pd binaries are NOT fetched automatically.
 
-  They are per-ABI ELF executables built in Gedsh's separate toolchain repos,
-  and pulling prebuilt native binaries into a security build without a human
-  deciding to is exactly the thing this suite exists to argue against. Either:
+  They are per-ABI ELF executables, and pulling prebuilt native binaries into a
+  security build without a human deciding to is exactly the thing this suite
+  exists to argue against. Either:
 
-    a) build them from the upstream toolchain repos yourself, or
+    a) build tor and i2pd from upstream source with the NDK — VERIFIED recipes:
+         tools/donor-assets/fetch.sh tor-android
+         tools/donor-assets/fetch.sh i2pd-android
+       Each produces a static aarch64 Android ELF and installs it as
+       libtor.so / libi2pd.so below. (dnscrypt-proxy is Go, not covered here.)
     b) extract them from a release InviZible APK you have verified
        (assets/*.mp3 — they are ELF despite the extension), or
     c) leave them out: Godwall's DNS filter, encrypted upstream, per-app policy,
@@ -288,9 +543,9 @@ fetch_invizible() {
        I2P routing stays reported-absent.
 
   Place per-ABI binaries under:
-    godwall-next/src/main/jniLibs/<abi>/libtor.so
+    godwall-next/src/main/jniLibs/<abi>/libtor.so           (fetch.sh tor-android)
     godwall-next/src/main/jniLibs/<abi>/libdnscrypt-proxy.so
-    godwall-next/src/main/jniLibs/<abi>/libi2pd.so
+    godwall-next/src/main/jniLibs/<abi>/libi2pd.so          (fetch.sh i2pd-android)
 
   (jniLibs rather than assets: the platform extracts and marks those
   executable for us, which is cleaner than the .mp3 trick.)
@@ -389,6 +644,8 @@ verify() {
   check libtailscale "$REPO_ROOT/godwall-next/libs/libtailscale.aar"
   check firestack    "$REPO_ROOT/godwall-next/libs/firestack.aar"
   check invizible    "$REPO_ROOT/godwall-next/src/main/assets/invizible"
+  check tor          "$REPO_ROOT/godwall-next/src/main/jniLibs/arm64-v8a/libtor.so"
+  check i2pd         "$REPO_ROOT/godwall-next/src/main/jniLibs/arm64-v8a/libi2pd.so"
   check terminal     "$REPO_ROOT/../tracendroid/terminal/build.gradle.kts"
   echo
   log "$ok present, $missing absent"
@@ -404,6 +661,8 @@ Payloads (see docs/DONOR-ASSETS.md for what each one is):
   libtailscale        Godwall mesh data plane          builds from source
   firestack           RethinkDNS tun2socks             builds from source
   busybox-android     iptables/process driver          builds from source (VERIFIED)
+  tor-android         Tor router (InviZible tor.mp3)    builds from source (VERIFIED)
+  i2pd-android        I2P router (InviZible i2pd.mp3)   builds from source (VERIFIED)
   invizible           tor/dnscrypt/i2pd + configs      configs auto, binaries manual
   lsposed             Genji runtime hook engine        manual build
   termux-bootstrap    (documented boundary, not fetched)
@@ -418,6 +677,8 @@ case "${1:-list}" in
   verify)             verify ;;
   libtailscale)       fetch_libtailscale ;;
   busybox-android)    fetch_busybox_android "${2:-arm64-v8a}" ;;
+  tor-android)        fetch_tor_android ;;
+  i2pd-android)       fetch_i2pd_android ;;
   firestack)          fetch_firestack ;;
   invizible)          fetch_invizible ;;
   lsposed)            fetch_lsposed ;;
