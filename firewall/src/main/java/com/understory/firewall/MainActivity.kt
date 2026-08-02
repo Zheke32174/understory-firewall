@@ -167,7 +167,7 @@ class MainActivity : ComponentActivity() {
 enum class FirewallRoute {
     Main, TunnelPosture, Audit, Dns, Traffic, Restrict, Canary, Posture, Limits,
     StandaloneHub, Diagnostics, PostureWatch, Elevation,
-    ArpGuard, Rebinding, MockLocation, AppFirewall, PolicyControls, AppManager,
+    ArpGuard, Rebinding, MockLocation, AppFirewall, PolicyControls, AppManager, TailscaleChain,
     // S4/S6/S7/S8 + coherence pass:
     TierOverview, DnsFilterHub, Visibility, RootTier,
 }
@@ -320,6 +320,10 @@ private fun FirewallRoot(
         FirewallRoute.AppManager -> {
             androidx.activity.compose.BackHandler { backToMain() }
             AppManagerScreen(onBack = backToMain)
+        }
+        FirewallRoute.TailscaleChain -> {
+            androidx.activity.compose.BackHandler { backToMain() }
+            com.understory.firewall.tailscale.TailscaleChainScreen(onBack = backToMain)
         }
         FirewallRoute.TierOverview -> {
             androidx.activity.compose.BackHandler { backToMain() }
