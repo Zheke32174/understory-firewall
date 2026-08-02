@@ -64,6 +64,11 @@ class ScanEngine(private val ctx: Context, private val log: SecureLog) {
     private val lastRaised = HashMap<String, Long>()
     private val COALESCE_MS = 120_000L
 
+    // Serialises the scan-and-store path. The background [tick] runs on the engine's own
+    // HandlerThread; a user-pressed [scanNow] runs on a caller thread (Dispatchers.IO). Both
+    // mutate lastWifi, the counters and the per-SSID/BSSID maps, so they must not run at once.
+    private val scanLock = Any()
+
     fun start() {
         if (running) return
         running = true
@@ -100,8 +105,38 @@ class ScanEngine(private val ctx: Context, private val log: SecureLog) {
     }
 
     private fun tick() {
+        synchronized(scanLock) { runScan("background", "ScanEngine") }
+    }
+
+    /**
+     * A USER-PRESSED scan, at CRITICAL priority — the "Scan now" button's one job.
+     *
+     * WHY THIS EXISTS. The only other caller that spins the radio is the background [tick] on
+     * its own cadence. Without this, "Scan now" had no real path to the radio at all: it could
+     * at most re-render the last background sweep's cache while a reserved budget slot was
+     * consumed, so the button asserted a fresh look that never happened. This runs the SAME
+     * gated path as [tick] — start through [WifiScanBudget], then read the platform cache
+     * either way, store, count and analyse — but asks with priority="critical", so it may use
+     * the two slots the budget holds back for explicit user scans that a background sweep may
+     * not. A denial is not a lie: only the START is throttled, so cached results still return,
+     * and [snapshot]'s "why" line reports the real state afterwards.
+     *
+     * Runs on the CALLING thread (the screen dispatches it off the main thread) and is
+     * serialised against [tick] through [scanLock].
+     */
+    fun scanNow(): String {
+        synchronized(scanLock) { runScan("critical", "user") }
+        return snapshot()
+    }
+
+    /**
+     * The one scan-and-store body, shared by the background [tick] and the user-pressed
+     * [scanNow]; the only difference is the budget priority/caller it asks with. Callers hold
+     * [scanLock].
+     */
+    private fun runScan(priority: String, caller: String) {
         try {
-            val list = wifiScanNative()
+            val list = wifiScanNative(priority, caller)
             lastWifi = list
             wifiScans++
             lastScanAt = System.currentTimeMillis()
@@ -114,16 +149,18 @@ class ScanEngine(private val ctx: Context, private val log: SecureLog) {
 
     // ---------------------------------------------------------------- Wi-Fi
 
-    private fun wifiScanNative(): JSONArray {
+    private fun wifiScanNative(priority: String, caller: String): JSONArray {
         val arr = JSONArray()
         val wm = ctx.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
             ?: return arr
         if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION)
             != PackageManager.PERMISSION_GRANTED) return arr
-        // Through the shared gate. This engine is a BACKGROUND sweep, so it never takes the
-        // slots reserved for wardriving and explicit user scans — that reservation was being
-        // silently consumed before the gate existed.
-        if (WifiScanBudget.tryStart("background", "ScanEngine")) {
+        // Through the shared gate. The background [tick] passes priority="background" so it
+        // never takes the slots reserved for wardriving and explicit user scans; a user-pressed
+        // [scanNow] passes "critical" and may use them. The reserved slots were being silently
+        // consumed before the gate existed, and a reserved slot is now taken ONLY when an actual
+        // startScan() is about to be issued — never for a scan that does not happen.
+        if (WifiScanBudget.tryStart(priority, caller)) {
             try { wm.startScan() } catch (_: Exception) { /* platform refused; cache below */ }
         }
         // Cached results are read either way: only the START is throttled, so a denial costs

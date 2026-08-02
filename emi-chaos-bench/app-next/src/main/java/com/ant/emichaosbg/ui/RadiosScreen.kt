@@ -47,6 +47,7 @@ private fun WifiCard() {
     val snap = rememberProbe { Sentinel.wifi.snapshot() }
     val nets = rememberProbe { "{\"nets\":" + Sentinel.wifi.lastWifiJson() + "}" }
     val budget = rememberProbe { WifiScanBudget.state() }
+    val act = rememberAction()
 
     OrbCard {
         val o = snap.json
@@ -111,16 +112,23 @@ private fun WifiCard() {
             Modifier.fillMaxWidth().padding(top = OrbTheme.spacing.md),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            RunButton("Scan now", snap.busy) {
-                // A user-initiated scan takes a reserved slot; the background sweep cannot.
-                WifiScanBudget.tryStart("critical", "user")
-                snap.refresh(); nets.refresh(); budget.refresh()
+            RunButton("Scan now", act.busy) {
+                // A REAL user-priority sweep. scanNow() runs the gated startScan() at
+                // critical priority off the main thread — so a reserved slot is spent only
+                // when the radio is actually asked — then the read-only probes re-render its
+                // result once it returns.
+                act.go {
+                    Sentinel.wifi.scanNow()
+                    snap.refresh(); nets.refresh(); budget.refresh()
+                    "fresh sweep requested"
+                }
             }
             SecondaryButton(if (Sentinel.wifi.isRunning()) "Stop sweep" else "Start sweep") {
                 if (Sentinel.wifi.isRunning()) Sentinel.wifi.stop() else Sentinel.wifi.start()
                 snap.refresh()
             }
         }
+        act.result?.let { Note("Radio: $it") }
     }
 }
 
@@ -238,7 +246,12 @@ private fun BleCard() {
 
 @Composable
 private fun CellCard() {
-    val probe = rememberProbe { Sentinel.cell.cached() }
+    // "Check now" must MEASURE, not re-read. cell.scan() does a live TelephonyManager.allCellInfo
+    // read (receive-only) and runs the downgrade / IMSI-catcher heuristics on it; cell.cached()
+    // only returned the last timer-driven scan's stored output, so the button asserted a fresh
+    // look that never happened. Probe runs this on Dispatchers.IO, so the @Synchronized live read
+    // never blocks the frame, and probe.refresh() from the button re-measures on demand.
+    val probe = rememberProbe { Sentinel.cell.scan() }
 
     OrbCard {
         val o = probe.json
@@ -315,12 +328,14 @@ private fun LanCard() {
                 !ran -> "not run"
                 o!!.optBoolean("captivePortal") -> "portal"
                 dupes > 0 -> "$dupes duplicate"
+                !o.optBoolean("arpReadable") -> "arp unreadable"
                 else -> "clean"
             },
             when {
                 !ran -> Level.UNKNOWN
                 o!!.optBoolean("captivePortal") -> Level.ALERT
                 dupes > 0 -> Level.WARN
+                !o.optBoolean("arpReadable") -> Level.UNKNOWN
                 else -> Level.OK
             },
         )
