@@ -18,8 +18,11 @@ plugins {
  * See docs/TAILSCALE-LINKING.md for how to obtain or build the aar and what the
  * backend must implement.
  */
-val libtailscaleAar: File = file("libs/libtailscale.aar")
-val hasLibtailscale: Boolean = libtailscaleAar.exists()
+val libtailscaleAar: File = (
+    (project.findProperty("libtailscale.aar") as String?)
+        ?: System.getenv("LIBTAILSCALE_AAR")
+    )?.let(::File) ?: file("libs/libtailscale.aar")
+val hasLibtailscale: Boolean = libtailscaleAar.isFile
 
 android {
     namespace = "com.understory.firewall"
