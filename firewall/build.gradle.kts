@@ -4,6 +4,23 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+/**
+ * The Tailscale data plane ships as `libtailscale.aar` — a gomobile-bound Go
+ * library, NOT a Maven artifact. Upstream tailscale-android declares it as a
+ * local file dependency (`implementation ':libtailscale@aar'` over a flatDir),
+ * and produces it with `gomobile bind -target android ./libtailscale`.
+ *
+ * So it is a DROP-IN here: put the aar at `firewall/libs/libtailscale.aar` and
+ * the real backend compiles and links. Without it the build still succeeds and
+ * TailscaleController honestly reports NOT_LINKED — CI must stay green on a
+ * clean checkout, and a missing optional data plane is not a build error.
+ *
+ * See docs/TAILSCALE-LINKING.md for how to obtain or build the aar and what the
+ * backend must implement.
+ */
+val libtailscaleAar: File = file("libs/libtailscale.aar")
+val hasLibtailscale: Boolean = libtailscaleAar.exists()
+
 android {
     namespace = "com.understory.firewall"
     compileSdk = 35
@@ -16,6 +33,15 @@ android {
         versionName = "1.0-alpha"
         resourceConfigurations += listOf("en")
         base.archivesName = "firewall"
+    }
+
+    // The real Tailscale backend lives in its own source dir and is compiled ONLY
+    // when the aar is present, so its imports can reference libtailscale.* directly
+    // instead of going through fragile reflection.
+    sourceSets {
+        getByName("main") {
+            if (hasLibtailscale) java.srcDir("src/tailscale/java")
+        }
     }
 
     buildTypes {
@@ -114,4 +140,14 @@ dependencies {
     // where a silent one-byte or one-field mistake changes where traffic actually
     // goes, so they carry tests that run off-device.
     testImplementation("junit:junit:4.13.2")
+
+    // Optional Tailscale data plane — see the note at the top of this file.
+    // files() rather than a flatDir repository so this needs no change to
+    // settings.gradle.kts dependency-resolution management.
+    if (hasLibtailscale) {
+        implementation(files(libtailscaleAar))
+        logger.lifecycle("firewall: libtailscale.aar found — Tailscale backend WILL be compiled")
+    } else {
+        logger.lifecycle("firewall: no libs/libtailscale.aar — Tailscale stays an honest seam (NOT_LINKED)")
+    }
 }

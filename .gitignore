@@ -6,3 +6,6 @@ local.properties
 captures/
 .cxx/
 .kotlin/
+
+# Optional third-party data plane, fetched/built out-of-band (see docs/TAILSCALE-LINKING.md)
+firewall/libs/*.aar
