@@ -47,8 +47,10 @@ object ProxyChainController {
             ProxyHop.Backend.WIREGUARD -> "needs a WireGuard transport"
             ProxyHop.Backend.SHADOWSOCKS -> "needs a Shadowsocks transport"
             ProxyHop.Backend.TOR -> "needs a Tor transport"
+            // Measured, not assumed — TransportCapability probes what this device actually
+            // has, so the reason names the missing piece instead of restating the category.
             ProxyHop.Backend.CONTAINER ->
-                "needs a container server (privileged shell / stratum) reachable from Godwall"
+                "container relay not implemented — " + TransportCapability.snapshot().containerDetail()
             ProxyHop.Backend.DIRECT -> "ready"
         }
     }

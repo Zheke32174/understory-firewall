@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -29,12 +30,14 @@ import com.understory.firewall.BoundaryText
 import com.understory.firewall.chain.EndpointChain
 import com.understory.firewall.chain.ProxyChainController
 import com.understory.firewall.chain.ProxyHop
+import com.understory.firewall.chain.TransportCapability
 import com.understory.security.SecureButton
 import com.understory.security.SecureOutlinedButton
 import com.understory.security.ui.components.SuiteCard
 import com.understory.security.ui.components.SuiteScaffold
 import com.understory.security.ui.components.SwitchRow
 import com.understory.security.ui.theme.UnderstoryTheme
+import kotlinx.coroutines.launch
 
 /**
  * Configure Godwall's Tailscale node and the egress [EndpointChain]. Honest by
@@ -46,6 +49,13 @@ import com.understory.security.ui.theme.UnderstoryTheme
 @Composable
 fun TailscaleChainScreen(onBack: () -> Unit) {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // Measured transport-tier availability. Starts as the last cached probe (honestly
+    // "not probed yet" on a cold start) and is refreshed only on explicit request —
+    // probing shells out, so it must not run on every recomposition.
+    var tierSnapshot by remember { mutableStateOf(TransportCapability.snapshot()) }
+    var probing by remember { mutableStateOf(false) }
 
     var tsEnabled by remember { mutableStateOf(TailscaleSettings.isEnabled(ctx)) }
     var loginServer by remember { mutableStateOf(TailscaleSettings.loginServer(ctx)) }
@@ -175,6 +185,29 @@ fun TailscaleChainScreen(onBack: () -> Unit) {
                     }
                 }
                 if (hops.isEmpty()) BoundaryText("No hops — traffic egresses directly.")
+
+                Spacer(Modifier.height(UnderstoryTheme.spacing.sm))
+                // Measured transport tiers — what this device can actually reach beyond
+                // a normal userspace VPN. Probed on demand, never assumed.
+                Text("Transport tiers", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    "Userspace: ready (SOCKS5 / HTTP CONNECT implemented)\n" +
+                        "Kernel: ${tierSnapshot.kernelDetail()}\n" +
+                        "Container: ${tierSnapshot.containerDetail()}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+                SecureOutlinedButton(
+                    enabled = !probing,
+                    onClick = {
+                        probing = true
+                        scope.launch {
+                            tierSnapshot = TransportCapability.refresh(ctx)
+                            probing = false
+                        }
+                    },
+                ) { Text(if (probing) "Probing…" else "Probe transports") }
 
                 Spacer(Modifier.height(UnderstoryTheme.spacing.sm))
                 Text("Add hop:", style = MaterialTheme.typography.labelLarge)
