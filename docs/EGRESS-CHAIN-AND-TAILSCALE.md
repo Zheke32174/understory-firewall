@@ -55,11 +55,15 @@ is absent — the controller says so rather than pretending.
 The CONTAINER transport is backed by container-server donors that extend **all**
 the apps, not just Godwall:
 
-- **Docker-on-Android** (e.g. `com.pavit.docker`) — a Docker/container manager for
-  Android. As a container server it lets Godwall run proxy/routing containers,
-  gives Masamune a container runtime for the ryznix/second-OS layer, and gives
-  Yojimbo privileged container orchestration. One donor, capability for the whole
-  suite.
+- **"Docker Manager" (`com.pavit.docker`)** — CORRECTED after reverse-engineering
+  the shipped APK (see `docs/donors/RE-docker-manager.md`). It does **not** run
+  containers on the device: it ships with `INTERNET` as its only permission and is
+  a **remote Docker control client**, SSHing to a host and driving the `docker` CLI
+  there. What we absorb is therefore the *shape*, not a runtime: the SSH transport,
+  the typed Docker command surface, SFTP file browse/edit, and multi-server
+  management. Our superior variant splits control from transport so the same client
+  drives a remote host **or** a local one (Elevation shell / ryznix guest) — the
+  local case being exactly what the donor cannot do.
 - The `underhall` stratum model (nspawn + distro strata under `/strat/<name>`) is
   the same idea at the substrate level.
 
