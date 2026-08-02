@@ -21,10 +21,16 @@ class InvariantsTest {
     private fun kotlinSources(): List<File> =
         sourceRoot().walkTopDown().filter { it.isFile && it.extension == "kt" }.toList()
 
-    /** Comments legitimately NAME the things this module refuses to use. Strip them. */
+    /**
+     * Comments AND on-screen copy legitimately NAME the things this module refuses
+     * to use — a screen that says "contains no WebView" must not fail a test for
+     * containing the word. Both are stripped, so what is left is code.
+     */
     private fun code(f: File): String = f.readText()
         .replace(Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL), "")
         .replace(Regex("(?m)//.*$"), "")
+        .replace(Regex("\"\"\".*?\"\"\"", RegexOption.DOT_MATCHES_ALL), "\"\"")
+        .replace(Regex("\"(\\\\.|[^\"\\\\])*\""), "\"\"")
 
     // ------------------------------------------------------------------ the invariant
 

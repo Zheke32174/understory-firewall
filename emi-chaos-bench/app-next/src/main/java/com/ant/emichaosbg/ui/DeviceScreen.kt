@@ -1,6 +1,7 @@
 package com.ant.emichaosbg.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,9 +21,9 @@ import org.json.JSONObject
 @Composable
 fun DeviceScreen(padding: PaddingValues) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = padding) {
-        item { SectionHeader("Process integrity") ; ProcessCard() }
-        item { SectionHeader("App integrity") ; AppIntegrityCard() }
-        item { SectionHeader("Overlays & accessibility") ; OverlayCard() }
+        item { Column { SectionHeader("Process integrity"); ProcessCard() } }
+        item { Column { SectionHeader("App integrity"); AppIntegrityCard() } }
+        item { Column { SectionHeader("Overlays & accessibility"); OverlayCard() } }
     }
 }
 

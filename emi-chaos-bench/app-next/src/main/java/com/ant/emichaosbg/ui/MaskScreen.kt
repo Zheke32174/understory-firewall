@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -46,8 +47,8 @@ import kotlinx.coroutines.delay
 @Composable
 fun MaskScreen(padding: PaddingValues) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = padding) {
-        item { SectionHeader("Masking engine") ; MaskerCard() }
-        item { SectionHeader("Microphone") ; MicCard() }
+        item { Column { SectionHeader("Masking engine"); MaskerCard() } }
+        item { Column { SectionHeader("Microphone"); MicCard() } }
     }
 }
 

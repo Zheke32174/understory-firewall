@@ -1,6 +1,7 @@
 package com.ant.emichaosbg.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -69,6 +70,7 @@ fun SweepScreen(
         }
 
         item {
+            Column {
             SectionHeader("Last sweep")
             if (!sweep.ran) {
                 OrbCard {
@@ -80,6 +82,7 @@ fun SweepScreen(
                             "list for real."
                     )
                 }
+            }
             }
         }
 
@@ -103,6 +106,7 @@ fun SweepScreen(
         }
 
         item {
+            Column {
             SectionHeader("What this app is")
             OrbCard {
                 Text(
@@ -118,6 +122,7 @@ fun SweepScreen(
                         "JavaScript bridge, and depends on no other app. Every heuristic here has " +
                         "legitimate causes and is worded as a reason to look, never as a verdict."
                 )
+            }
             }
         }
     }

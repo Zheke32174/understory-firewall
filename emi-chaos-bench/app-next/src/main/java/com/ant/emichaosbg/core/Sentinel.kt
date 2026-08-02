@@ -159,12 +159,22 @@ object Sentinel {
 
     private fun slowTick() {
         if (!detecting) return
+        // RETRY THE RADIOS. On a cold first launch the permission dialog is still on
+        // screen when startDetection() runs, so BLE fails with "location permission not
+        // granted" and Wi-Fi returns nothing. Without a retry the user grants the
+        // permission and the scanners stay dead for the rest of the session — which is
+        // indistinguishable, on screen, from a quiet room. Both are cheap no-ops when
+        // they are already running.
+        runCatching { if (!ble.isRunning()) ble.start() }
+        runCatching { if (!wifi.isRunning()) wifi.start() }
         runCatching { escalation.scan() }
         runCatching { cell.scan() }
         runCatching { net.scan() }
         runCatching { integrity.status() }      // kicks a background integrity scan
         slowTicks++
-        handler?.postDelayed({ slowTick() }, SLOW_MS)
+        // The first few sweeps run fast so a permission granted seconds after launch is
+        // picked up in seconds, not in five minutes.
+        handler?.postDelayed({ slowTick() }, if (slowTicks < 3) 20_000L else SLOW_MS)
     }
 
     private fun towerTick() {

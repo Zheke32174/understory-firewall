@@ -1,6 +1,7 @@
 package com.ant.emichaosbg.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -44,6 +45,7 @@ fun VaultScreen(padding: PaddingValues) {
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = padding) {
         item {
+            Column {
             SectionHeader("Integrity")
             OrbCard {
                 val e = entries.json
@@ -102,9 +104,11 @@ fun VaultScreen(padding: PaddingValues) {
                     SecondaryButton("Reload") { entries.refresh() }
                 }
             }
+            }
         }
 
         item {
+            Column {
             SectionHeader("Export")
             OrbCard {
                 Note(
@@ -140,6 +144,7 @@ fun VaultScreen(padding: PaddingValues) {
                     }
                 }
                 act.result?.let { Note(it) }
+            }
             }
         }
 

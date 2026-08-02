@@ -1,6 +1,7 @@
 package com.ant.emichaosbg.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -31,11 +32,11 @@ import org.json.JSONObject
 @Composable
 fun RadiosScreen(padding: PaddingValues) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = padding) {
-        item { SectionHeader("Wi-Fi") ; WifiCard() }
-        item { SectionHeader("Bluetooth LE") ; BleCard() }
-        item { SectionHeader("Cellular") ; CellCard() }
-        item { SectionHeader("Local network") ; LanCard() }
-        item { SectionHeader("Tower + position log") ; TowerCard() }
+        item { Column { SectionHeader("Wi-Fi"); WifiCard() } }
+        item { Column { SectionHeader("Bluetooth LE"); BleCard() } }
+        item { Column { SectionHeader("Cellular"); CellCard() } }
+        item { Column { SectionHeader("Local network"); LanCard() } }
+        item { Column { SectionHeader("Tower + position log"); TowerCard() } }
     }
 }
 

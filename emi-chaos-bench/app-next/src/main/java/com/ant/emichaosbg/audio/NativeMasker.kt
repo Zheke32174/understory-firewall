@@ -9,34 +9,31 @@ import kotlin.math.*
 import kotlin.random.Random
 
 /**
- * NATIVE MASKING SYNTHESIS — the audio engine leaving Web Audio.
+ * NATIVE MASKING SYNTHESIS. The whole audio engine, on an AudioTrack, on its own
+ * thread. This is the ONLY masker in this module.
  *
- * WHY THIS EXISTS. The stated rule for this app is that the WebView keeps only what is needed
- * to detect, defend against and disrupt WebView and Java-surface attacks. Audio synthesis fails
- * that test: it is not part of the attack surface and does not need a browser. It was in the
- * page for one reason — the app started as a page.
+ * WHY THAT SENTENCE MATTERS. This class already existed in the previous build and
+ * had ZERO references anywhere in the app — it compiled and was never called. The
+ * masker that actually ran was a Web Audio graph inside a 472 KB page, and keeping
+ * it alive after the app was swiped away required standing up a SECOND browser
+ * instance inside the service to click a button on that page. The replacement was
+ * built and then not used. Here it is used, and there is no page left to fall back
+ * to.
  *
- * WHAT THIS BUYS BEYOND ARCHITECTURE. The Web Audio graph dies with the WebView, which is why
- * this project has a headless-WebView-in-a-service hack purely to keep sound alive after the
- * app is swiped away: a whole browser instance held up so an oscillator keeps running. An
- * AudioTrack in the service needs none of that. It also removes the ScriptProcessorNode, which
- * runs on the MAIN THREAD — the reason DOM work and audio ever collided here in the first
- * place. Synthesis moves to its own thread and stops competing with rendering.
+ * WHAT IT COVERS, stated rather than implied: a shaped (pink-ish) noise floor, a
+ * wandering filtered spur, arc/impulse events, sub rumble, a switching comb, and
+ * ultrasonic pilots that stay silent unless explicitly turned up. Three chaos cores
+ * — logistic, Henon, Lorenz — drive the modulation. That is the masking function
+ * itself, and it is built so sources can be added one at a time.
  *
- * WHAT IT IS NOT. This is not yet the whole page engine. The page has 49 toggleable sources,
- * six chaos cores, a modulation matrix and the BadJack DSP rack. This implements the core
- * masking synthesis and the chaos that drives it, faithfully enough to mask on its own, and is
- * built so sources can be added one at a time. Claiming parity would be a lie; the page remains
- * available and this reports what it actually covers.
+ * WHAT IT DOES NOT COVER: the old page engine's 49-source toggle set, its
+ * modulation matrix and the BadJack DSP rack are NOT ported. Claiming parity would
+ * be a lie, and there is no page to defer to.
  *
- * THE GLITCH IS SHARED. The DOM hammer's audible stutter (hold/drop) applies here through the
- * same contract the page used, so the hammer keeps disrupting the sound while it disrupts the
- * DOM — which was the whole point of the feature.
- *
- * SAFETY. The output limiter is the k-norm saturator y = x / (1 + |x|^k)^(1/k): unit slope at
- * the origin, so it CANNOT apply makeup gain, and a ceiling of exactly 1.0 for any k. That is
- * the same correction made to the page engine after measurement showed the old curve amplified
- * quiet material by up to 3.87x while never actually limiting.
+ * SAFETY. The output limiter is the k-norm saturator y = x / (1 + |x|^k)^(1/k):
+ * unit slope at the origin, so it CANNOT apply makeup gain, and a ceiling of
+ * exactly 1.0 for any k. The curve it replaced amplified quiet material by up to
+ * 3.87x while never actually limiting.
  */
 class NativeMasker {
 
@@ -59,7 +56,7 @@ class NativeMasker {
     @Volatile var sweepAmt = 0.4f
     @Volatile var combAmt = 0.35f
 
-    /** Consumed per sample: 0 = normal, 1 = hold previous, 2 = drop. Set by the DOM hammer. */
+    /** Consumed per sample: 0 = normal, hold = repeat last, drop = silence. */
     @Volatile private var holdSamples = 0
     @Volatile private var dropSamples = 0
     private var lastL = 0f
@@ -67,7 +64,7 @@ class NativeMasker {
 
     fun glitch(hold: Int, drop: Int) { holdSamples = hold; dropSamples = drop }
 
-    // ---- chaos cores. Same attractors the page uses, so the character carries over. ----
+    // ---- chaos cores: the attractors that give the mask its character ----
     private var lx = 0.4711
     private var hx = 0.1; private var hy = 0.3
     private var ex = 0.9; private var ey = 1.1; private var ez = 1.3
@@ -241,7 +238,7 @@ class NativeMasker {
             var l = (hpOut * lvl).toFloat()
             var r = (lpR * lvl).toFloat()
 
-            // --- the DOM hammer's glitch, same contract as the page ---
+            // --- deliberate stutter, when [glitch] has been armed ---
             when {
                 holdSamples > 0 -> { holdSamples--; l = lastL; r = lastR }
                 dropSamples > 0 -> { dropSamples--; l = 0f; r = 0f }
@@ -277,13 +274,10 @@ class NativeMasker {
         .put("level", level)
         .put("sources", "noise floor, wandering spur, arc/impulse, sub rumble, " +
             "switching comb, ultrasonic pilots")
-        .put("coverage", "Core masking synthesis and the chaos cores that drive it. The page " +
-            "engine's full 49-source set, modulation matrix and BadJack rack are not all ported " +
-            "yet — this covers the masking function itself and is built to take sources one at " +
-            "a time. Stated rather than implied.")
-        .put("note", "Runs on its own thread through AudioTrack, so it does not share the main " +
-            "thread with rendering the way the ScriptProcessorNode did — which is what made DOM " +
-            "work and audio collide. It also survives without a WebView, so the headless-browser " +
-            "hack is not needed to keep sound alive.")
+        .put("coverage", "Core masking synthesis and the chaos cores that drive it. The old " +
+            "page engine's 49-source set, modulation matrix and BadJack rack are NOT ported. " +
+            "Stated rather than implied.")
+        .put("note", "Runs on its own thread through AudioTrack, so synthesis never shares the " +
+            "main thread with rendering.")
         .toString()
 }
