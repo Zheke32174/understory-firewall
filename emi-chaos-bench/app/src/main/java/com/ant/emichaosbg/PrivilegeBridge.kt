@@ -1,0 +1,479 @@
+package com.ant.emichaosbg
+
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.webkit.JavascriptInterface
+import org.json.JSONArray
+import androidx.core.content.ContextCompat
+import org.json.JSONObject
+
+/**
+ * `window.EMIPriv` — the privileged-access fallback chain.
+ *
+ * The important thing about these tiers is that **they are not interchangeable**, and
+ * pretending otherwise would produce a UI that lies to the user:
+ *
+ *  ┌───────────────┬──────────────────────────┬─────────────────────────────────────────┐
+ *  │ Tier          │ Runs as                  │ What it can actually do here            │
+ *  ├───────────────┼──────────────────────────┼─────────────────────────────────────────┤
+ *  │ Shizuku       │ adb shell UID (2000)     │ The read-only `dumpsys` diagnostics     │
+ *  │               │ or root                  │ allowlist. THIS TIER ONLY.              │
+ *  │ Dhizuku       │ Dhizuku's own app UID,   │ DevicePolicyManager delegation only.    │
+ *  │               │ which IS device owner    │ CANNOT run the dumpsys allowlist —      │
+ *  │               │                          │ its process API spawns inside a normal  │
+ *  │               │                          │ app process, so shell commands come     │
+ *  │               │                          │ back no more privileged than ours.      │
+ *  │ Device Owner  │ this app, as DO          │ Same DPM powers, directly, no third-    │
+ *  │ (self)        │                          │ party app in the trust path.            │
+ *  │ Self-dump     │ this app, holding DUMP   │ The SAME read-only service dumps, in    │
+ *  │ (adb-granted) │ granted over adb         │ process. PERSISTENT across reboot, no   │
+ *  │               │                          │ helper app needed. No DPM powers.       │
+ *  │ ADB           │ the human                │ Grants the tiers above.                 │
+ *  └───────────────┴──────────────────────────┴─────────────────────────────────────────┘
+ *
+ * So "Dhizuku as a fallback for Shizuku" is only half true and the UI says so: Dhizuku
+ * cannot serve the diagnostics at all. What CAN serve them without Shizuku is the
+ * self-dump tier: android.permission.DUMP is declared signature|privileged|**development**,
+ * and that development flag means `adb shell pm grant` works on it for an ordinary app.
+ * Once granted it persists across reboot with no helper process — which makes it the
+ * strongest *durable* diagnostics tier, not a last resort. What Dhizuku
+ * and device-owner provide instead is the **resilience** tier, which Shizuku genuinely
+ * cannot: `setUserControlDisabledPackages` (API 30+) is the one supported mechanism on
+ * stock Android that makes an app resistant to being silently force-stopped.
+ *
+ * Dhizuku is reached by reflection rather than a compile-time dependency. That is a
+ * deliberate call: the Dhizuku-API artifact pins bytecode/compileSdk floors (2.6.0 needs
+ * compileSdk 37; this app targets 34), and reflection means a device without Dhizuku
+ * installed costs us nothing and degrades to "not available" instead of a missing-class
+ * crash at startup.
+ */
+class PrivilegeBridge(private val ctx: Context) {
+
+    private val adminComponent = ComponentName(ctx, EmiDeviceAdminReceiver::class.java)
+    private fun dpm() = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
+
+    // ---- Device owner / admin (self) ------------------------------------------------
+    private fun isDeviceOwner(): Boolean =
+        try { dpm()?.isDeviceOwnerApp(ctx.packageName) == true } catch (_: Exception) { false }
+
+    private fun isAdminActive(): Boolean =
+        try { dpm()?.isAdminActive(adminComponent) == true } catch (_: Exception) { false }
+
+    // ---- Dhizuku (real client API) ----------------------------------------------------
+    // NOTE: this used to be reflection-only, which could never have worked. The class
+    // com.rosan.dhizuku.api.Dhizuku lives in the CLIENT library that a consuming app bundles
+    // — it is not exported by the Dhizuku app — so Class.forName() in our own process always
+    // returned null and the tier reported "absent" no matter what the user had installed.
+    private var dhizukuInited = false
+
+    private fun dhizukuInstalled(): Boolean =
+        try { ctx.packageManager.getPackageInfo("com.rosan.dhizuku", 0); true }
+        catch (_: Exception) { false }
+
+    private fun dhizukuInit(): Boolean {
+        if (dhizukuInited) return true
+        return try {
+            // Always the Context overload: the no-arg one resolves its Context through a
+            // hidden ActivityThread API subject to non-SDK restrictions.
+            dhizukuInited = com.rosan.dhizuku.api.Dhizuku.init(ctx)
+            dhizukuInited
+        } catch (_: Throwable) { false }
+    }
+
+    private fun dhizukuPermission(): Boolean {
+        if (!dhizukuInstalled()) return false
+        if (!dhizukuInit()) return false
+        return try { com.rosan.dhizuku.api.Dhizuku.isPermissionGranted() }
+        catch (_: Throwable) { false }
+    }
+
+    /**
+     * DevicePolicyManager acting with DHIZUKU's identity, since Dhizuku (not this app) is the
+     * device owner. The admin ComponentName must therefore be Dhizuku's own, and the binder
+     * has to be routed through Dhizuku's process — a plain local DevicePolicyManager would be
+     * rejected because we are not the owner.
+     */
+    /**
+     * The last step this failed at, and why. On device the UI could only say "Dhizuku granted
+     * permission but its device-policy channel could not be reached", because the whole
+     * sequence sat under one `catch (Throwable) { null }` with four silent `?: return null`s
+     * on top of it. Five distinct failure modes reported as one sentence is not a diagnosis —
+     * it cannot even tell a missing Dhizuku owner from a blocked hidden API. Every step now
+     * names itself so the next report says which one, and with what exception.
+     */
+    @Volatile private var dhizukuStep: String? = null
+
+    /**
+     * The delegated IDevicePolicyManager proxy, kept when the SDK wrapper cannot be built.
+     * See the note in [dhizukuDpm] — on platforms where the DevicePolicyManager constructor is
+     * blocked by non-SDK restrictions, this interface is still fully usable.
+     */
+    @Volatile private var dhizukuIface: Any? = null
+
+    /**
+     * Calls setUserControlDisabledPackages straight on the AIDL interface.
+     *
+     * The signature GAINED a caller-package argument in later releases, so the method is chosen
+     * by shape rather than by naming one arrangement and failing everywhere else — the same
+     * discipline the constructor lookup used, applied one level down where the platform does not
+     * block us.
+     */
+    private fun ifaceSetUserControlDisabled(
+        iface: Any, admin: ComponentName, pkgs: List<String>
+    ): String? {
+        val m = iface.javaClass.methods.firstOrNull {
+            it.name == "setUserControlDisabledPackages"
+        } ?: return "the delegated interface has no setUserControlDisabledPackages"
+        return try {
+            val p = m.parameterTypes
+            when {
+                // (ComponentName, List)
+                p.size == 2 -> m.invoke(iface, admin, pkgs)
+                // (ComponentName, String callerPackage, List)
+                p.size == 3 && p[1] == String::class.java -> m.invoke(iface, admin, ctx.packageName, pkgs)
+                else -> return "unrecognised setUserControlDisabledPackages signature (" +
+                    p.joinToString { it.simpleName } + ")"
+            }
+            null
+        } catch (e: Throwable) {
+            val c = (e as? java.lang.reflect.InvocationTargetException)?.cause ?: e
+            "${c.javaClass.simpleName}: ${c.message}"
+        }
+    }
+
+    private fun dhizukuDpm(): Pair<DevicePolicyManager, ComponentName>? {
+        if (!dhizukuPermission()) { dhizukuStep = "permission not granted"; return null }
+
+        val owner = try { com.rosan.dhizuku.api.Dhizuku.getOwnerComponent() }
+            catch (e: Throwable) { dhizukuStep = "getOwnerComponent threw: ${e.javaClass.simpleName}: ${e.message}"; return null }
+        if (owner == null) { dhizukuStep = "Dhizuku reports no device-owner component — it is installed but not actually the device owner"; return null }
+
+        // The raw binder used to come from reflecting android.os.ServiceManager#getService.
+        // That is on the non-SDK blocklist, so on a targetSdk-34 app it is hidden from
+        // reflection outright — which is the most likely reason this whole path failed on
+        // Android 16. rikka.shizuku.SystemServiceHelper exists precisely to obtain system
+        // service binders without tripping that, and shizuku:api is already a dependency
+        // here, so it costs nothing to use the supported route instead of the blocked one.
+        val raw = try { rikka.shizuku.SystemServiceHelper.getSystemService(Context.DEVICE_POLICY_SERVICE) }
+            catch (e: Throwable) { dhizukuStep = "could not obtain the device_policy binder: ${e.javaClass.simpleName}: ${e.message}"; return null }
+        if (raw == null) { dhizukuStep = "the device_policy system service returned no binder"; return null }
+
+        val wrapped = try { com.rosan.dhizuku.api.Dhizuku.binderWrapper(raw) }
+            catch (e: Throwable) { dhizukuStep = "Dhizuku.binderWrapper threw: ${e.javaClass.simpleName}: ${e.message}"; return null }
+
+        val iface = try {
+            val stub = Class.forName("android.app.admin.IDevicePolicyManager\$Stub")
+            stub.getMethod("asInterface", android.os.IBinder::class.java).invoke(null, wrapped)
+        } catch (e: Throwable) { dhizukuStep = "IDevicePolicyManager.Stub.asInterface unavailable: ${e.javaClass.simpleName}: ${e.message}"; return null }
+        if (iface == null) { dhizukuStep = "asInterface returned null"; return null }
+
+        // DevicePolicyManager's private constructor is not one fixed signature across
+        // releases — some carry a trailing parentInstance flag. Pick by shape rather than
+        // naming one and failing on every platform that disagrees.
+        val dpm = try {
+            val ctor = DevicePolicyManager::class.java.declaredConstructors.firstOrNull { c ->
+                val p = c.parameterTypes
+                p.size >= 2 && p[0] == Context::class.java && p[1].isInstance(iface)
+            } ?: run {
+                /* THE CONSTRUCTOR IS NOT THE ONLY ROUTE, AND ON THIS PLATFORM IT IS NOT A ROUTE
+                 * AT ALL. Reported from a device: "Dhizuku granted permission but its
+                 * device-policy channel could not be reached — no usable DevicePolicyManager
+                 * constructor on this platform".
+                 *
+                 * DevicePolicyManager's constructors are non-SDK, so on a modern release
+                 * reflection over them is blocked and declaredConstructors offers nothing
+                 * usable. Wrapping the binder in a DevicePolicyManager was only ever a
+                 * convenience: the delegated binder Dhizuku hands back already speaks
+                 * IDevicePolicyManager, and setUserControlDisabledPackages is a method ON THAT
+                 * INTERFACE. Constructing the SDK wrapper just to call through it adds a step
+                 * that the platform blocks, for nothing.
+                 *
+                 * So the AIDL proxy is stashed and called directly. Recorded rather than
+                 * silently substituted — the UI should be able to say which route worked.
+                 */
+                dhizukuIface = iface
+                dhizukuStep = null
+                return null
+            }
+            ctor.isAccessible = true
+            val args: Array<Any?> = when (ctor.parameterTypes.size) {
+                2 -> arrayOf(ctx, iface)
+                else -> arrayOf(ctx, iface, false)   // trailing parentInstance flag
+            }
+            ctor.newInstance(*args) as DevicePolicyManager
+        } catch (e: Throwable) { dhizukuStep = "constructing DevicePolicyManager threw: ${e.javaClass.simpleName}: ${e.message}"; return null }
+
+        dhizukuStep = null
+        return Pair(dpm, owner)
+    }
+
+    /** Which tiers exist right now, and what each is actually good for. */
+    @JavascriptInterface
+    fun getTiers(): String {
+        val arr = JSONArray()
+
+        fun tier(id: String, name: String, available: Boolean, active: Boolean, can: String, cannot: String, how: String) {
+            arr.put(JSONObject().apply {
+                put("id", id); put("name", name)
+                put("available", available); put("active", active)
+                put("can", can); put("cannot", cannot); put("how", how)
+            })
+        }
+
+        val shizukuOk = try {
+            ctx.packageManager.getPackageInfo("moe.shizuku.privileged.api", 0); true
+        } catch (_: Exception) { false }
+
+        tier("shizuku", "Shizuku", shizukuOk, shizukuOk,
+            "Read-only dumpsys diagnostics (telephony, connectivity, SMS stack, carrier config)",
+            "Cannot make the app force-stop-proof",
+            "Install Shizuku, start it via wireless debugging or root, then grant this app permission in Shizuku.")
+
+        val dhInstalled = dhizukuInstalled()
+        val dhPerm = if (dhInstalled) dhizukuPermission() else false
+        tier("dhizuku", "Dhizuku", dhInstalled, dhPerm,
+            "Device-policy delegation: force-stop protection, uninstall block",
+            "Cannot run the dumpsys diagnostics — its process API runs inside a normal app UID, so shell output is no more privileged than ours",
+            "Install Dhizuku, make it device owner over adb, then grant this app permission in Dhizuku.")
+
+        val doSelf = isDeviceOwner()
+        tier("deviceowner", "Device owner (self)", true, doSelf,
+            "Force-stop protection (API 30+), uninstall block — no third-party app in the trust path",
+            "Cannot run dumpsys diagnostics",
+            "On a device with no accounts added: adb shell dpm set-device-owner com.ant.emichaosbg/.EmiDeviceAdminReceiver")
+
+        tier("admin", "Device admin (self)", true, isAdminActive(),
+            "Disables the Settings uninstall/force-stop buttons for this app",
+            "UI-level only — adb can still stop the app",
+            "Settings → Security → Device admin apps → enable EMI Chaos Bench.")
+
+        // The self-dump tier. Listed BEFORE the manual-adb row because it is not a fallback
+        // of last resort — for diagnostics it is the strongest *persistent* tier there is.
+        val dumpOk = hasDumpPermission()
+        tier("selfdump", "Self-dump (adb-granted DUMP)", true, dumpOk,
+            "Read-only service dumps in this app's own process — persistent, survives reboot, needs no helper app running",
+            "Cannot make the app force-stop-proof",
+            "adb shell pm grant ${ctx.packageName} android.permission.DUMP")
+
+        tier("adb", "ADB (manual)", true, false,
+            "Grants the tiers above — it is how self-dump and device owner are enabled in the first place",
+            "Nothing by itself at runtime",
+            "adb shell, with the device connected or over wireless debugging.")
+
+        val o = JSONObject()
+        o.put("tiers", arr)
+        o.put("sdkInt", Build.VERSION.SDK_INT)
+        o.put("pkg", ctx.packageName)
+        o.put("adminComponent", adminComponent.flattenToShortString())
+        // The single most useful capability question, answered plainly.
+        o.put("forceStopProtectionPossible", Build.VERSION.SDK_INT >= 30 && (doSelf || dhPerm))
+        o.put("forceStopProtected", isUserControlDisabled())
+        o.put("diagnosticsPossible", shizukuOk || dumpOk)
+        o.put("selfDump", dumpOk)
+        o.put("dumpGrantCmd", "adb shell pm grant ${ctx.packageName} android.permission.DUMP")
+        return o.toString()
+    }
+
+    private fun isUserControlDisabled(): Boolean {
+        if (Build.VERSION.SDK_INT < 30) return false
+        return try {
+            val via = dhizukuDpm()
+            if (via != null) via.first.getUserControlDisabledPackages(via.second).contains(ctx.packageName)
+            else dpm()?.getUserControlDisabledPackages(adminComponent)?.contains(ctx.packageName) == true
+        } catch (_: Exception) { false }
+    }
+
+    /**
+     * The reinforcement itself: ask the device-policy layer to stop letting this package be
+     * force-stopped. Only possible as device owner; returns a JSON explanation either way
+     * rather than a bare boolean, because "it didn't work" has several very different causes
+     * and the user needs to know which one they hit.
+     */
+    @JavascriptInterface
+    fun enableForceStopProtection(enable: Boolean): String {
+        val o = JSONObject()
+        if (Build.VERSION.SDK_INT < 30) {
+            return o.put("ok", false).put("reason", "Needs Android 11 (API 30) or newer — setUserControlDisabledPackages doesn't exist below that.").toString()
+        }
+        // Prefer Dhizuku: it is the tier a normal user can actually get, and it does not
+        // require turning THIS app into the device owner (a one-shot, account-hostile,
+        // factory-reset-to-undo operation most people should not do for a masking app).
+        val viaDhizuku = dhizukuDpm()
+
+        /* THE DIRECT-AIDL ROUTE. dhizukuDpm() sets dhizukuIface when Dhizuku's delegation
+         * succeeded but the SDK wrapper could not be constructed — which is the reported case:
+         * "granted permission but its device-policy channel could not be reached". The
+         * delegation is fine; only the convenience wrapper is blocked. Taken before giving up,
+         * because giving up here told the user Dhizuku had failed when it had not. */
+        val iface = dhizukuIface
+        if (viaDhizuku == null && iface != null) {
+            val admin = runCatching { com.rosan.dhizuku.api.Dhizuku.getOwnerComponent() }.getOrNull()
+            if (admin != null) {
+                val list = if (enable) listOf(ctx.packageName) else emptyList()
+                val err = ifaceSetUserControlDisabled(iface, admin, list)
+                if (err == null) {
+                    return o.put("ok", true).put("protected", enable)
+                        .put("via", "dhizuku (direct AIDL — the SDK wrapper is blocked on this platform)")
+                        .put("reason", if (enable)
+                            "Force-stop protection is on. The DevicePolicyManager wrapper is not " +
+                            "constructible on this Android version, so the delegated device-policy " +
+                            "interface was called directly — same privileged operation, one fewer " +
+                            "blocked hop."
+                        else "Protection released.").toString()
+                }
+                o.put("directAidlError", err)
+            }
+        }
+
+        if (viaDhizuku == null && !isDeviceOwner()) {
+            return o.put("ok", false).put("reason",
+                if (!dhizukuInstalled()) "Install Dhizuku and grant this app permission in it. (Making this app itself the device owner also works but is a far more invasive step — it needs a device with no accounts and a factory reset to undo.)"
+                else if (!dhizukuPermission()) "Dhizuku is installed but hasn't granted this app permission yet — tap 'Request Dhizuku'."
+                /* If the direct-AIDL route was attempted, its error is the REAL reason and
+                 * dhizukuStep is legitimately null — the wrapper being unbuildable is expected
+                 * on modern Android and is no longer treated as the failure. Reporting "no
+                 * failing step was recorded, which is itself a bug" in that case was the
+                 * bookkeeping lagging behind the new fallback, and it is what the device
+                 * showed. */
+                else o.optString("directAidlError").takeIf { it.isNotBlank() }?.let {
+                    "Dhizuku is connected and the delegated device-policy interface was reached, " +
+                    "but the call was refused: $it"
+                }
+                ?: (dhizukuStep?.let {
+                    "Dhizuku granted permission but its device-policy channel could not be reached — $it."
+                } ?: "Dhizuku granted permission and the delegated interface was obtained, but no " +
+                     "owner component was available to act as the admin — Dhizuku is installed " +
+                     "but may not actually be the device owner.")
+            ).toString()
+        }
+        return try {
+            val d: DevicePolicyManager
+            val admin: ComponentName
+            if (viaDhizuku != null) { d = viaDhizuku.first; admin = viaDhizuku.second; o.put("via", "dhizuku") }
+            else if (isDeviceOwner()) {
+                // Only taken when this app ALREADY is the device owner. It is never pursued:
+                // becoming device owner needs a factory reset to undo and an account-free
+                // device to set up, which is far too invasive to reach for on behalf of a
+                // masking app. Dhizuku is the intended route; if Dhizuku cannot be reached
+                // the answer is to say so, not to escalate.
+                d = dpm() ?: return o.put("ok", false).put("reason", "DevicePolicyManager unavailable").toString()
+                admin = adminComponent; o.put("via", "device-owner (pre-existing)")
+            }
+            else return o.put("ok", false)
+                .put("reason", "Dhizuku could not be reached, and this app will not try to make " +
+                    "itself device owner — that needs a factory reset to undo. Fix Dhizuku and retry.")
+                .toString()
+            val list = if (enable) listOf(ctx.packageName) else emptyList()
+            d.setUserControlDisabledPackages(admin, list)
+            runCatching { d.setUninstallBlocked(admin, ctx.packageName, enable) }
+            o.put("ok", true).put("protected", enable)
+                .put("reason", if (enable)
+                    "Force-stop and uninstall are now blocked for this package. Undoing it takes a deliberate privileged action, not a background tap."
+                else "Protection released.").toString()
+        } catch (e: SecurityException) {
+            o.put("ok", false).put("reason", "Refused by the policy layer: ${e.message}").toString()
+        } catch (e: Exception) {
+            o.put("ok", false).put("reason", "Failed: ${e.message}").toString()
+        }
+    }
+
+    /** Opens the system device-admin settings so the user can activate admin themselves. */
+    @JavascriptInterface
+    fun requestDeviceAdmin(): Boolean = try {
+        val i = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
+        i.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
+        i.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+            ctx.getString(R.string.admin_request_explanation))
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        ctx.startActivity(i); true
+    } catch (_: Exception) { false }
+
+    /** Asks Dhizuku for permission, if it's installed. No-op otherwise. */
+    @JavascriptInterface
+    fun requestDhizuku(): String {
+        val o = JSONObject()
+        if (!dhizukuInstalled()) return o.put("ok", false).put("reason", "Dhizuku is not installed.").toString()
+        if (!dhizukuInit()) return o.put("ok", false).put("reason", "Dhizuku is installed but its service isn't running — open Dhizuku once and make sure it is active as device owner.").toString()
+        return try {
+            if (com.rosan.dhizuku.api.Dhizuku.isPermissionGranted()) {
+                return o.put("ok", true).put("reason", "Already granted.").toString()
+            }
+            com.rosan.dhizuku.api.Dhizuku.requestPermission(
+                object : com.rosan.dhizuku.api.DhizukuRequestPermissionListener() {
+                    override fun onRequestPermission(grantResult: Int) { /* polled by refresh */ }
+                }
+            )
+            o.put("ok", true).put("reason", "Requested — confirm in the Dhizuku dialog (it auto-denies after ~15s).").toString()
+        } catch (e: Throwable) {
+            o.put("ok", false).put("reason", "Dhizuku request failed: ${e.message}").toString()
+        }
+    }
+
+    /** The exact adb line for this build, so the user doesn't have to construct it. */
+    @JavascriptInterface
+    fun adbCommand(): String =
+        "adb shell dpm set-device-owner ${ctx.packageName}/.EmiDeviceAdminReceiver"
+
+    // ---- SELF-DUMP tier ---------------------------------------------------------------
+    // The one genuinely persistent diagnostics tier, and the reason "ADB" is not merely an
+    // instructions screen.
+    //
+    // android.permission.DUMP is declared signature|privileged|**development**. That third
+    // flag is the whole point: `development` permissions can be granted to an ordinary
+    // third-party app with `adb shell pm grant`. Once granted it STICKS — it survives reboot
+    // and needs no helper process running, which Shizuku (started over adb) does not.
+    //
+    // With it held, the app can read the same service dumps the Shizuku allowlist reads,
+    // but IN ITS OWN PROCESS: get the service binder from ServiceManager and call dump()
+    // against a pipe. No shell, no third-party app in the trust path, nothing to keep alive.
+    private fun hasDumpPermission(): Boolean =
+        ContextCompat.checkSelfPermission(ctx, "android.permission.DUMP") == PackageManager.PERMISSION_GRANTED
+
+    /** Read-only service dumps, in-process. Same fixed allowlist discipline as Shizuku's. */
+    private val DUMP_ALLOWLIST = mapOf(
+        "telephony_registry" to Pair("telephony.registry", arrayOf<String>()),
+        "connectivity" to Pair("connectivity", arrayOf<String>()),
+        "sms_service" to Pair("isms", arrayOf<String>()),
+        "carrier_config" to Pair("carrier_config", arrayOf<String>())
+    )
+
+    @JavascriptInterface
+    fun selfDump(key: String): String {
+        if (!hasDumpPermission()) return "error: DUMP permission not granted. Run: adb shell pm grant ${ctx.packageName} android.permission.DUMP"
+        val entry = DUMP_ALLOWLIST[key] ?: return "error: '$key' is not on the read-only allowlist"
+        return try {
+            val sm = Class.forName("android.os.ServiceManager")
+            val binder = sm.getMethod("getService", String::class.java)
+                .invoke(null, entry.first) as? android.os.IBinder
+                ?: return "error: service '${entry.first}' not found"
+            val pipe = android.os.ParcelFileDescriptor.createPipe()
+            val read = pipe[0]; val write = pipe[1]
+            val out = StringBuilder()
+            val reader = Thread {
+                try {
+                    android.os.ParcelFileDescriptor.AutoCloseInputStream(read).use { ins ->
+                        val buf = ByteArray(8192)
+                        var n: Int
+                        while (ins.read(buf).also { n = it } > 0) {
+                            out.append(String(buf, 0, n))
+                            if (out.length > 200_000) break
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+            reader.start()
+            try { binder.dump(write.fileDescriptor, entry.second) } finally {
+                try { write.close() } catch (_: Exception) {}
+            }
+            reader.join(5000)
+            val s = out.toString()
+            if (s.length > 20_000) s.substring(0, 20_000) + "\n...(truncated)" else s
+        } catch (e: Exception) {
+            "error: ${e.message}"
+        }
+    }
+}

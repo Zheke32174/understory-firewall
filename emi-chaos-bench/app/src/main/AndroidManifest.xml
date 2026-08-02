@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Audio playback in the background -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- REQUIRED for mic capture while the masking foreground service is running.
+         Android 11+ gates microphone access behind the foreground-service TYPE, not just the
+         RECORD_AUDIO permission: with a mediaPlayback-only FGS alive, getUserMedia fails with
+         NotReadableError ("Could not start audio source") even though RECORD_AUDIO is granted.
+         That is exactly the failure reported on Android 16 / SDK 36. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- Accessory / sensor inputs. Read-only: the app never transmits RF and never radiates. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
+    <!-- Mic is used ONLY for local voice-activity detection (VAD) to drive reactive masking.
+         Raw audio is analysed in-process and never recorded to disk or sent anywhere. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- REQUIRED BY CHROMIUM'S AUDIO-INPUT PATH, and its absence is why getUserMedia failed
+         with NotReadableError on a device where the OS could demonstrably capture.
+         WebView routes microphone capture through the same audio stack WebRTC uses, which
+         calls into AudioManager (mode/focus/routing) while opening an input stream. Without
+         MODIFY_AUDIO_SETTINGS those calls fail and the stream never opens — surfacing as a
+         bare "Could not start audio source". A plain native AudioRecord does NOT need this
+         permission, which is exactly why the native probe reported nativeCaptureOk=true and
+         recordingState=RECORDING while WebView kept failing in the same process. It is a
+         normal (install-time) permission: no runtime prompt. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- INTERNET is used ONLY for a LAN WebSocket mesh link to companion accessories/nodes
+         (phones, OpenWRT routers, a Rayhunter device's own UI). No audio leaves the device. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- READ_PHONE_STATE is used ONLY to read cell-tower generation/neighbor-count for the
+         on-device IMSI-catcher heuristic panel (2G-downgrade / isolated-cell detection). -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <!-- Camera is used ONLY for the optional visual scan: live frames are analysed in-process
+         for bright point-source hotspots in a darkened room (a known DIY technique for
+         spotting hidden-camera/mic IR LEDs, since many phone sensors have weak IR-cut
+         filtering). No frame is ever recorded, saved, or transmitted. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Background resilience: lets the app ASK (via the standard system dialog — it cannot
+         grant this to itself) to be exempt from battery optimisation, so aggressive OEM dozing
+         can't silently stall the masking audio with the screen off. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Read-only: lets the resilience panel report this app's own app-standby bucket, i.e.
+         how throttled the OS currently considers it. Self-introspection only. -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+    <!-- DUMP is signature|privileged|DEVELOPMENT. The development flag is what lets a normal
+         app hold it once a human runs `adb shell pm grant <pkg> android.permission.DUMP`.
+         Declaring it here does nothing on its own — without that explicit grant the app has
+         it in name only. When granted it enables the read-only, in-process service dumps in
+         PrivilegeBridge.selfDump(), which unlike Shizuku persist across reboot and need no
+         helper process. Same fixed allowlist discipline: four read-only service dumps, no
+         free-form execution. -->
+    <uses-permission android:name="android.permission.DUMP"
+        tools:ignore="ProtectedPermissions" />
+    <!-- APPEAR ON TOP. Declaring this is what puts the app in Settings > Apps > Special
+         access > Appear on top, where it previously did not appear at all. It is an
+         appear-on-top *capability*, not an appear-on-top *behaviour*: nothing in this app
+         draws a system overlay on its own, and the permission is never self-granted — the
+         user grants it from that Settings screen. It exists so the disruptor can reach
+         beyond this app's own window when the user asks it to, and so the app can be
+         reasoned about in the same settings surface as everything else that can draw on
+         top of you. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <uses-feature android:name="android.hardware.audio.output" android:required="true" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.gyroscope" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.compass" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.barometer" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.light" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.wifi" android:required="false" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+
+    <!-- Package-visibility (Android 11+): lets the Shizuku status check see whether the
+         separate Shizuku manager app is installed. Shizuku itself is entirely optional —
+         everything degrades gracefully with it absent. -->
+    <queries>
+        <package android:name="moe.shizuku.privileged.api" />
+        <!-- Dhizuku: the device-owner-backed alternative privileged channel. Also entirely
+             optional; presence is checked so the UI can tell the user which tiers exist. -->
+        <package android:name="com.rosan.dhizuku" />
+    </queries>
+
+    <!-- allowBackup=false / no cross-device restore: the app's saved profiles, trusted-network
+         list and geofences describe where you are and what you consider safe. Letting that ride
+         out in a cloud backup, or be restored onto another device, is a worse leak than losing
+         it. dataExtractionRules likewise opts out of both cloud backup and device transfer. -->
+    <application
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
+        android:theme="@style/Theme.EmiBench">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
+            android:screenOrientation="portrait"
+            android:hardwareAccelerated="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".MaskerService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback|microphone"
+            android:stopWithTask="false" />
+
+        <!-- TAPJACK / OVERLAY DETECTION. Optional and inert until a human enables it in
+             Settings > Accessibility; DECLARING IT IS WHAT MAKES THIS APP APPEAR IN THAT LIST
+             AT ALL, which it previously did not. Scoped to window CHANGE events and window
+             METADATA only: it never reads screen content and never blocks a touch — the two
+             earlier attempts at tapjack protection went through the input path and broke the
+             screen both times. See OverlayWatch.kt and res/xml/overlay_watch.xml for the
+             exact limits. BIND_ACCESSIBILITY_SERVICE means only the system can bind it. -->
+        <service
+            android:name=".OverlayWatch"
+            android:exported="true"
+            android:label="@string/overlay_watch_summary"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/overlay_watch" />
+        </service>
+
+        <!-- Device-admin entry point. Inert until a human explicitly activates it (Settings)
+             or provisions this app as device owner over adb. Its only purpose is resilience:
+             setUserControlDisabledPackages (API 30+) is the one supported way on stock
+             Android to stop an app being silently force-stopped. The declared policy set
+             (res/xml/device_admin.xml) is deliberately minimal — no wipe, no password
+             control, no login watching. exported=true is required on API 31+ for a receiver
+             with an intent-filter; BIND_DEVICE_ADMIN means only the system can bind it. -->
+        <receiver
+            android:name=".EmiDeviceAdminReceiver"
+            android:label="@string/app_name"
+            android:description="@string/admin_description"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Optional Shizuku entry point. No-op unless the user has separately installed and
+             activated Shizuku (ADB-paired or rooted) and explicitly grants this app permission
+             through it. Everything gated behind it stays read-only diagnostics. -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
+        <!-- Hands a one-shot, read-only URI for a single exported file to whatever the user
+             picks in the share sheet. Not exported: nothing else on the device can query it,
+             and the grant covers only the file just chosen for sharing. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+</manifest>

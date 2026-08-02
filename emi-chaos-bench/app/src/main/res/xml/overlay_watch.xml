@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Accessibility service configuration for OverlayWatch — tapjack / overlay detection.
+
+  Scoped as narrowly as the API allows for the job:
+
+    accessibilityEventTypes  only window changes. Not typeViewTextChanged, not
+                             typeViewFocused, not typeViewClicked — this service has no
+                             interest in what you type, focus or press.
+    packageNames             absent deliberately: an overlay drawn by ANOTHER app is the
+                             whole point, so the window list cannot be filtered to ours.
+    canRetrieveWindowContent required by the platform for getWindows() to return anything.
+                             The service still never reads content: it touches only
+                             AccessibilityWindowInfo (type, layer, bounds) and never calls
+                             getRootInActiveWindow() or reads a node's text. See OverlayWatch.
+    flagRetrieveInteractiveWindows  what actually makes the window list visible; without it
+                             getWindows() is empty and the detector cannot work.
+
+  No flagRequestFilterKeyEvents, no flagRequestTouchExplorationMode, no input capture of any
+  kind. This service observes window geometry and nothing else.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowsChanged|typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagRetrieveInteractiveWindows|flagReportViewIds"
+    android:canRetrieveWindowContent="true"
+    android:notificationTimeout="300"
+    android:description="@string/overlay_watch_description"
+    android:summary="@string/overlay_watch_summary" />

@@ -372,6 +372,23 @@
         </receiver>
 
         <!--
+          New-app install watch (De1984 / Fyrypt "notify when a new app is installed").
+          PACKAGE_ADDED is exempt from the O+ implicit-broadcast limits, so a manifest
+          receiver still wakes on it. data scheme "package" scopes it to install events.
+          exported="false" — only the system's protected PACKAGE_ADDED broadcast reaches
+          it. Inert unless the user leaves the notify/auto-block toggles on (both default
+          off for auto-block; notify defaults on). Skips updates and system apps in code.
+        -->
+        <receiver
+            android:name=".PackageInstallReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.PACKAGE_ADDED" />
+                <data android:scheme="package" />
+            </intent-filter>
+        </receiver>
+
+        <!--
           Mock-location foreground service (location-privacy tool, NOT a VPN). Keeps
           the LocationManager test-provider feed alive while the user has a fake point
           active, with a persistent notification + Stop action. exported=false: only

@@ -46,6 +46,19 @@ jobs:
         run: gradle --no-daemon assembleDebug
       - name: Run unit tests
         run: gradle --no-daemon test
+
+      # emi-chaos-bench is a SEPARATE Gradle build — it has its own settings.gradle.kts
+      # (rootProject.name = "EMIChaosBench") and is deliberately not included in the root
+      # settings, so the root assembleDebug above never touched it. That meant the app could
+      # be broken in CI-invisible ways indefinitely: a compile error there would go unnoticed
+      # because nothing in the pipeline ever compiled it. Built explicitly here.
+      - name: Assemble EMI Chaos Bench (separate build)
+        working-directory: emi-chaos-bench
+        run: gradle --no-daemon assembleDebug
+
+      - name: Test EMI Chaos Bench
+        working-directory: emi-chaos-bench
+        run: gradle --no-daemon test
       - name: Upload CI APK artifacts
         uses: actions/upload-artifact@v4
         with:

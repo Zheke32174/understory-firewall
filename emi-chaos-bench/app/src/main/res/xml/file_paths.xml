@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Scoped deliberately narrowly. The share provider can expose exactly one directory —
+  cache/exports — and nothing else. Files written for sharing go there and nowhere else, so a
+  malformed or hostile filename cannot cause the provider to hand out anything from the app's
+  data directory, the vault, or shared storage.
+-->
+<paths>
+    <cache-path name="exports" path="exports/" />
+</paths>

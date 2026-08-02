@@ -1,0 +1,529 @@
+// License: GPL - http://www.gnu.org/licenses/gpl.html
+// Bad Jack HiFi Avocado Dynamic Bass DRX Suite
+// Importable JamesDSP / LiveProg .eel build
+//
+// LiveProg extension: .eel
+// Convolver companion: BadJack_HiFi_Convolver_48k.wav
+
+desc: Bad Jack HiFi Avocado Dynamic Bass DRX Suite SAFE
+
+// ---------------- MASTER ----------------
+slider1:1<0,1,1{Off,On}>Master Enable
+slider2:100<0,100,1>Master Mix (%)
+slider3:3<-12,12,0.1>Input Gain (dB)
+slider4:-1<-12,3,0.1>Output Trim (dB)
+slider5:85<0,100,1>Final Soft Limiter (%)
+
+// ---------------- BAD JACK / HIFI ----------------
+slider10:1<0,1,1{Off,On}>HiFi Rescue Enable
+slider11:35<0,100,1>Bad Jack Channel Blend (%)
+slider12:25<0,100,1>Mono Bass (%)
+slider13:0<-6,6,0.1>Left Right Balance (dB)
+slider14:3<0,12,0.1>HiFi Bass Shelf (dB)
+slider15:95<40,180,1>HiFi Bass Freq (Hz)
+slider16:3<0,10,0.1>Vocal Presence (dB)
+slider17:2500<1000,5000,10>Vocal Freq (Hz)
+slider18:2<0,8,0.1>Air Clarity (dB)
+slider19:8500<4000,14000,100>Air Freq (Hz)
+slider20:2<0,8,0.1>Harshness Tame (dB)
+slider21:4200<2500,8000,50>Harshness Freq (Hz)
+
+// ---------------- AVOCADO ----------------
+slider30:0<0,1,1{Off,On}>Avocado Enable
+slider31:50<1,4000,1>Avocado Buffer Length (ms)
+slider32:35<0,100,1>Avocado Mix (%)
+slider33:8<1,16,1>Avocado Buffers
+slider34:70<0,99,1>Repeat Probability (%)
+slider35:5<0,100,1>Pitch Mod Probability (%)
+slider36:10<0,99,1>Reverse Probability (%)
+slider37:18<0,99,1>Fadeout Probability (%)
+slider38:8<0,99,1>Ducking Threshold (%)
+slider39:15<0,99,1>Glitch Attack (%)
+slider40:0<0,4,1{Off,Major,Minor,Fifths,Octaves}>Arpeggiator Mode
+slider41:0<0,64,1>Tempo Sync 64ths
+
+// ---------------- DYNAMIC BASS ----------------
+slider50:1<0,1,1{Off,On}>Dynamic Bass Enable
+slider51:60<0,100,1>Dynamic Bass Strength (%)
+slider52:85<40,180,1>Dynamic Bass Focus (Hz)
+slider53:65<0,100,1>Dynamic Bass Mix (%)
+
+// ---------------- DRX-STYLE DYNAMICS ----------------
+slider60:1<0,1,1{Off,On}>DRX Dynamics Enable
+slider61:0.7<-1,2,0.01>DRX Bass Dynamics
+slider62:0<-1,2,0.01>DRX Mid Dynamics
+slider63:0.4<-1,2,0.01>DRX Treble Dynamics
+slider64:95<40,600,1>DRX Bass Band (Hz)
+slider65:8000<1000,20000,10>DRX Treble Band (Hz)
+slider66:-1<-10,5,0.1>DRX Gain (dB)
+slider67:65<0,100,1>DRX Mix (%)
+
+@init
+
+pi = 3.141592653589793;
+two_pi = 2 * pi;
+log10n = log(10);
+
+slider1=1; slider2=100; slider3=3; slider4=-1; slider5=85;
+
+slider10=1; slider11=35; slider12=25; slider13=0; slider14=3;
+slider15=95; slider16=3; slider17=2500; slider18=2; slider19=8500;
+slider20=2; slider21=4200;
+
+slider30=0; slider31=50; slider32=35; slider33=8; slider34=70;
+slider35=5; slider36=10; slider37=18; slider38=8; slider39=15;
+slider40=0; slider41=0;
+
+slider50=1; slider51=60; slider52=85; slider53=65;
+
+slider60=1; slider61=0.7; slider62=0; slider63=0.4; slider64=95;
+slider65=8000; slider66=-1; slider67=65;
+
+// Avocado memory layout
+avo_fade_samples = 48;
+avo_play_rate = 1;
+avo_max_bufsiz = ceil(4000 * srate / 1000);
+avo_max_buffers = 16;
+avo_r_offset = avo_max_bufsiz * avo_max_buffers + 1;
+avo_note_offset = avo_r_offset * 2;
+
+avo_sync_counter = 0;
+avo_is_recording = 0;
+avo_playback_buffer = 0;
+avo_playback_csr = 0;
+avo_record_buffer = 0;
+avo_record_csr = 0;
+avo_gain = 1;
+avo_thresh = 0;
+avo_max_thresh = 0;
+avo_arpeg_idx = 0;
+
+@sample
+
+dryL = spl0;
+dryR = spl1;
+
+// ---------------- slider values computed here for JaneDSP safety ----------------
+
+master_enable = slider1;
+master_mix = slider2 / 100;
+
+input_gain = exp(log10n * slider3 / 20);
+output_trim = exp(log10n * slider4 / 20);
+
+limiter_drive = 1 + (slider5 / 100) * 2.75;
+
+// HiFi rescue
+hifi_enable = slider10;
+jack_blend = slider11 / 100;
+mono_bass = slider12 / 100;
+
+bal = slider13;
+
+bal <= 0 ? (
+  balL = 1;
+  balR = exp(log10n * bal / 20);
+) : (
+  balL = exp(log10n * -bal / 20);
+  balR = 1;
+);
+
+hifi_bass_gain = exp(log10n * slider14 / 20);
+vocal_gain = exp(log10n * slider16 / 20);
+air_gain = exp(log10n * slider18 / 20);
+harsh_gain = exp(log10n * -slider20 / 20);
+
+bass_freq = max(20, min(slider15, srate * 0.45));
+vocal_freq = max(200, min(slider17, srate * 0.45));
+air_freq = max(1000, min(slider19, srate * 0.45));
+harsh_freq = max(1000, min(slider21, srate * 0.45));
+
+bass_a = exp(-two_pi * bass_freq / srate);
+vocal_a = exp(-two_pi * vocal_freq / srate);
+air_a = exp(-two_pi * air_freq / srate);
+harsh_a = exp(-two_pi * harsh_freq / srate);
+
+// Avocado
+avo_enable = slider30;
+avo_bufsiz = max(1, slider31 * srate / 1000);
+avo_mix = slider32 / 100;
+avo_num_buffers = max(1, min(slider33, 16));
+avo_repeat_prob = slider34;
+avo_pitch_prob = slider35;
+avo_reverse_prob = slider36;
+avo_fadeout_prob = slider37;
+avo_duck_thresh = slider38;
+avo_attack = slider39;
+avo_arpeg_mode = slider40;
+avo_sync = slider41;
+
+// Arpeggiator notes
+avo_arpeg_mode == 1 ? (
+  avo_max_arpeg = 4;
+  avo_note[avo_note_offset + 0] = 1;
+  avo_note[avo_note_offset + 1] = 1.25993;
+  avo_note[avo_note_offset + 2] = 1.49830;
+  avo_note[avo_note_offset + 3] = 2;
+);
+
+avo_arpeg_mode == 2 ? (
+  avo_max_arpeg = 4;
+  avo_note[avo_note_offset + 0] = 1;
+  avo_note[avo_note_offset + 1] = 1.18920;
+  avo_note[avo_note_offset + 2] = 1.49830;
+  avo_note[avo_note_offset + 3] = 2;
+);
+
+avo_arpeg_mode == 3 ? (
+  avo_max_arpeg = 3;
+  avo_note[avo_note_offset + 0] = 1;
+  avo_note[avo_note_offset + 1] = 1.49830;
+  avo_note[avo_note_offset + 2] = 2;
+);
+
+avo_arpeg_mode == 4 ? (
+  avo_max_arpeg = 3;
+  avo_note[avo_note_offset + 0] = 1;
+  avo_note[avo_note_offset + 1] = 2;
+  avo_note[avo_note_offset + 2] = 3;
+);
+
+// Dynamic bass
+dbass_enable = slider50;
+dbass_strength = slider51 / 100;
+dbass_focus = max(30, min(slider52, srate * 0.45));
+dbass_mix = slider53 / 100;
+dbass_a = exp(-two_pi * dbass_focus / srate);
+
+// DRX
+drx_enable = slider60;
+drx_bass_amt = slider61;
+drx_mid_amt = slider62;
+drx_treble_amt = slider63;
+drx_bass_freq = max(40, min(slider64, srate * 0.45));
+drx_treble_freq = max(1000, min(slider65, srate * 0.45));
+drx_gain = exp(log10n * slider66 / 20);
+drx_mix = slider67 / 100;
+
+drx_bass_a = exp(-two_pi * drx_bass_freq / srate);
+drx_treble_a = exp(-two_pi * drx_treble_freq / srate);
+
+// ---------------- input ----------------
+
+L = spl0 * input_gain;
+R = spl1 * input_gain;
+
+// ============================================================
+// STAGE 1: BAD JACK / HIFI RESCUE
+// ============================================================
+
+hifi_enable ? (
+  L *= balL;
+  R *= balR;
+
+  mid = (L + R) * 0.5;
+
+  L = L * (1 - jack_blend) + mid * jack_blend;
+  R = R * (1 - jack_blend) + mid * jack_blend;
+
+  hifi_bassL = hifi_bassL * bass_a + L * (1 - bass_a);
+  hifi_bassR = hifi_bassR * bass_a + R * (1 - bass_a);
+
+  bassMid = (hifi_bassL + hifi_bassR) * 0.5;
+
+  hifi_bassL = hifi_bassL * (1 - mono_bass) + bassMid * mono_bass;
+  hifi_bassR = hifi_bassR * (1 - mono_bass) + bassMid * mono_bass;
+
+  L += hifi_bassL * (hifi_bass_gain - 1);
+  R += hifi_bassR * (hifi_bass_gain - 1);
+
+  vocal_lpL = vocal_lpL * vocal_a + L * (1 - vocal_a);
+  vocal_lpR = vocal_lpR * vocal_a + R * (1 - vocal_a);
+
+  vocal_hpL = L - vocal_lpL;
+  vocal_hpR = R - vocal_lpR;
+
+  vocal_bandL = vocal_bandL * 0.92 + vocal_hpL * 0.08;
+  vocal_bandR = vocal_bandR * 0.92 + vocal_hpR * 0.08;
+
+  L += vocal_bandL * (vocal_gain - 1);
+  R += vocal_bandR * (vocal_gain - 1);
+
+  harsh_lpL = harsh_lpL * harsh_a + L * (1 - harsh_a);
+  harsh_lpR = harsh_lpR * harsh_a + R * (1 - harsh_a);
+
+  harsh_bandL = L - harsh_lpL;
+  harsh_bandR = R - harsh_lpR;
+
+  L += harsh_bandL * (harsh_gain - 1) * 0.35;
+  R += harsh_bandR * (harsh_gain - 1) * 0.35;
+
+  air_lpL = air_lpL * air_a + L * (1 - air_a);
+  air_lpR = air_lpR * air_a + R * (1 - air_a);
+
+  airL = L - air_lpL;
+  airR = R - air_lpR;
+
+  L += airL * (air_gain - 1) * 0.5;
+  R += airR * (air_gain - 1) * 0.5;
+);
+
+// ============================================================
+// STAGE 2: AVOCADO GLITCH / DUCKING
+// ============================================================
+
+avo_enable ? (
+  avo_dryL = L;
+  avo_dryR = R;
+
+  avo_sync > 0 && tempo > 0 ? (
+    avo_new_ms = 1000 * avo_sync * 60 / 16 / tempo;
+    slider31 = avo_new_ms;
+    avo_bufsiz = max(1, slider31 * srate / 1000);
+  );
+
+  avo_can_start = 0;
+
+  avo_sync == 0 ? (
+    avo_can_start = 1;
+  ) : (
+    ((beat_position * 256) | 0) == ((beat_position | 0) * 256) ? (
+      avo_can_start = 1;
+    );
+  );
+
+  avo_is_recording ? (
+    avo_write = avo_max_bufsiz * avo_record_buffer + avo_record_csr;
+
+    avo_buf[avo_write] = L;
+    avo_buf[avo_r_offset + avo_write] = R;
+
+    avo_record_csr += 1;
+
+    avo_record_csr > avo_bufsiz ? (
+      avo_is_recording = 0;
+
+      avo_sync_counter += 1;
+
+      avo_sync > 0 && avo_sync_counter > srate * 16 / avo_bufsiz ? (
+        avo_sync_counter = 0;
+        avo_can_start = 0;
+      );
+    );
+  ) : (
+    avo_can_start ? (
+      avo_record_buffer = floor(rand(avo_num_buffers));
+      avo_record_csr = 0;
+      avo_is_recording = 1;
+    );
+  );
+
+  avo_can_start ? (
+    avo_playback_csr = avo_playback_csr;
+  ) : (
+    avo_playback_csr = 0;
+  );
+
+  floor(avo_playback_csr) > avo_bufsiz ? (
+    avo_playback_csr = 0;
+
+    rand(100) > avo_repeat_prob ? (
+      avo_playback_buffer = floor(rand(avo_num_buffers));
+    );
+
+    avo_arpeg_mode > 0 ? (
+      avo_play_rate = avo_note[avo_note_offset + avo_arpeg_idx];
+      avo_arpeg_idx = (avo_arpeg_idx + 1) % avo_max_arpeg;
+    ) : (
+      avo_play_rate = 1;
+
+      rand(100) > 110 - avo_pitch_prob ? (
+        avo_play_rate = 2;
+      );
+    );
+
+    rand(100) > 105 - avo_reverse_prob ? (
+      i = 0;
+      rev_count = floor(avo_bufsiz / 2 - 2);
+      rev_count < 0 ? rev_count = 0;
+
+      loop(rev_count,
+        start_pos = avo_max_bufsiz * avo_playback_buffer + i;
+        end_pos = avo_max_bufsiz * avo_playback_buffer + avo_bufsiz - i - 1;
+
+        swapL = avo_buf[start_pos];
+        swapR = avo_buf[avo_r_offset + start_pos];
+
+        avo_buf[start_pos] = avo_buf[end_pos];
+        avo_buf[avo_r_offset + start_pos] = avo_buf[avo_r_offset + end_pos];
+
+        avo_buf[end_pos] = swapL;
+        avo_buf[avo_r_offset + end_pos] = swapR;
+
+        i += 1;
+      );
+    );
+
+    rand(100) > 105 - avo_fadeout_prob ? (
+      i = 0;
+      fade_count = floor(avo_bufsiz);
+
+      loop(fade_count,
+        fade_pos = avo_max_bufsiz * avo_playback_buffer + i;
+
+        avo_buf[fade_pos] *= 0.85;
+        avo_buf[avo_r_offset + fade_pos] *= 0.85;
+
+        i += 1;
+      );
+    );
+  );
+
+  avo_mult = 1;
+  avo_idx = floor(avo_playback_csr);
+
+  avo_idx < avo_fade_samples ? (
+    avo_mult = avo_idx / avo_fade_samples;
+  ) : (
+    avo_idx > avo_bufsiz - avo_fade_samples ? (
+      avo_mult = (avo_bufsiz - avo_idx - 1) / avo_fade_samples;
+    );
+  );
+
+  avo_idx < 0 ? avo_idx = 0;
+  avo_idx > avo_bufsiz - 1 ? avo_idx = avo_bufsiz - 1;
+
+  avo_read = avo_max_bufsiz * avo_playback_buffer + avo_idx;
+
+  avo_tmpL = avo_mult * avo_buf[avo_read];
+  avo_tmpR = avo_mult * avo_buf[avo_r_offset + avo_read];
+
+  avo_playback_csr += avo_play_rate;
+
+  avo_level = max(abs(L), abs(R));
+
+  avo_level > avo_thresh ? (
+    avo_thresh = avo_thresh * 0.9 + 0.1 * avo_level;
+  ) : (
+    avo_thresh = avo_thresh * 0.98 + 0.02 * avo_level;
+  );
+
+  avo_thresh > max(avo_duck_thresh / 100, avo_max_thresh * avo_duck_thresh / 65) ? (
+    avo_target_gain = 1;
+  ) : (
+    avo_target_gain = 1 - avo_mix;
+  );
+
+  avo_thresh > avo_max_thresh ? (
+    avo_max_thresh = max(avo_max_thresh, avo_max_thresh * 0.1 + avo_thresh * 0.9);
+  ) : (
+    avo_max_thresh *= 0.99998;
+  );
+
+  avo_target_gain > avo_gain ? (
+    avo_gain = avo_gain * 0.95 + 0.05 * avo_target_gain;
+  ) : (
+    avo_gain = avo_gain * (1 - avo_attack / 100000) + avo_attack / 100000 * avo_target_gain;
+  );
+
+  avo_can_start ? (
+    avo_wetL = L * avo_gain + avo_tmpL * (1 - avo_gain);
+    avo_wetR = R * avo_gain + avo_tmpR * (1 - avo_gain);
+
+    L = avo_dryL * (1 - avo_mix) + avo_wetL * avo_mix;
+    R = avo_dryR * (1 - avo_mix) + avo_wetR * avo_mix;
+  );
+);
+
+// ============================================================
+// STAGE 3: DYNAMIC BASS
+// ============================================================
+
+dbass_enable ? (
+  db_dryL = L;
+  db_dryR = R;
+
+  db_mid = (L + R) * 0.5;
+
+  db_low = db_low * dbass_a + db_mid * (1 - dbass_a);
+  db_env = db_env * 0.995 + abs(db_low) * 0.005;
+
+  db_push = 1 + dbass_strength * 2;
+  db_dyn = 1 + dbass_strength * max(0, db_env - abs(db_low)) * 6;
+
+  db_wetL = L + db_low * db_push * db_dyn;
+  db_wetR = R + db_low * db_push * db_dyn;
+
+  L = db_dryL * (1 - dbass_mix) + db_wetL * dbass_mix;
+  R = db_dryR * (1 - dbass_mix) + db_wetR * dbass_mix;
+);
+
+// ============================================================
+// STAGE 4: DRX-STYLE MULTIBAND DYNAMICS
+// ============================================================
+
+drx_enable ? (
+  drx_dryL = L;
+  drx_dryR = R;
+
+  drx_mid = (L + R) * 0.5;
+
+  drx_low = drx_low * drx_bass_a + drx_mid * (1 - drx_bass_a);
+  drx_tlp = drx_tlp * drx_treble_a + drx_mid * (1 - drx_treble_a);
+
+  drx_high = drx_mid - drx_tlp;
+  drx_middle = drx_mid - drx_low - drx_high;
+
+  drx_low_env = drx_low_env * 0.995 + abs(drx_low) * 0.005;
+  drx_mid_env = drx_mid_env * 0.995 + abs(drx_middle) * 0.005;
+  drx_high_env = drx_high_env * 0.995 + abs(drx_high) * 0.005;
+
+  low_delta = abs(drx_low) - drx_low_env;
+  mid_delta = abs(drx_middle) - drx_mid_env;
+  high_delta = abs(drx_high) - drx_high_env;
+
+  low_dyn = 1 + drx_bass_amt * max(-0.5, min(low_delta * 8, 1.5));
+  mid_dyn = 1 + drx_mid_amt * max(-0.5, min(mid_delta * 8, 1.5));
+  high_dyn = 1 + drx_treble_amt * max(-0.5, min(high_delta * 8, 1.5));
+
+  low_dyn = max(0.25, min(low_dyn, 4));
+  mid_dyn = max(0.25, min(mid_dyn, 4));
+  high_dyn = max(0.25, min(high_dyn, 4));
+
+  drx_proc_mid = drx_low * low_dyn + drx_middle * mid_dyn + drx_high * high_dyn;
+
+  sideL = L - drx_mid;
+  sideR = R - drx_mid;
+
+  drx_outL = (drx_proc_mid + sideL) * drx_gain;
+  drx_outR = (drx_proc_mid + sideR) * drx_gain;
+
+  L = drx_dryL * (1 - drx_mix) + drx_outL * drx_mix;
+  R = drx_dryR * (1 - drx_mix) + drx_outR * drx_mix;
+);
+
+// ============================================================
+// FINAL OUTPUT
+// ============================================================
+
+L *= output_trim;
+R *= output_trim;
+
+lim_ref = limiter_drive / sqrt(1 + limiter_drive * limiter_drive);
+
+limL = L * limiter_drive;
+limR = R * limiter_drive;
+
+L = (limL / sqrt(1 + limL * limL)) / lim_ref;
+R = (limR / sqrt(1 + limR * limR)) / lim_ref;
+
+L = max(-0.98, min(L, 0.98));
+R = max(-0.98, min(R, 0.98));
+
+master_enable ? (
+  spl0 = dryL * (1 - master_mix) + L * master_mix;
+  spl1 = dryR * (1 - master_mix) + R * master_mix;
+) : (
+  spl0 = dryL;
+  spl1 = dryR;
+);

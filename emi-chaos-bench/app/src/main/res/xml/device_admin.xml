@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Deliberately minimal policy set.
+
+  The ONLY reason this app supports device-admin/device-owner at all is resilience: making
+  the masker resistant to being silently force-stopped or uninstalled, via
+  setUserControlDisabledPackages (API 30+) and setUninstallBlocked.
+
+  Note what is absent and stays absent: wipe-data, reset-password, watch-login,
+  expire-password, disable-keyguard-features. A sound-masking app has no business holding
+  the ability to wipe a phone or watch login attempts, and requesting them would make this
+  receiver a more valuable target than the app it is meant to protect.
+
+  force-lock is included only because DeviceAdminReceiver requires at least one policy to
+  be declared for the admin to be activatable; it is never invoked by this app.
+-->
+<device-admin xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-policies>
+        <force-lock />
+    </uses-policies>
+</device-admin>

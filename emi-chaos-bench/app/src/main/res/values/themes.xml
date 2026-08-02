@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.EmiBench" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#141618</item>
+        <item name="android:navigationBarColor">#141618</item>
+        <item name="android:windowBackground">#141618</item>
+    </style>
+</resources>

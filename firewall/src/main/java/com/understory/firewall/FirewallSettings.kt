@@ -36,6 +36,11 @@ object FirewallSettings {
     private const val K_AUDIT_ACKNOWLEDGED = "audit_acknowledged"
     private const val K_TUNNEL_MODE = "tunnel_mode"
     private const val K_UPSTREAM_DNS_IP = "tunnel_upstream_dns_ip"
+    private const val K_DOT_HOSTNAME = "tunnel_dot_hostname"
+    private const val K_UPSTREAM_MODE = "tunnel_upstream_mode" // "plaintext" | "dot" | "doh"
+    private const val K_DOH_PATH = "tunnel_doh_path"
+    private const val K_NEW_APP_NOTIFY = "new_app_notify"
+    private const val K_NEW_APP_AUTO_BLOCK = "new_app_auto_block"
 
     // ---- Legacy keys (read once during migration, then deleted) ----
     private const val K_LEGACY_BLOCKLIST = "blocklist"
@@ -170,6 +175,67 @@ object FirewallSettings {
     fun setUpstreamDnsIp(ctx: Context, ip: String) {
         prefs(ctx).edit().putString(K_UPSTREAM_DNS_IP, ip.trim()).apply()
     }
+
+    /**
+     * The in-tunnel DNS-over-TLS verification hostname. Non-blank ⇒ the DNS-filter tunnel
+     * forwards allowed queries over DoT (RFC 7858) to [getUpstreamDnsIp]:853, authenticated
+     * against this hostname (fail-closed on cert/hostname mismatch). Blank ⇒ plaintext UDP.
+     * This is the encrypted-upstream path that replaces the old stub — it is real, verified DoT
+     * inside the tunnel, independent of system Private DNS.
+     */
+    fun getDotHostname(ctx: Context): String =
+        prefs(ctx).getString(K_DOT_HOSTNAME, "")?.trim().orEmpty()
+
+    fun setDotHostname(ctx: Context, hostname: String) {
+        prefs(ctx).edit().putString(K_DOT_HOSTNAME, hostname.trim()).apply()
+    }
+
+    /** True when an in-tunnel DoT hostname is configured. */
+    fun isTunnelDotEnabled(ctx: Context): Boolean = getDotHostname(ctx).isNotBlank()
+
+    /**
+     * Which encrypted transport the tunnel uses when a hostname is set: "plaintext", "dot", or
+     * "doh". DoT (:853) and DoH (:443) both verify the peer against [getDotHostname] and fail
+     * closed; DoH additionally rides ordinary HTTPS so a :853 block can't force plaintext. The
+     * mode only takes effect when a hostname is present — a blank hostname is always plaintext.
+     */
+    fun getUpstreamMode(ctx: Context): String =
+        prefs(ctx).getString(K_UPSTREAM_MODE, "dot")?.takeIf { it.isNotBlank() } ?: "dot"
+
+    fun setUpstreamMode(ctx: Context, mode: String) {
+        val v = mode.trim().lowercase().takeIf { it in setOf("plaintext", "dot", "doh") } ?: "dot"
+        prefs(ctx).edit().putString(K_UPSTREAM_MODE, v).apply()
+    }
+
+    /** DoH request path (default "/dns-query"). Only used when the mode is "doh". */
+    fun getDohPath(ctx: Context): String =
+        prefs(ctx).getString(K_DOH_PATH, "/dns-query")?.takeIf { it.isNotBlank() } ?: "/dns-query"
+
+    fun setDohPath(ctx: Context, path: String) {
+        prefs(ctx).edit().putString(K_DOH_PATH, path.trim().ifBlank { "/dns-query" }).apply()
+    }
+
+    // ---------------------------------------------------------------
+    // New-app install watch (De1984 / Fyrypt "notified when new apps are installed")
+    // ---------------------------------------------------------------
+
+    /** Notify when a new (non-system, non-update) app is installed. Default on. */
+    fun isNewAppNotifyEnabled(ctx: Context): Boolean =
+        prefs(ctx).getBoolean(K_NEW_APP_NOTIFY, true)
+
+    fun setNewAppNotifyEnabled(ctx: Context, on: Boolean) =
+        prefs(ctx).edit().putBoolean(K_NEW_APP_NOTIFY, on).apply()
+
+    /**
+     * Auto-block a newly installed app's network access on install (our superior variant of the
+     * donors' "notify only" — RethinkDNS calls this the "block newly installed apps" rule). Default
+     * OFF, since it needs an active firewall backend and silently changes an app's connectivity.
+     */
+    fun isNewAppAutoBlockEnabled(ctx: Context): Boolean =
+        prefs(ctx).getBoolean(K_NEW_APP_AUTO_BLOCK, false)
+
+    fun setNewAppAutoBlockEnabled(ctx: Context, on: Boolean) =
+        prefs(ctx).edit().putBoolean(K_NEW_APP_AUTO_BLOCK, on).apply()
 
     // ---------------------------------------------------------------
     // DNS provider

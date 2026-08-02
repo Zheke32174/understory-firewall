@@ -9,6 +9,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,6 +19,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -407,20 +411,40 @@ private fun BlocklistCard() {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun UpstreamCard() {
     val ctx = LocalContext.current
     var ip by remember { mutableStateOf(FirewallSettings.getUpstreamDnsIp(ctx)) }
+    var dotHost by remember { mutableStateOf(FirewallSettings.getDotHostname(ctx)) }
+    // Transport: "plaintext" | "dot" | "doh". A blank hostname always means plaintext, so the
+    // selector is only meaningful once a hostname is set.
+    var mode by remember { mutableStateOf(FirewallSettings.getUpstreamMode(ctx)) }
+    var dohPath by remember { mutableStateOf(FirewallSettings.getDohPath(ctx)) }
     var style by remember { mutableStateOf(BlocklistRepository.answerStyle(ctx)) }
     var saved by remember { mutableStateOf<String?>(null) }
 
+    val effectiveMode = if (dotHost.isBlank()) "plaintext" else mode
     SuiteCard {
         Text("Upstream resolver", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
         Text(
-            "Allowed queries are forwarded to this resolver over PLAINTEXT UDP. " +
-                "Encrypted-resolver routing (DoT/DoH/DNSCrypt/Tor) is not implemented in " +
-                "the tunnel yet — for an encrypted upstream, set system Private DNS (DoT).",
+            when (effectiveMode) {
+                "doh" ->
+                    "Allowed queries forward over VERIFIED DNS-over-HTTPS (RFC 8484) to the " +
+                        "resolver IP on :443, authenticated against the hostname — fail-closed on " +
+                        "a bad certificate. DoH rides ordinary HTTPS, so a network that blocks " +
+                        ":853 to force plaintext DNS cannot single it out."
+                "dot" ->
+                    "Allowed queries forward over VERIFIED DNS-over-TLS (RFC 7858) to the resolver " +
+                        "IP on :853, authenticated against the hostname — fail-closed on a bad " +
+                        "certificate. Encryption inside the tunnel itself, independent of system " +
+                        "Private DNS."
+                else ->
+                    "Allowed queries forward over PLAINTEXT UDP. To encrypt the in-tunnel upstream, " +
+                        "set a hostname below (pick a preset) and choose DoT or DoH. Leaving the " +
+                        "hostname blank keeps plaintext UDP."
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -432,6 +456,52 @@ private fun UpstreamCard() {
             label = { Text("Resolver IP (e.g. 1.1.1.1)") },
             modifier = Modifier.fillMaxWidth(),
         )
+        Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+        OutlinedTextField(
+            value = dotHost,
+            onValueChange = { dotHost = it },
+            singleLine = true,
+            label = { Text("Verification hostname (blank = plaintext UDP)") },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+        // Transport selector — only DoT/DoH matter once a hostname is present.
+        Text("Encrypted transport", style = MaterialTheme.typography.labelLarge)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(UnderstoryTheme.spacing.xs)) {
+            listOf("dot" to "DoT (:853)", "doh" to "DoH (:443)", "plaintext" to "Plaintext")
+                .forEach { (key, label) ->
+                    FilterChip(
+                        selected = effectiveMode == key,
+                        onClick = { mode = key },
+                        enabled = key == "plaintext" || dotHost.isNotBlank(),
+                        label = { Text(label) },
+                    )
+                }
+        }
+        if (effectiveMode == "doh") {
+            Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+            OutlinedTextField(
+                value = dohPath,
+                onValueChange = { dohPath = it },
+                singleLine = true,
+                label = { Text("DoH path (default /dns-query)") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+        // One-tap encrypted presets: fill IP + verified hostname together so they always match.
+        val presets = if (mode == "doh") DnsFilterTun.UpstreamResolver.DOH_PRESETS
+            else DnsFilterTun.UpstreamResolver.DOT_PRESETS
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(UnderstoryTheme.spacing.xs),
+        ) {
+            presets.forEach { (name, presetIp, host) ->
+                AssistChip(
+                    onClick = { ip = presetIp; dotHost = host },
+                    label = { Text(name.substringBefore(" (")) },
+                )
+            }
+        }
         Spacer(Modifier.height(UnderstoryTheme.spacing.sm))
         SwitchRow(
             label = "Sinkhole with NXDOMAIN (off = 0.0.0.0)",
@@ -445,7 +515,14 @@ private fun UpstreamCard() {
         Spacer(Modifier.height(UnderstoryTheme.spacing.sm))
         SecureButton(onClick = {
             FirewallSettings.setUpstreamDnsIp(ctx, ip)
-            saved = "Saved. Re-arm the tunnel to apply."
+            FirewallSettings.setDotHostname(ctx, dotHost)
+            FirewallSettings.setUpstreamMode(ctx, effectiveMode)
+            FirewallSettings.setDohPath(ctx, dohPath)
+            saved = when (effectiveMode) {
+                "doh" -> "Saved — verified DoH. Re-arm the tunnel to apply."
+                "dot" -> "Saved — verified DoT. Re-arm the tunnel to apply."
+                else -> "Saved — plaintext UDP. Re-arm the tunnel to apply."
+            }
         }) { Text("Save resolver") }
         saved?.let {
             Spacer(Modifier.height(UnderstoryTheme.spacing.sm))

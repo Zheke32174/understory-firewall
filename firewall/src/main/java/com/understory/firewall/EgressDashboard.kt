@@ -341,6 +341,13 @@ private fun ToolsSection(onOpen: (FirewallRoute) -> Unit) {
         onClick = { onOpen(FirewallRoute.TierOverview) },
     )
     ToolRow(
+        icon = Icons.Filled.Router,
+        title = "Tailscale + egress chain",
+        supporting = "Be a Tailscale node in Godwall's own VPN, then chain onward through " +
+            "SOCKS5 / containers / more — mesh + multi-hop egress in one slot.",
+        onClick = { onOpen(FirewallRoute.TailscaleChain) },
+    )
+    ToolRow(
         icon = Icons.Filled.Shield,
         title = "App firewall (slot-free)",
         supporting = "Block apps on every network without the VPN slot. Needs Shizuku; " +

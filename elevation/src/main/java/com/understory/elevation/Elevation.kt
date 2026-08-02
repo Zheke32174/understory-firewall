@@ -243,6 +243,25 @@ object Elevation {
         }
 
     /**
+     * Enable/disable a WHOLE app (De1984's package-manager toggle) via the Shizuku shell:
+     * `pm disable-user --user 0 <pkg>` / `pm enable <pkg>`. Unlike [setAppSuspended] (which
+     * greys the app out but keeps it installed and running-capable) and [setComponentEnabled]
+     * (one component), this puts the entire package into the DISABLED_USER state — it stops
+     * running, disappears from the launcher, and cannot be started until re-enabled. Works on
+     * system apps too (the debloat path), reversibly. Preferred over uninstall for system apps
+     * that cannot be removed for a non-root user.
+     */
+    suspend fun setApplicationEnabled(ctx: Context, pkg: String, enabled: Boolean): Outcome =
+        when (grantedTier(ctx)) {
+            ElevTier.SHIZUKU -> shellOutcome(ctx, "app ${if (enabled) "enable" else "disable"}") {
+                if (enabled) runShell(ctx, listOf("pm", "enable", pkg))
+                else runShell(ctx, listOf("pm", "disable-user", "--user", "0", pkg))
+            }
+            ElevTier.NONE -> unsupported("app enable/disable")
+            else -> dhizukuNotCompiled()
+        }
+
+    /**
      * Set an appops mode for a package via the Shizuku shell:
      * `appops set <pkg> <op> <mode>`. This is the rootless kill for special
      * accesses `pm revoke` cannot touch — e.g. SYSTEM_ALERT_WINDOW (overlay /
