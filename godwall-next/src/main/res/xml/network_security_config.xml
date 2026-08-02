@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Firewall is the one non-browser suite app that holds INTERNET (VpnService
+  plumbing + protectedSocket fallbacks). TLS-only posture: cleartext is
+  denied for every domain; certificate trust stays on the default system
+  anchors (no custom trust-anchors element — an empty one is not a valid
+  deny-all and would break platform-stack TLS).
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+      Suite capability registry permission. One shared signature-level name
+      declared identically in every suite app.
+    -->
+    <permission
+        android:name="com.understory.suite.CAPS"
+        android:protectionLevel="signature" />
+    <permission
+        android:name="com.understory.suite.CAPS_WRITE"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="com.understory.suite.CAPS" />
+
+    <!--
+      YOJIMBO PRIVILEGE. Godwall's privileged shell comes from Yojimbo and from
+      nowhere else. This is Yojimbo's own signature-level permission, declared in
+      Yojimbo's manifest; a same-cert suite app is the only thing that can hold it.
+
+      There is deliberately NO moe.shizuku.manager.permission.API_V23 here and NO
+      rikka.shizuku.ShizukuProvider below. Godwall IS the thing those would have
+      pointed at; asking the Shizuku manager for a grant would mean we had not
+      replaced it.
+    -->
+    <uses-permission android:name="com.understory.yojimbo.permission.API_V23" />
+
+    <!--
+      Network + service surface, each justified:
+        INTERNET                     — the encrypted DNS upstream (DoT/DoH), the
+                                       egress chain's proxy sockets, the blocklist
+                                       fetch, and the mesh node's own transport.
+        ACCESS_NETWORK_STATE         — getConnectionOwnerUid() per-query app
+                                       attribution and the underlying-network bind
+                                       the mesh data plane needs.
+        FOREGROUND_SERVICE(+SPECIAL_USE) — the VpnService that holds the slot.
+        POST_NOTIFICATIONS           — the persistent notification shown while
+                                       Godwall holds the slot.
+        QUERY_ALL_PACKAGES           — the per-app screen enumerates installed
+                                       apps; this is the app's core function.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
+    <!-- Everything else stays stripped, including anything a merged library adds. -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" tools:node="remove" />
+    <uses-permission android:name="android.permission.CAMERA" tools:node="remove" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_CONTACTS" tools:node="remove" />
+    <uses-permission android:name="android.permission.GET_ACCOUNTS" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_CALENDAR" tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" tools:node="remove" />
+    <uses-permission android:name="android.permission.SEND_SMS" tools:node="remove" />
+    <uses-permission android:name="android.permission.RECEIVE_SMS" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_SMS" tools:node="remove" />
+    <uses-permission android:name="android.permission.CALL_PHONE" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" tools:node="remove" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" tools:node="remove" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE" tools:node="remove" />
+    <uses-permission android:name="android.permission.BIND_DEVICE_ADMIN" tools:node="remove" />
+    <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" tools:node="remove" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" tools:node="remove" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" tools:node="remove" />
+    <uses-permission android:name="android.permission.BODY_SENSORS" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" tools:node="remove" />
+
+    <queries>
+        <!--
+          Suite siblings, for SuiteAttestation cross-verification, plus Yojimbo,
+          which is where our privileged shell comes from.
+
+          There is deliberately NO <package> entry for com.tailscale.ipn,
+          moe.shizuku.privileged.api or com.rosan.dhizuku. Godwall does not look
+          for the apps it replaces, does not report on them, and does not link
+          to them.
+        -->
+        <package android:name="com.understory.yojimbo" />
+        <package android:name="com.understory.passgen" />
+        <package android:name="com.understory.aegis" />
+        <package android:name="com.understory.backups" />
+        <package android:name="com.understory.browser" />
+        <package android:name="com.understory.antivirus" />
+        <package android:name="com.understory.vaultfolder" />
+    </queries>
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:theme="@style/Theme.Godwall"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="false"
+        android:extractNativeLibs="true"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:usesCleartextTraffic="false"
+        android:supportsRtl="true">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true"
+            android:resizeableActivity="false"
+            android:screenOrientation="sensorPortrait"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
+            android:theme="@style/Theme.Godwall">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          THE VPN SLOT. Godwall takes it. There is no incumbent-VPN veto anywhere
+          in this module: Android grants the slot to whichever app the user
+          consents to, and when the user arms Godwall that app is Godwall.
+
+          exported="true" is the platform contract for the android.net.VpnService
+          intent-filter; BIND_VPN_SERVICE is signature-level so only the OS binds.
+        -->
+        <service
+            android:name=".core.GodwallVpnService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:foregroundServiceType="specialUse">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="vpn" />
+        </service>
+
+        <!-- Suite capability beacon: read-only, signature-locked. -->
+        <provider
+            android:name=".SuiteCapsProvider"
+            android:authorities="${applicationId}.suitecaps"
+            android:exported="true"
+            android:readPermission="com.understory.suite.CAPS"
+            android:writePermission="com.understory.suite.CAPS_WRITE"
+            android:grantUriPermissions="false" />
+
+        <!--
+          The receiving end of the Yojimbo privilege handshake. Yojimbo pushes a
+          privileged-shell binder into this process by calling this provider. The
+          provider verifies the caller is Yojimbo AND shares our signing cert
+          before accepting anything; see privilege/YojimboPrivilegeProvider.kt.
+
+          Read/write permissions are the suite signature permission, so a
+          non-suite app cannot even reach call().
+        -->
+        <provider
+            android:name=".privilege.YojimboPrivilegeProvider"
+            android:authorities="${applicationId}.privilege"
+            android:exported="true"
+            android:readPermission="com.understory.suite.CAPS"
+            android:writePermission="com.understory.suite.CAPS"
+            android:grantUriPermissions="false" />
+    </application>
+</manifest>

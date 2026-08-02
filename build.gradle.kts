@@ -42,7 +42,7 @@ tasks.register("verifyCertPin") {
         // Iterate every app module's APK output dir. Add new app modules here
         // as they ship — single source of truth so the same pin gates the
         // whole suite.
-        val appModules = listOf("firewall")
+        val appModules = listOf("firewall", "godwall-next")
         val apks = appModules.flatMap { mod ->
             val dir = file("$mod/build/outputs/apk")
             if (dir.exists()) dir.walkTopDown().filter { it.extension == "apk" }.toList()
