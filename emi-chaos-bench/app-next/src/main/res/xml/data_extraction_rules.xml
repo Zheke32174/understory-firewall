@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Opt out of both cloud backup and device-to-device transfer.
+
+  This app's local state is saved profiles (which encode where you use them, via geofences),
+  the Wi-Fi trusted-BSSID allowlist, and scan history. That is a map of your locations and
+  what you consider safe. Backing it up off-device, or silently restoring it onto a new
+  device, is a bigger privacy problem than losing the settings would be — so neither happens.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>
