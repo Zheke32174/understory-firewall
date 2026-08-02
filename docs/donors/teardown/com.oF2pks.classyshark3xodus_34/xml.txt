@@ -1,0 +1,21 @@
+
+########## xml/chairlock_shortcuts   (res/YF.xml)
+  <shortcuts>
+      <shortcut>
+            icon = @0x7f080059
+          <intent>
+          <categories>
+                name = "android.shortcut.conversation"
+
+########## xml/shortcuts   (res/dE.xml)
+  <shortcuts>
+      <shortcut>
+            icon = @0x7f080059
+          <intent>
+          <categories>
+                name = "android.shortcut.conversation"
+      <shortcut>
+            icon = @0x7f08005a
+          <intent>
+          <categories>
+                name = "android.shortcut.conversation"

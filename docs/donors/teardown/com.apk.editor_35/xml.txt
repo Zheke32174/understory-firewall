@@ -1,0 +1,32 @@
+
+########## xml/m3_button_group_child_size_change   (res/cA.xml)
+    <selector>
+        <item>
+        <item>
+
+########## xml/m3_list_item_shape_state_list   (res/Xp.xml)
+    <selector>
+        <item>
+        <item>
+        <item>
+        <item>
+        <item>
+        <item>
+        <item>
+        <item>
+        <item>
+
+########## xml/m3_split_button_inner_corner_size_state_list   (res/vn.xml)
+    <selector>
+        <item>
+        <item>
+        <item>
+
+########## xml/m3expressive_button_shape_state_list   (res/E9.xml)
+    <selector>
+        <item>
+        <item>
+        <item>
+
+########## xml/provider_paths   (res/zz.xml)
+<paths>

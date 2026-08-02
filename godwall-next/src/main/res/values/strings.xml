@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Godwall copy.
+
+  House rule, and it is the reason several of these read longer than a normal label: this app
+  makes security claims, so every string states the REACH of what it controls. "Block app" is
+  short and wrong — Godwall denies name lookups, and an app denied at DNS can still reach a
+  hardcoded IP. A user who trusts a control further than it goes is worse off than one who was
+  told the boundary.
+-->
+<resources>
+    <string name="app_name">Godwall</string>
+    <!-- Shown by the OS in the VPN status area while Godwall holds the slot. -->
+    <string name="vpn_session_name">Godwall</string>
+    <string name="notif_channel_name">Godwall engine</string>
+    <string name="notif_title">Godwall is filtering DNS</string>
+    <string name="notif_text">Holding the VPN slot. Name lookups are filtered and encrypted.</string>
+    <string name="notif_stop">Stop</string>
+
+    <!-- Navigation -->
+    <string name="nav_shield">Shield</string>
+    <string name="nav_apps">Apps</string>
+    <string name="nav_dns">DNS</string>
+    <string name="nav_chain">Chain</string>
+    <string name="nav_mesh">Mesh</string>
+    <string name="nav_log">Log</string>
+    <string name="nav_privilege">Privilege</string>
+    <string name="nav_diagnostics">Diagnostics</string>
+
+    <string name="cd_nav_shield">Shield status and arming</string>
+    <string name="cd_nav_apps">Per-app policy</string>
+    <string name="cd_nav_dns">DNS resolver and filter</string>
+    <string name="cd_nav_chain">Egress proxy chain</string>
+    <string name="cd_nav_mesh">Mesh node</string>
+    <string name="cd_nav_log">Query log</string>
+    <string name="cd_nav_privilege">Privilege source</string>
+    <string name="cd_nav_diagnostics">Diagnostics</string>
+
+    <string name="title_shield">Godwall</string>
+    <string name="title_apps">Per-app policy</string>
+    <string name="title_dns">DNS</string>
+    <string name="title_chain">Egress chain</string>
+    <string name="title_mesh">Mesh</string>
+    <string name="title_log">Query log</string>
+    <string name="title_privilege">Privilege</string>
+    <string name="title_diagnostics">Diagnostics</string>
+
+    <!-- Shield -->
+    <string name="shield_state_up">Armed — Godwall holds the VPN slot</string>
+    <string name="shield_state_starting">Starting…</string>
+    <string name="shield_state_down">Not armed — nothing is being filtered</string>
+    <string name="shield_state_down_detail">Not armed — %1$s</string>
+    <string name="shield_state_failed">Failed to start — %1$s</string>
+    <string name="shield_consent_declined">you declined the VPN permission</string>
+    <string name="shield_scope_note">Godwall filters DNS: it decides which names resolve, for
+        which app, over an encrypted upstream. It is not a packet firewall — an app denied here
+        can still reach an address it already knows. Packet-level control needs a privileged
+        shell from Yojimbo.</string>
+    <string name="shield_counts">%1$d queries this session, %2$d blocked</string>
+    <string name="shield_arm">Arm Godwall</string>
+    <string name="shield_disarm">Disarm</string>
+    <string name="shield_subsystems">Subsystems</string>
+    <string name="shield_filter_on">filter on, %1$d domains</string>
+    <string name="shield_filter_off">filter off</string>
+    <string name="shield_apps_summary">Blackhole or bypass individual apps</string>
+
+    <!-- Apps -->
+    <string name="apps_explainer">Blackhole denies an app\'s name lookups. Bypass removes the app
+        from Godwall\'s tunnel entirely, so its traffic is never seen — use it for apps that
+        break under a VPN.</string>
+    <string name="apps_search">Search apps</string>
+    <string name="apps_count">%1$d apps with network access</string>
+    <string name="apps_system_tag">(system)</string>
+    <string name="apps_blackhole">Blackhole DNS</string>
+    <string name="apps_blackhole_help">Every name this app looks up is answered with the block
+        response. It can still reach a hardcoded address.</string>
+    <string name="apps_bypass">Bypass Godwall</string>
+    <string name="apps_bypass_help">Excluded from the tunnel. Godwall sees none of its traffic
+        and filters none of it.</string>
+
+    <!-- DNS -->
+    <string name="dns_upstream">Upstream resolver</string>
+    <string name="dns_upstream_help">DoT and DoH encrypt your lookups so the network cannot read
+        or rewrite them. Plaintext is offered for diagnosis only — on it, anyone on the path sees
+        every name you resolve.</string>
+    <string name="dns_ip">Resolver IP</string>
+    <string name="dns_hostname">TLS hostname</string>
+    <string name="dns_path">DoH path</string>
+    <string name="dns_presets">Presets</string>
+    <string name="dns_filter">Filter</string>
+    <string name="dns_filter_toggle">Block listed domains</string>
+    <string name="dns_filter_stats">%1$d domains currently loaded</string>
+    <string name="dns_answer_style">Block answer</string>
+    <string name="dns_answer_style_help">NXDOMAIN says the name does not exist; some apps retry
+        hard against it. A null address answers with 0.0.0.0, which most apps treat as
+        unreachable and stop.</string>
+    <string name="dns_custom">Custom rules</string>
+    <string name="dns_custom_domain">Domain</string>
+    <string name="dns_add_block">Block</string>
+    <string name="dns_add_allow">Allow</string>
+    <string name="dns_custom_blocked">Custom block — tap to remove</string>
+    <string name="dns_custom_allowed">Custom allow — tap to remove</string>
+    <string name="dns_update">Blocklist update</string>
+    <string name="dns_update_help">Fetches the configured list and caches it on this device. The
+        bundled list works offline and needs no update.</string>
+    <string name="dns_update_now">Update now</string>
+    <string name="dns_open_log">See what has actually been asked for and blocked</string>
+
+    <!-- Chain -->
+    <string name="chain_enable">Route through the chain</string>
+    <string name="chain_enable_help">Resolver traffic is carried through every hop in order. If a
+        hop cannot be reached the query fails rather than quietly going direct.</string>
+    <string name="chain_hops">Hops (%1$d)</string>
+    <string name="chain_empty">No hops yet. Traffic goes direct to the upstream resolver.</string>
+    <string name="chain_hop_help">Handshaked toward the next hop in the chain</string>
+    <string name="chain_up">Up</string>
+    <string name="chain_remove">Remove</string>
+    <string name="chain_add">Add a hop</string>
+    <string name="chain_host">Host</string>
+    <string name="chain_port">Port</string>
+    <string name="chain_user">Username (optional)</string>
+    <string name="chain_pass">Password (optional)</string>
+    <string name="chain_add_hop">Add hop</string>
+
+    <!-- Mesh -->
+    <string name="mesh_state">Mesh: %1$s</string>
+    <string name="mesh_ips">This node: %1$s</string>
+    <string name="mesh_auth_url">Sign in at: %1$s</string>
+    <string name="mesh_absent_help">Godwall runs the mesh node itself, inside its own VPN slot —
+        it does not hand off to another app. This build was assembled without the mesh data
+        plane, so your settings are saved but no tunnel can start.</string>
+    <string name="mesh_needs_slot">The node runs inside Godwall\'s own VPN slot, so arm Godwall
+        first — until the slot is held there is nothing for the node to build its tunnel
+        on.</string>
+    <string name="mesh_start">Start node</string>
+    <string name="mesh_stop">Stop node</string>
+    <string name="mesh_login">Sign in to the mesh</string>
+    <string name="mesh_node">Node</string>
+    <string name="mesh_settings_note">Saved as you type, whether or not the node is running.
+        Changes take effect the next time it starts.</string>
+    <string name="mesh_hostname">Hostname</string>
+    <string name="mesh_login_server">Control server</string>
+    <string name="mesh_auth_key">Auth key</string>
+    <string name="mesh_exit_node">Exit node</string>
+    <string name="mesh_accept_routes">Accept subnet routes</string>
+    <string name="mesh_accept_routes_help">Use routes other nodes advertise.</string>
+    <string name="mesh_accept_dns">Accept mesh DNS</string>
+    <string name="mesh_accept_dns_help">Off by default: turning this on lets the mesh override
+        the filtered, encrypted resolver you configured on the DNS screen.</string>
+    <string name="mesh_advertise_exit">Offer this device as an exit node</string>
+    <string name="mesh_advertise_exit_help">Other nodes may route their internet traffic through
+        this device.</string>
+
+    <!-- Log -->
+    <string name="log_empty_title">No queries yet</string>
+    <string name="log_empty_body">Arm Godwall and the names each app resolves will appear
+        here.</string>
+    <string name="log_totals">%1$d queries, %2$d blocked</string>
+    <string name="log_session_only">Held in memory for this session only — never written to
+        disk.</string>
+    <string name="log_export">Copy</string>
+    <string name="log_clear">Clear</string>
+    <string name="log_by_app">By app</string>
+    <string name="log_app_counts">%1$d queries, %2$d blocked</string>
+    <string name="log_recent">Recent</string>
+    <string name="log_row_blocked">blocked — %1$s</string>
+    <string name="log_row_allowed">allowed — %1$s</string>
+
+    <!-- Privilege -->
+    <string name="priv_attached">Privileged shell attached</string>
+    <string name="priv_not_attached">No privileged shell attached</string>
+    <string name="priv_broker_absent">Yojimbo is not installed</string>
+    <string name="priv_how">Where privilege comes from</string>
+    <string name="priv_how_body">Yojimbo, and nowhere else. Yojimbo runs the suite\'s privileged
+        server and pushes a shell into Godwall over a signature-locked channel; both apps must
+        carry the same signing certificate. Godwall does not ask Shizuku or Dhizuku — Yojimbo
+        replaces those, so reaching around it would mean neither app had replaced
+        anything.</string>
+    <string name="priv_without">What works without it</string>
+    <string name="priv_without_body">Everything Godwall does today: the DNS filter, the encrypted
+        upstream, per-app blackhole and bypass, the egress chain, and the mesh node. A privileged
+        shell adds packet-level enforcement — until one is attached, those controls are absent
+        rather than present and inert.</string>
+
+    <!-- Fatal / tamper -->
+    <string name="fatal_title">Godwall couldn\'t start</string>
+    <string name="fatal_reason">An unexpected error occurred while starting the app.</string>
+    <string name="tamper_title">Godwall is locked</string>
+    <string name="tamper_reason">This copy of Godwall failed an integrity or attestation check
+        and won\'t run. That protects you from a tampered or repackaged build. Reinstall from a
+        trusted source.</string>
+    <!-- Verification controls: turning "configured" into "checked". -->
+    <string name="dns_test">Test this upstream now</string>
+    <string name="dns_test_running">Testing…</string>
+    <string name="chain_test">Dial the chain now</string>
+
+    <!-- Privileged per-app tier -->
+    <string name="apps_deny">Deny all networks</string>
+    <string name="apps_deny_unavailable">Deny all networks — unavailable</string>
+    <string name="apps_deny_help">Platform firewall chain: no Wi-Fi, no mobile, no VPN. This is the packet-level denial, and it needs the privileged shell from Yojimbo.</string>
+    <string name="apps_protected">Protected (%1$s) — Godwall will not deny this one, because cutting it could take the device or Godwall itself off the network.</string>
+    <string name="apps_apply_denials">Re-apply network denials</string>
+
+    <string name="engine_detail_mesh_holds_tun">the mesh node holds the tun; DNS filtering is paused while it does</string>
+</resources>

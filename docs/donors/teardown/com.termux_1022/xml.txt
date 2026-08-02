@@ -1,0 +1,180 @@
+
+########## xml/root_preferences   (res/bO.xml)
+  <PreferenceScreen>
+      <Preference>
+            key = "termux"
+            summary = "Preferences for Termux app"
+            title = "Termux"
+      <Preference>
+            key = "termux_api"
+            summary = "Preferences for Termux:API app"
+            title = "Termux:API"
+      <Preference>
+            key = "termux_float"
+            summary = "Preferences for Termux:Float app"
+            title = "Termux:Float"
+      <Preference>
+            key = "termux_tasker"
+            summary = "Preferences for Termux:Tasker app"
+            title = "Termux:Tasker"
+      <Preference>
+            key = "termux_widget"
+            summary = "Preferences for Termux:Widget app"
+            title = "Termux:Widget"
+      <Preference>
+            key = "about"
+            title = "About"
+      <Preference>
+            key = "donate"
+            title = "Donate"
+
+########## xml/shortcuts   (res/LR.xml)
+  <shortcuts>
+      <shortcut>
+            icon = @0x7f070072
+          <intent>
+                name = "android.shortcut.conversation"
+      <shortcut>
+            icon = @0x7f070072
+          <intent>
+                name = "android.shortcut.conversation"
+              <extra>
+                    name = "com.termux.app.failsafe_session"
+      <shortcut>
+            icon = @0x7f070074
+          <intent>
+                name = "android.shortcut.conversation"
+
+########## xml/standalone_badge   (res/AP.xml)
+  <badge>
+
+########## xml/standalone_badge_gravity_bottom_end   (res/23.xml)
+  <badge>
+
+########## xml/standalone_badge_gravity_bottom_start   (res/lJ.xml)
+  <badge>
+
+########## xml/standalone_badge_gravity_top_start   (res/wA.xml)
+  <badge>
+
+########## xml/standalone_badge_offset   (res/lG.xml)
+  <badge>
+
+########## xml/termux_api_debugging_preferences   (res/pc.xml)
+  <PreferenceScreen>
+      <PreferenceCategory>
+            key = "logging"
+            title = "Logging"
+          <ListPreference>
+                defaultValue = 1
+                key = "log_level"
+                title = "Log Level"
+
+########## xml/termux_api_preferences   (res/mp.xml)
+  <PreferenceScreen>
+      <Preference>
+            summary = "Preferences for debugging"
+            title = "Debugging"
+
+########## xml/termux_debugging_preferences   (res/Uw.xml)
+  <PreferenceScreen>
+      <PreferenceCategory>
+            key = "logging"
+            title = "Logging"
+          <ListPreference>
+                defaultValue = 1
+                key = "log_level"
+                title = "Log Level"
+          <SwitchPreferenceCompat>
+                key = "terminal_view_key_logging_enabled"
+                title = "Terminal View Key Logging"
+          <SwitchPreferenceCompat>
+                key = "plugin_error_notifications_enabled"
+                title = "Plugin Error Notifications"
+          <SwitchPreferenceCompat>
+                key = "crash_report_notifications_enabled"
+                title = "Crash Report Notifications"
+
+########## xml/termux_float_debugging_preferences   (res/q1.xml)
+  <PreferenceScreen>
+      <PreferenceCategory>
+            key = "logging"
+            title = "Logging"
+          <ListPreference>
+                defaultValue = 1
+                key = "log_level"
+                title = "Log Level"
+          <SwitchPreferenceCompat>
+                key = "terminal_view_key_logging_enabled"
+                title = "Terminal View Key Logging"
+
+########## xml/termux_float_preferences   (res/_k.xml)
+  <PreferenceScreen>
+      <Preference>
+            summary = "Preferences for debugging"
+            title = "Debugging"
+
+########## xml/termux_preferences   (res/R2.xml)
+  <PreferenceScreen>
+      <Preference>
+            summary = "Preferences for debugging"
+            title = "Debugging"
+      <Preference>
+            summary = "Preferences for terminal I/O"
+            title = "Terminal I/O"
+      <Preference>
+            summary = "Preferences for terminal view"
+            title = "Terminal View"
+
+########## xml/termux_tasker_debugging_preferences   (res/ao.xml)
+  <PreferenceScreen>
+      <PreferenceCategory>
+            key = "logging"
+            title = "Logging"
+          <ListPreference>
+                defaultValue = 1
+                key = "log_level"
+                title = "Log Level"
+
+########## xml/termux_tasker_preferences   (res/Bx.xml)
+  <PreferenceScreen>
+      <Preference>
+            summary = "Preferences for debugging"
+            title = "Debugging"
+
+########## xml/termux_terminal_io_preferences   (res/iq.xml)
+  <PreferenceScreen>
+      <PreferenceCategory>
+            key = "keyboard"
+            title = "Keyboard"
+          <SwitchPreferenceCompat>
+                key = "soft_keyboard_enabled"
+                title = "Soft Keyboard Enabled"
+          <SwitchPreferenceCompat>
+                key = "soft_keyboard_enabled_only_if_no_hardware"
+                title = "Soft Keyboard Only If No Hardware"
+
+########## xml/termux_terminal_view_preferences   (res/3R.xml)
+  <PreferenceScreen>
+      <PreferenceCategory>
+            key = "view"
+            title = "View"
+          <SwitchPreferenceCompat>
+                key = "terminal_margin_adjustment"
+                title = "Terminal Margin Adjustment"
+
+########## xml/termux_widget_debugging_preferences   (res/Aw.xml)
+  <PreferenceScreen>
+      <PreferenceCategory>
+            key = "logging"
+            title = "Logging"
+          <ListPreference>
+                defaultValue = 1
+                key = "log_level"
+                title = "Log Level"
+
+########## xml/termux_widget_preferences   (res/ai.xml)
+  <PreferenceScreen>
+      <Preference>
+            summary = "Preferences for debugging"
+            title = "Debugging"

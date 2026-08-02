@@ -26,3 +26,8 @@ include(":common-security")
 include(":net-engine")
 include(":elevation")
 include(":firewall")
+
+// godwall-next — the from-scratch Godwall rebuild. Same applicationId as
+// :firewall, so it REPLACES that app on device. :firewall stays in the tree as
+// scrap reference and is no longer what we ship.
+include(":godwall-next")

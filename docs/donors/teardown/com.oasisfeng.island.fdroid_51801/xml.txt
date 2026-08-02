@@ -1,0 +1,181 @@
+
+########## xml/actions   (res/Kx.xml)
+<actions>
+    <action>
+        <fulfillment>
+
+########## xml/backup   (res/Vr.xml)
+    <exclude>
+
+########## xml/device_admin   (res/pO.xml)
+
+
+########## xml/image_share_filepaths   (res/zn.xml)
+<paths>
+
+########## xml/pref_about   (res/cY.xml)
+  <PreferenceScreen>
+      <Preference>
+            title = "Version"
+            key = "version"
+      <Preference>
+            title = "FAQ"
+            summary = "Possible solutions for common issues (web)"
+          <intent>
+      <Preference>
+            title = "Island is open source"
+            summary = "Welcome to visit us on GitHub (web)"
+          <intent>
+      <Preference>
+            title = "Get beta version"
+            key = "beta"
+            summary = "Setup custom watch for releases on GitHub to receive pre-release (beta version) notifications."
+          <intent>
+      <PreferenceScreen>
+            title = "Licenses"
+          <PreferenceCategory>
+                title = "Licenses"
+              <PreferenceScreen>
+                    title = "Android Open Source Project"
+                    summary = "Apache License, Version 2.0"
+                  <intent>
+              <PreferenceScreen>
+                    title = "Deagle Library"
+                    summary = "Apache License, Version 2.0"
+                  <intent>
+              <PreferenceScreen>
+                    title = "Stream Support"
+                    summary = "GNU General Public License, version 2, with the Classpath Exception"
+                  <intent>
+              <PreferenceScreen>
+                    title = "Guava"
+                    summary = "Apache License, Version 2.0"
+                  <intent>
+              <PreferenceScreen>
+                    title = "libsuperuser"
+                    summary = "Apache License, Version 2.0"
+                  <intent>
+              <PreferenceScreen>
+                    title = "Material Tap Target Prompt"
+                    summary = "Apache License, Version 2.0"
+                  <intent>
+              <PreferenceScreen>
+                    title = "APKParser"
+                    summary = "BSD License 2.0"
+                  <intent>
+
+########## xml/pref_general   (res/I9.xml)
+  <PreferenceScreen>
+      <CheckBoxPreference>
+            title = "Preserve permission supervision for frozen apps"
+            key = "preserve_app_ops"
+            summary = "Android system does not preserve the permission supervision (a.k.a. App Ops) settings (e.g. "background restriction", "show above other apps") for frozen apps, let Island do that for you."
+      <SwitchPreference>
+            title = "Extra info in "Action not allowed" dialog"
+            key = "show_admin_message"
+            summary = "Show Island-specific extra information in the "Action not allowed" system dialog."
+      <PreferenceCategory>
+            title = "App launch shortcuts"
+          <EditTextPreference>
+                title = "Launch shortcut prefix"
+                key = "launch_shortcut_prefix"
+                defaultValue = "❄"
+          <SwitchPreference>
+                title = "Dynamic shortcut label"
+                key = "dynamic_shortcut_label"
+                summary = @0x7f11017e
+                defaultValue = false
+      <PreferenceCategory>
+            title = "App settings helper"
+          <SwitchPreference>
+                title = "Pop-up notification"
+                key = "app_settings_helper"
+                summary = "When an app is force-stopped in system App Info UI, show a transient pop-up notification for convenient opening app-specific settings in app management tools."
+          <CheckBoxPreference>
+                title = "Include apps installed by Island"
+                key = "app_settings_helper_extended"
+                summary = "Show app settings helper even for apps installed by Island. (Useful if no App details entry in system App Info UI.)"
+                dependency = "app_settings_helper"
+                defaultValue = false
+
+########## xml/pref_headers   (res/Pt.xml)
+      <header>
+            icon = @0x7f080134
+            title = "General"
+      <header>
+            icon = @0x7f080121
+            id = @0x7f090178
+            title = "Scoped Settings"
+      <header>
+            icon = @0x7f08011e
+            title = "About"
+
+########## xml/pref_island   (res/Vo.xml)
+  <PreferenceScreen>
+      <Preference>
+            title = "Extend the power to Mainland"
+            key = "device_owner_setup"
+            summary = @0x7f11018c
+      <Preference>
+            title = "Image capture provider"
+            key = "lock_capture_target"
+            summary = "Switch the provider of image capture to non-system app."
+      <PreferenceCategory>
+            title = "Privacy Protection"
+            key = "privacy"
+          <com.oasisfeng.android.preference.WallOfTextPreference>
+                summary = @0x7f110199
+          <com.oasisfeng.android.preference.WallOfTextPreference>
+                key = "appops"
+                summary = @0x7f110190
+          <Preference>
+                title = "Read device identity and telephony state"
+                key = "manage_read_phone_state"
+                summary = "Revoking it also affect the ability of app to check telephony state"
+          <Preference>
+                title = "Read SMS"
+                key = "manage_read_sms"
+          <Preference>
+                title = "Access device location"
+                key = "manage_location"
+                summary = "Also affect the ability to scan near-by devices"
+          <Preference>
+                title = "Access personal storage (experimental)"
+                key = "manage_storage"
+                summary = "CAUTION: Revoking may cause app to crash"
+      <PreferenceCategory>
+            title = "Cross-land functionality"
+          <Preference>
+                title = "Manage cross-land privilege"
+                key = "cross_profile"
+                summary = "Manage the apps with cross-land privilege."
+          <Preference>
+                title = "Manage allowed widgets"
+                key = "cross_profile_widgets"
+                summary = "Allow widgets to be used in Mainland."
+      <PreferenceCategory>
+            title = "Quick controls in notification"
+            key = "watcher"
+          <SwitchPreference>
+                title = "Island Watcher"
+                key = "island_watcher"
+                summary = "Shortcut to deactivate Island, ceasing all the background activities inside. Island can then be activated on-demand by launching any of the apps inside."
+          <SwitchPreference>
+                title = "App Watcher"
+                key = "app_watcher"
+                summary = "Shortcut to freeze app recently unfrozen and revoke permissions temporarily granted."
+      <PreferenceCategory>
+            title = "Setup"
+            key = "setup"
+          <Preference>
+                title = "Repair"
+                key = "reprovision"
+                summary = "This may help to fix some issues. All apps and data will be preserved."
+          <Preference>
+                title = "Destroy permanently"
+                key = "destroy"
+                summary = "Remove this Island, together with all apps inside and their data."
+
+########## xml/searchable   (res/qG.xml)
+  <searchable>
+        label = "Apps in Island"

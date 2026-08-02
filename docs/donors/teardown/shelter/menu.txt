@@ -1,0 +1,43 @@
+
+########## menu/bottom_navigation_menu   (res/u1.xml)
+  <menu>
+      <item>
+            icon = @0x7f0700b1
+            id = @0x7f080061
+            title = "Main"
+      <item>
+            icon = @0x7f0700c0
+            id = @0x7f080062
+            title = "Shelter"
+
+########## menu/main_activity_menu   (res/8s.xml)
+    <menu>
+        <item>
+              icon = @0x7f0700be
+              id = @0x7f08010d
+              title = "Search"
+              showAsAction = 0x0000000a
+        <item>
+              icon = @0x7f0700b0
+              id = @0x7f08010b
+              title = "Batch Freeze"
+              showAsAction = 0x00000001
+        <item>
+              icon = @0x7f0700bf
+              id = @0x7f08010e
+              title = "Settings"
+              showAsAction = 0x00000001
+        <item>
+              id = @0x7f080109
+              title = "Create Batch Freeze Shortcut"
+        <item>
+              id = @0x7f08010c
+              title = "Install APK into Shelter"
+        <item>
+              id = @0x7f08010a
+              title = "Open Documents UI"
+        <item>
+              id = @0x7f08010f
+              checked = false
+              title = "Show All Apps"
+              checkable = true

@@ -1,0 +1,62 @@
+
+########## xml/device_admin   (res/pO.xml)
+
+
+########## xml/file_paths   (res/8K.xml)
+  <paths>
+
+########## xml/payment_stub   (res/WL.xml)
+                name = "F0010203040506"
+
+########## xml/preferences_settings   (res/lS.xml)
+  <androidx.preference.PreferenceScreen>
+      <androidx.preference.PreferenceCategory>
+            title = "Interaction"
+          <androidx.preference.CheckBoxPreference>
+                title = "File Shuttle"
+                key = "settings_cross_profile_file_chooser"
+                summary = "When enabled, you'll be able to browse / view / pick / copy files in Shelter from main profile and vice-versa, ONLY through Documents UI (named Files or Documents on your launcher) or apps with Documents UI support (they only gain temporary access to files you choose in Documents UI), while still pertaining the filesystem isolation."
+          <androidx.preference.CheckBoxPreference>
+                title = "Block Contacts Searching"
+                key = "settings_block_contacts_searching"
+                summary = "Deny access from main profile to contacts inside work profile."
+          <androidx.preference.CheckBoxPreference>
+                title = "Payment Service Stub"
+                key = "settings_payment_stub"
+                summary = "Enable a fake NFC payment service in the main profile, so that the contactless payments option under Settings - NFC becomes enabled to allow you to choose a payment app inside the work profile. This works around an Android bug that makes it impossible to select a payment app inside the work profile if none is available in the main profile."
+      <androidx.preference.PreferenceCategory>
+            title = "Services"
+          <androidx.preference.CheckBoxPreference>
+                title = "Auto Freeze Service"
+                key = "settings_auto_freeze_service"
+                summary = "When the screen is locked, automatically freeze apps launched from "Unfreeze & Launch Shortcut"."
+          <androidx.preference.Preference>
+                title = "Auto Freeze Delay"
+                key = "settings_auto_freeze_delay"
+                dependency = "settings_auto_freeze_service"
+          <androidx.preference.CheckBoxPreference>
+                title = "Skip Foreground Apps"
+                key = "settings_dont_freeze_foreground"
+                summary = "Do NOT freeze foreground apps (with visible activity) when you lock your screen. This can be useful for apps like music players, but you'll need to manually freeze them through "Batch Freeze Shortcut" afterwards."
+                dependency = "settings_auto_freeze_service"
+      <androidx.preference.PreferenceCategory>
+            title = "About"
+          <androidx.preference.Preference>
+                title = "Version"
+                key = "settings_version"
+          <androidx.preference.Preference>
+                title = "Source Code"
+                key = "settings_source_code"
+                summary = "https://gitea.angry.im/PeterCxy/Shelter"
+          <androidx.preference.Preference>
+                title = "Translate"
+                key = "settings_translate"
+                summary = "https://weblate.typeblog.net/projects/shelter/shelter/"
+          <androidx.preference.Preference>
+                title = "Bug Report / Issue Tracker"
+                key = "settings_bug_report"
+                summary = "https://lists.sr.ht/~petercxy/shelter"
+          <androidx.preference.Preference>
+                title = "Patreon"
+                key = "settings_patreon"
+                summary = "https://www.patreon.com/PeterCxy"

@@ -1,0 +1,102 @@
+
+########## menu/checkbox_list_context   (res/qi.xml)
+  <menu>
+      <item>
+            icon = @0x7f08010c
+            id = @0x7f0900da
+            title = "Edit"
+      <item>
+            icon = @0x7f08010d
+            id = @0x7f0900b4
+            title = "Delete"
+
+########## menu/home_drawer   (res/Mb.xml)
+    <menu>
+        <item>
+              icon = @0x7f0800a2
+              id = @0x7f0900d2
+              title = "GitHub project"
+              showAsAction = 0x00000001
+        <item>
+              icon = @0x7f0800ba
+              id = @0x7f0900d3
+              title = "Preferences"
+              showAsAction = 0x00000001
+
+########## menu/list_menu   (res/3b.xml)
+    <menu>
+        <item>
+              icon = @0x7f08007f
+              id = @0x7f090169
+              title = "Filter hosts"
+              showAsAction = 0x00000009
+        <item>
+              icon = @0x7f08009f
+              id = @0x7f09016a
+              title = "Toggle sources"
+              showAsAction = 0x00000001
+
+########## menu/lists_navigation   (res/IJ.xml)
+  <menu>
+      <item>
+            icon = @0x7f080079
+            id = @0x7f090144
+            title = "Blocked"
+      <item>
+            icon = @0x7f08007a
+            id = @0x7f090143
+            title = "Allowed"
+      <item>
+            icon = @0x7f08007c
+            id = @0x7f090145
+            title = "Redirected"
+
+########## menu/log_menu   (res/HR.xml)
+    <menu>
+        <item>
+              icon = @0x7f080080
+              id = @0x7f090222
+              title = "Sort domains"
+              showAsAction = 0x00000001
+        <item>
+              icon = @0x7f08010d
+              id = @0x7f0900b3
+              title = "Clear log"
+              showAsAction = 0x00000001
+
+########## menu/next_actions   (res/sN.xml)
+    <menu>
+        <item>
+              icon = @0x7f0800be
+              id = @0x7f090046
+              title = "Update blocked domains"
+              showAsAction = 0x00000001
+        <item>
+              icon = @0x7f0800b4
+              id = @0x7f090044
+              title = "Show requested domains"
+              showAsAction = 0x00000001
+
+########## menu/source_edit_menu   (res/W-.xml)
+    <menu>
+        <item>
+              icon = @0x7f08010d
+              id = @0x7f0900b4
+              title = "Delete"
+              showAsAction = 0x00000001
+        <item>
+              icon = @0x7f08007a
+              id = @0x7f090060
+              title = "Apply"
+              showAsAction = 0x00000001
+
+########## menu/vpn_excluded_app_menu   (res/kU.xml)
+    <menu>
+        <item>
+              id = @0x7f09020e
+              title = "Select all"
+              showAsAction = 0x00000000
+        <item>
+              id = @0x7f0900b7
+              title = "Deselect all"
+              showAsAction = 0x00000000

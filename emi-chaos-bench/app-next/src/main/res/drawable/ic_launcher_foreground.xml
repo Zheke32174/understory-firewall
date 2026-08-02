@@ -1,0 +1,19 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- waveform mark, centred in the 108x108 adaptive canvas -->
+    <path
+        android:strokeColor="#5fd4c4"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M20,58 Q34,30 46,58 T70,50 T92,54" />
+    <path
+        android:fillColor="#e0a33c"
+        android:pathData="M70,50 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0" />
+    <path
+        android:fillColor="#2c6f68"
+        android:pathData="M20,74 h68 v3 h-68 z" />
+</vector>

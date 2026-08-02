@@ -1,0 +1,73 @@
+
+########## xml/_generated_res_locale_config   (res/Ed.xml)
+      <locale>
+            name = "en-US"
+      <locale>
+            name = "ar"
+      <locale>
+            name = "bg"
+      <locale>
+            name = "de"
+      <locale>
+            name = "el"
+      <locale>
+            name = "es"
+      <locale>
+            name = "fa"
+      <locale>
+            name = "fil"
+      <locale>
+            name = "fr"
+      <locale>
+            name = "in"
+      <locale>
+            name = "it"
+      <locale>
+            name = "iw"
+      <locale>
+            name = "ja"
+      <locale>
+            name = "ko"
+      <locale>
+            name = "lv"
+      <locale>
+            name = "nb-NO"
+      <locale>
+            name = "pl"
+      <locale>
+            name = "pt"
+      <locale>
+            name = "pt-BR"
+      <locale>
+            name = "ru"
+      <locale>
+            name = "sk"
+      <locale>
+            name = "ta"
+      <locale>
+            name = "tr"
+      <locale>
+            name = "uk"
+      <locale>
+            name = "vi"
+      <locale>
+            name = "zh-CN"
+      <locale>
+            name = "zh-TW"
+
+########## xml/dhizuku_device_admin   (res/n7.xml)
+
+
+########## xml/file_provider_paths   (res/7Y.xml)
+<paths>
+
+########## xml/m3_button_group_child_size_change   (res/cA.xml)
+    <selector>
+        <item>
+        <item>
+
+########## xml/m3_split_button_inner_corner_size_state_list   (res/vn.xml)
+    <selector>
+        <item>
+        <item>
+        <item>

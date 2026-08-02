@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+      NOTE ON WHAT IS NOT HERE.
+
+      No android.permission.INTERNET, no android:usesCleartextTraffic, no
+      <queries> for moe.shizuku.privileged.api or com.rosan.dhizuku, and no
+      rikka.shizuku.ShizukuProvider. Chaos Orb does not open a socket, does not
+      ask another app for privilege, and does not need either of the apps this
+      suite replaces to be installed. Everything below is a local read.
+    -->
+
+    <!-- The sentinel foreground service. dataSync keeps the detectors running
+         with the app backgrounded; mediaPlayback and microphone are only ever
+         added to the running service's type mask when the user turns masking or
+         the mic monitor on, never before. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Radios. Read-only: nothing here transmits beyond the SCAN_REQ a normal
+         BLE scan emits, and Android exposes no passive-scan toggle. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Precise location: Android withholds Wi-Fi scan results and BLE
+         addresses without it, and the tower log needs a fix by definition. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Cell generation, neighbour count and cell identity for the rootless
+         IMSI-catcher heuristics. -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <!-- Mic is analysed in-process for speech-band and 18-23kHz energy and the
+         samples are discarded in the same loop iteration. Nothing is recorded. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- Declaring this is what puts the app in Settings > Special access >
+         Appear on top so the OVERLAY list is meaningful. Nothing in this app
+         draws an overlay. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <uses-feature android:name="android.hardware.audio.output" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.wifi" android:required="false" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+
+    <application
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.ChaosOrb">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
+            android:launchMode="singleTask"
+            android:hardwareAccelerated="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- THE SENTINEL. Started from MainActivity on first frame — natively,
+             from the app's own shell. In the previous build the equivalent
+             service was startable from exactly two @JavascriptInterface methods,
+             so launching the app and never entering the WebView tab meant not
+             one detector ever ran. -->
+        <service
+            android:name=".core.SentinelService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync|mediaPlayback|microphone"
+            android:stopWithTask="false" />
+
+        <!-- Optional overlay detector. Inert until a human enables it in
+             Settings > Accessibility; declaring it is what makes this app appear
+             in that list. Window METADATA only — the service contains no
+             getRootInActiveWindow() and no node traversal. -->
+        <service
+            android:name=".OverlayWatch"
+            android:exported="true"
+            android:label="@string/overlay_watch_summary"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/overlay_watch" />
+        </service>
+
+        <!-- One-shot read URI for a single exported file, scoped to
+             cache/exports and nothing else. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+</manifest>

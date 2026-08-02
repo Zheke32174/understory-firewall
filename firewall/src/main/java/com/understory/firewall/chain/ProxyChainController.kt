@@ -12,11 +12,14 @@ import com.understory.firewall.tailscale.TailscaleController
  * NEVER claims a hop carries traffic unless its backend is actually linked.
  *
  * Backend status today:
+ *   - SOCKS5 / HTTP_CONNECT → LINKED. Implemented in-tree as real pure-userspace
+ *                   clients ([Socks5Client] RFC 1928/1929, [HttpConnectClient]) and
+ *                   composed into multi-hop chains by [ChainDialer]. No external
+ *                   dependency, nothing native.
  *   - TAILSCALE   → delegated to [TailscaleController]; PENDING until libtailscale
  *                   (Tailscale's Go data plane) is linked.
- *   - SOCKS5 / HTTP_CONNECT → PENDING; these are pure-userspace clients that can
- *                   be implemented natively in the tunnel (no external dependency).
  *   - WIREGUARD / SHADOWSOCKS / TOR → PENDING; each needs its own transport.
+ *   - CONTAINER   → PENDING; needs a reachable container server.
  *   - DIRECT      → LINKED (egress straight out is the existing behavior).
  */
 object ProxyChainController {
@@ -27,6 +30,9 @@ object ProxyChainController {
 
     fun backendReadiness(ctx: Context, backend: ProxyHop.Backend): Readiness = when (backend) {
         ProxyHop.Backend.DIRECT -> Readiness.LINKED
+        // REAL, implemented in-tree: pure-userspace clients with no external dependency.
+        // See Socks5Client / HttpConnectClient, composed by ChainDialer.
+        ProxyHop.Backend.SOCKS5, ProxyHop.Backend.HTTP_CONNECT -> Readiness.LINKED
         ProxyHop.Backend.TAILSCALE ->
             if (TailscaleController.isLinked(ctx)) Readiness.LINKED else Readiness.PENDING
         else -> Readiness.PENDING
@@ -37,13 +43,14 @@ object ProxyChainController {
         return when (backend) {
             ProxyHop.Backend.TAILSCALE ->
                 "needs the Tailscale data plane (libtailscale) linked"
-            ProxyHop.Backend.SOCKS5, ProxyHop.Backend.HTTP_CONNECT ->
-                "userspace client not yet wired (no external dependency needed)"
+            ProxyHop.Backend.SOCKS5, ProxyHop.Backend.HTTP_CONNECT -> "ready"
             ProxyHop.Backend.WIREGUARD -> "needs a WireGuard transport"
             ProxyHop.Backend.SHADOWSOCKS -> "needs a Shadowsocks transport"
             ProxyHop.Backend.TOR -> "needs a Tor transport"
+            // Measured, not assumed — TransportCapability probes what this device actually
+            // has, so the reason names the missing piece instead of restating the category.
             ProxyHop.Backend.CONTAINER ->
-                "needs a container server (privileged shell / stratum) reachable from Godwall"
+                "container relay not implemented — " + TransportCapability.snapshot().containerDetail()
             ProxyHop.Backend.DIRECT -> "ready"
         }
     }

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Pre-Compose window chrome only. Everything on screen is drawn by
+      ChaosOrbTheme; this exists so the launch window is the same forest-floor
+      near-black as the app rather than a white flash.
+    -->
+    <style name="Theme.ChaosOrb" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#0E1512</item>
+        <item name="android:navigationBarColor">#0E1512</item>
+        <item name="android:windowBackground">#0E1512</item>
+    </style>
+</resources>

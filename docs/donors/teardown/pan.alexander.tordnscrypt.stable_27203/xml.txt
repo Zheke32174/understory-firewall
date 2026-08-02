@@ -1,0 +1,1152 @@
+
+########## xml/filepaths   (res/oS.xml)
+<paths>
+
+########## xml/m3_button_group_child_size_change   (res/cA.xml)
+    <selector>
+        <item>
+        <item>
+
+########## xml/network_security_config   (res/8G.xml)
+            <certificates>
+            <certificates>
+            <certificates>
+        <domain>
+        <domain>
+        <domain>
+
+########## xml/preferences_common   (res/Tf.xml)
+  <androidx.preference.PreferenceScreen>
+        key = "pref_common"
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "HOTSPOT-Experimental"
+            key = "HOTSPOT"
+          <SwitchPreference>
+                id = @0x7f090270
+                title = "Start sharing on boot"
+                key = "pref_common_tethering_autostart"
+                defaultValue = false
+          <SwitchPreference>
+                id = @0x7f090272
+                title = "Allow Tor sharing"
+                key = "pref_common_tor_tethering"
+                defaultValue = false
+          <SwitchPreference>
+                id = @0x7f090271
+                title = "Route All through Tor"
+                key = "pref_common_tor_route_all"
+                summary = "Route All incoming traffic through Tor"
+                dependency = "pref_common_tor_tethering"
+                defaultValue = true
+          <Preference>
+                title = "Select sites"
+                key = "prefTorSiteUnlockTether"
+                summary = "Sites list to open with Tor for HOTSPOT"
+                dependency = "pref_common_tor_tethering"
+              <intent>
+          <Preference>
+                title = "Exclude sites"
+                key = "prefTorSiteExcludeTether"
+                summary = "Sites list to open directly for HOTSPOT"
+                dependency = "pref_common_tor_route_all"
+              <intent>
+          <SwitchPreference>
+                id = @0x7f09026b
+                title = "Allow I2P sharing"
+                key = "pref_common_itpd_tethering"
+                defaultValue = false
+          <SwitchPreference>
+                id = @0x7f09026a
+                title = "Fix TTL"
+                key = "pref_common_fix_ttl"
+                summary = "TTL will be fixed to 64 using a local VPN. Kernel support is not required. To fix TTL please start DNSCrypt or/and Tor."
+                defaultValue = false
+          <EditTextPreference>
+                id = @0x7f09026c
+                title = "LAN device IP address"
+                key = "pref_common_local_eth_device_addr"
+                defaultValue = "192.168.0.100"
+          <Preference>
+                title = "Open tethering config"
+                key = "pref_common_tethering_settings"
+          <SwitchPreference>
+                title = "Block HOTSPOT http"
+                key = "pref_common_block_http"
+                summary = "Deny connection to http port 80 for HOTSPOT"
+                defaultValue = false
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Use Root Privileges"
+            key = "categoryUseModulesRoot"
+          <SwitchPreference>
+                id = @0x7f09033f
+                title = "Run Modules With Root"
+                key = "swUseModulesRoot"
+                summary = "Use Root privileges for DNSCrypt, Tor and I2P modules. Enabling this feature leaves modules unmanaged and may cause connection problems!"
+                defaultValue = false
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "MITM attack detection"
+            key = "pref_common_mitm_categ"
+          <SwitchPreference>
+                id = @0x7f090267
+                title = "ARP spoofing detection"
+                key = "pref_common_arp_spoofing_detection"
+                summary = "Detect Man-in-the-Middle ARP spoofing and rogue DHCP attacks in Wi-Fi networks."
+                defaultValue = false
+          <SwitchPreference>
+                id = @0x7f090266
+                title = "Block internet when an attack is detected"
+                key = "pref_common_arp_block_internet"
+                summary = "Internet connection will be blocked during attack"
+                dependency = "pref_common_arp_spoofing_detection"
+                defaultValue = false
+          <SwitchPreference>
+                id = @0x7f090268
+                title = "DNS rebinding protection"
+                key = "pref_common_dns_rebind_protection"
+                summary = "Block site when DNS rebinding attack is detected"
+                defaultValue = false
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Proxy"
+            key = "categoryCommonProxy"
+          <Preference>
+                id = @0x7f090340
+                title = "Use socks5 proxy"
+                key = "swUseProxy"
+                summary = "InviZible Pro will make all connections through the SOCKS5 proxy"
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Other"
+            key = "common_other"
+          <Preference>
+                id = @0x7f090054
+                title = "Kill switch"
+                key = "always_on_vpn"
+                summary = "Enable Always-on VPN and Block connections without VPN for InviZible Pro to block the internet when the app is not running"
+          <SwitchPreference>
+                id = @0x7f09033c
+                title = "Show notification"
+                key = "swShowNotification"
+                summary = "Protect application from being killed by android"
+                defaultValue = true
+          <SwitchPreference>
+                id = @0x7f090338
+                title = "Kill switch"
+                key = "swKillSwitch"
+                summary = "Block internet connection when Tor, DNSCrypt and Purple I2P are stopped"
+                defaultValue = false
+          <SwitchPreference>
+                id = @0x7f090339
+                title = "Refresh rules"
+                key = "swRefreshRules"
+                summary = "Update rules on every connectivity change"
+                defaultValue = false
+          <SwitchPreference>
+                id = @0x7f090341
+                title = "Prevent device sleep"
+                key = "swWakelock"
+                summary = "Do not allow the device to fall into doze mode. May be useful when using HOTSPOT. Drains the battery!"
+                defaultValue = false
+          <SwitchPreference>
+                id = @0x7f090336
+                title = "Compatibility mode"
+                key = "swCompatibilityMode"
+                summary = "Enable if your device with a custom rom and the connection is lost when you press the START button"
+                defaultValue = false
+          <SwitchPreference>
+                id = @0x7f09026d
+                title = "Multi-user support"
+                key = "pref_common_multi_user"
+                summary = "Support for Dual Apps, MIUI, Island, Shelter and Work profile applications. May be ineffective in VPN mode"
+                defaultValue = true
+          <SwitchPreference>
+                id = @0x7f090269
+                title = "Fast network switching"
+                key = "pref_common_fast_network_switching"
+                summary = "Keep Wi-Fi and mobile data turned on for faster switching between networks"
+                defaultValue = true
+          <SwitchPreference>
+                id = @0x7f09026f
+                title = "Help messages"
+                key = "pref_common_show_help"
+                summary = "Show all messages that have been marked as not allowed to show"
+                defaultValue = false
+          <SwitchPreference>
+                id = @0x7f09026e
+                title = "Enable script control"
+                key = "pref_common_shell_control"
+                defaultValue = false
+          <androidx.preference.ListPreference>
+                entries = @0x7f030006
+                title = "Select BusyBox"
+                key = "pref_common_use_busybox"
+                defaultValue = 1
+                entryValues = @0x7f030008
+          <androidx.preference.ListPreference>
+                entries = @0x7f030007
+                title = "Select iptables"
+                key = "pref_common_use_iptables"
+                defaultValue = 2
+                entryValues = @0x7f030009
+          <SwitchPreference>
+                id = @0x7f090273
+                title = "Wait for the xtables lock"
+                key = "pref_common_wait_iptables"
+                summary = "Wait until the exclusive iptables lock can be obtained to prevent concurrent modification of iptables rules"
+                defaultValue = true
+
+########## xml/preferences_dnscrypt   (res/_u.xml)
+  <androidx.preference.PreferenceScreen>
+        key = "dnscrypt_settings"
+      <PreferenceCategory>
+            layout = @0x7f0c00b3
+            title = "For advanced user only!"
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Global settings"
+            key = "dnscrypt_global_settings"
+          <EditTextPreference>
+                id = @0x7f0901c6
+                title = "Listen port"
+                key = "listen_port"
+                summary = "Local port to listen to."
+                defaultValue = 5354
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Require servers (from static + remote sources) to satisfy specific properties"
+            key = "dnscrypt_require_servers_summ"
+          <CheckBoxPreference>
+                id = @0x7f090120
+                title = "DNSCrypt servers"
+                key = "dnscrypt_servers"
+                summary = "Use servers implementing the DNSCrypt protocol."
+                defaultValue = true
+          <CheckBoxPreference>
+                id = @0x7f090121
+                title = "DoH servers"
+                key = "doh_servers"
+                summary = "Use servers implementing the DNS-over-HTTPS protocol."
+                defaultValue = true
+          <CheckBoxPreference>
+                id = @0x7f090232
+                title = "ODoH servers"
+                key = "odoh_servers"
+                summary = "Use servers implementing the Oblivious DNS-over-HTTPS protocol."
+                defaultValue = true
+          <CheckBoxPreference>
+                id = @0x7f09019d
+                title = "IPv4 servers"
+                key = "ipv4_servers"
+                summary = "Use servers reachable over IPv4"
+                defaultValue = true
+          <CheckBoxPreference>
+                id = @0x7f09019e
+                title = "IPv6 servers"
+                key = "ipv6_servers"
+                summary = "Use servers reachable over IPv6"
+                defaultValue = true
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Require servers defined by remote sources to satisfy specific properties"
+            key = "dnscrypt_require_servers_prop_summ"
+          <CheckBoxPreference>
+                id = @0x7f0902cd
+                title = "Require DNSSEC"
+                key = "require_dnssec"
+                summary = "Server must support DNS security extensions (DNSSEC)."
+                defaultValue = false
+          <CheckBoxPreference>
+                id = @0x7f0902cf
+                title = "Require no log"
+                key = "require_nolog"
+                summary = "Server must not log user queries (declarative)."
+                defaultValue = false
+          <CheckBoxPreference>
+                id = @0x7f0902ce
+                title = "Require no filter"
+                key = "require_nofilter"
+                summary = "Server must not enforce its own blacklist (for parental control, ads blocking…)."
+                defaultValue = false
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Always use TCP to connect to upstream servers"
+            key = "dnscrypt_force_tcp_categ"
+          <CheckBoxPreference>
+                id = @0x7f090168
+                title = "Force TCP"
+                key = "force_tcp"
+                summary = "Use TCP instead of UDP to connect to DNSCrypt servers. This option should be enabled if you are using DNSCrypt over Tor."
+                defaultValue = true
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "SOCKS proxy"
+          <SwitchPreference>
+                id = @0x7f0903c0
+                title = "Outbound proxy"
+                key = "Enable proxy"
+                defaultValue = false
+          <EditTextPreference>
+                id = @0x7f09011f
+                title = "Proxy port"
+                key = "proxy_port"
+                summary = "Route all TCP connections to a local Tor inbound Socks5 proxy. Tor doesn't support UDP, so set Force TCP to true as well."
+                dependency = "Enable proxy"
+                defaultValue = 9050
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Other Settings"
+            key = "pref_dnscrypt_other_categ"
+          <EditTextPreference>
+                id = @0x7f09014d
+                title = "Bootstrap resolvers"
+                key = "bootstrap_resolvers"
+                summary = "This is a normal, non-encrypted DNS resolver, that will be only used for one-shot queries when retrieving the initial resolvers list, and only if the system DNS configuration doesn't work. It will never be used if lists have already been cached."
+                defaultValue = "9.9.9.9"
+          <CheckBoxPreference>
+                id = @0x7f09018a
+                title = "Ignore system DNS"
+                key = "ignore_system_dns"
+                summary = "Do not let DNSCrypt try to use system DNS settings. Unconditionally use the Bootstrap resolvers."
+                defaultValue = false
+          <CheckBoxPreference>
+                id = @0x7f090181
+                title = "HTTP3"
+                key = "http3"
+                summary = "Enable support for HTTP/3 (DoH3, HTTP over QUIC). Note that, like DNSCrypt but unlike other HTTP versions, this uses UDP and (usually) port 443 instead of TCP."
+                defaultValue = true
+          <CheckBoxPreference>
+                id = @0x7f09011c
+                title = "DNS64"
+                key = "dns64"
+                summary = "Activate this option if you are on an IPv6-only network and IPv4 sites become unavailable. Don't enable it otherwise, or you won't be able to connect to anything at all."
+                defaultValue = false
+          <EditTextPreference>
+                id = @0x7f09011d
+                title = "DNS64 prefix"
+                key = "dns64_prefix"
+                summary = "Set of used static IPv6 prefixes."
+                dependency = "dns64"
+                defaultValue = "64:ff9b::/96"
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Filters"
+            key = "pref_dnscrypt_filters_categ"
+          <CheckBoxPreference>
+                id = @0x7f090072
+                title = "Block unqualified"
+                key = "block_unqualified"
+                summary = "Immediately respond to A and AAAA queries for host names without a domain name."
+                defaultValue = true
+          <CheckBoxPreference>
+                id = @0x7f090071
+                title = "Block undelegated"
+                key = "block_undelegated"
+                summary = "Immediately respond to queries for local zones instead of leaking them to upstream resolvers (always causing errors or timeouts)."
+                defaultValue = true
+          <CheckBoxPreference>
+                id = @0x7f090070
+                title = "Block IPv6"
+                key = "block_ipv6"
+                summary = "Immediately respond to IPv6-related queries with an empty response. This makes things faster when there is no IPv6 connectivity, but can also cause reliability issues with some stub resolvers."
+                defaultValue = false
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Pattern-based blocking (blacklist)"
+            key = "pref_dnscrypt_blacklist"
+          <Preference>
+                title = "Blacklist"
+                key = "blacklist"
+                summary = "Blacklist are made of one pattern per line."
+              <intent>
+          <Preference>
+                title = "Erase blacklist"
+                key = "erase_blacklist"
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Pattern-based whitelisting (blacklists bypass)"
+            key = "pref_dnscrypt_whitelist"
+          <Preference>
+                title = "Whitelist"
+                key = "whitelist"
+                summary = "Whitelist support the same patterns as blacklists. If a name matches a whitelist entry, the corresponding session will bypass names and IP filters."
+              <intent>
+          <Preference>
+                title = "Erase whitelist"
+                key = "erase_whitelist"
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Pattern-based IP blocking (IP blacklist)"
+            key = "pref_dnscrypt_ipblacklist"
+          <Preference>
+                title = "IP Blacklist"
+                key = "ipblacklist"
+                summary = "IP Blacklist are made of one pattern per line."
+              <intent>
+          <Preference>
+                title = "Erase IP blacklist"
+                key = "erase_ipblacklist"
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Forwarding rules"
+            key = "pref_dnscrypt_forwarding_rules"
+          <Preference>
+                title = "Forwarding rules"
+                key = "forwarding_rules"
+                summary = "Route queries for specific domains to a dedicated set of servers."
+              <intent>
+          <Preference>
+                title = "Erase forwarding rules"
+                key = "erase_forwarding_rules"
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Cloaking rules"
+            key = "pref_dnscrypt_cloaking_rules"
+          <Preference>
+                title = "Cloaking rules"
+                key = "cloaking_rules"
+                summary = "Cloaking returns a predefined address for a specific name. In addition to acting as a HOSTS file, it can also return the IP address of a different name. It will also do CNAME flattening."
+              <intent>
+          <Preference>
+                title = "Erase cloaking rules"
+                key = "erase_cloaking_rules"
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Refresh rules"
+            key = "pref_dnscrypt_refresh_rules"
+          <EditTextPreference>
+                id = @0x7f0902d9
+                title = "Refresh delay"
+                key = "refresh_delay_rules"
+                summary = "Rules will be updated after the specified delay in hours."
+                defaultValue = 72
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Query logging"
+            key = "pref_dnscrypt_query_log"
+          <SwitchPreference>
+                id = @0x7f0902bd
+                title = "Query logging"
+                key = "Enable Query logging"
+                summary = "Log client queries to a file."
+                defaultValue = false
+          <EditTextPreference>
+                id = @0x7f09018b
+                title = "Ignored qtypes"
+                key = "ignored_qtypes"
+                summary = "Do not log these query types, to reduce verbosity. Keep empty to log everything."
+                dependency = "Enable Query logging"
+                defaultValue = "['DNSKEY', 'NS']"
+          <Preference>
+                title = "Open Query Log"
+                key = "open_query_log"
+                dependency = "Enable Query logging"
+              <intent>
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Suspicious queries logging"
+          <SwitchPreference>
+                id = @0x7f090231
+                title = "Suspicious logging"
+                key = "Enable Suspicious logging"
+                summary = "Log queries for nonexistent zones. These queries can reveal the presence of malware, broken/obsolete applications, and devices signaling their presence to 3rd parties."
+                defaultValue = false
+          <Preference>
+                title = "Open Suspicious Log"
+                key = "open_nx_log"
+                dependency = "Enable Suspicious logging"
+              <intent>
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Servers"
+            key = "pref_dnscrypt_servers"
+          <EditTextPreference>
+                id = @0x7f090311
+                title = "Sources"
+                key = "Sources"
+                summary = "Remote lists of available servers."
+                defaultValue = "['https://raw.githubusercontent.com/DNSCrypt/dnscrypt-resolvers/master/v3/public-resolvers.md', 'https://download.dnscrypt.info/resolvers-list/v3/public-resolvers.md']"
+          <EditTextPreference>
+                id = @0x7f0902c9
+                title = "Refresh delay"
+                key = "refresh_delay"
+                summary = "Server list will be updated after the specified delay in hours."
+                defaultValue = 72
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Relays"
+            key = "pref_dnscrypt_relays"
+          <EditTextPreference>
+                id = @0x7f0902cb
+                title = "Sources"
+                key = "Relays"
+                summary = "Remote lists of available relays."
+                defaultValue = "['https://raw.githubusercontent.com/DNSCrypt/dnscrypt-resolvers/master/v3/relays.md', 'https://download.dnscrypt.info/resolvers-list/v3/relays.md']"
+          <EditTextPreference>
+                id = @0x7f0902ca
+                title = "Refresh delay"
+                key = "refresh_delay_relays"
+                summary = "Relay list will be updated after the specified delay in hours."
+                defaultValue = 72
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Other"
+            key = "pref_dnscrypt_other"
+          <Preference>
+                title = "Edit dnscrypt-proxy.toml directly"
+                key = "editDNSTomlDirectly"
+                summary = "For advanced user only!"
+          <Preference>
+                title = "Clear cache"
+                key = "cleanDNSCryptFolder"
+
+########## xml/preferences_fast   (res/ux.xml)
+  <androidx.preference.PreferenceScreen>
+        key = "fast_preferences"
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Autostart"
+          <SwitchPreference>
+                id = @0x7f090332
+                title = "Autostart DNSCrypt"
+                key = "swAutostartDNS"
+                defaultValue = false
+          <SwitchPreference>
+                id = @0x7f090334
+                title = "Autostart Tor"
+                key = "swAutostartTor"
+                defaultValue = false
+          <SwitchPreference>
+                id = @0x7f090333
+                title = "Autostart I2P"
+                key = "swAutostartITPD"
+                defaultValue = false
+          <EditTextPreference>
+                id = @0x7f090275
+                title = "Delay"
+                key = "pref_fast_autostart_delay"
+                summary = "Use a delay (secs) only if Autostart does not work correctly"
+                defaultValue = 0
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "DNSCrypt servers"
+            key = "DNSCrypt servers"
+          <Preference>
+                title = "Select DNSCrypt servers"
+                key = "prefDNSCryptServer"
+              <intent>
+          <SwitchPreference>
+                id = @0x7f090276
+                title = "Prevent DNS leaks"
+                key = "pref_fast_prevent_dns_leak"
+                summary = "Block attempts to conceal DNS queries. May cause connection problems"
+                defaultValue = false
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Tor Settings"
+            key = "Tor Settings"
+          <SwitchPreference>
+                id = @0x7f090274
+                title = "Route All traffic through Tor"
+                key = "pref_fast_all_through_tor"
+                defaultValue = true
+          <Preference>
+                title = "Select sites"
+                key = "prefTorSiteUnlock"
+                summary = "Sites list to open with Tor. This feature does not work for sites behind CDN"
+              <intent>
+          <Preference>
+                title = "Select applications"
+                key = "prefTorAppUnlock"
+                summary = "Applications list to use with Tor"
+              <intent>
+          <Preference>
+                title = "Exclude sites"
+                key = "prefTorSiteExclude"
+                summary = "Sites list to open directly. This feature does not work for sites behind CDN"
+                dependency = "pref_fast_all_through_tor"
+              <intent>
+          <EditTextPreference>
+                title = "Refresh interval"
+                key = "pref_fast_site_refresh_interval"
+                summary = "Period in hours to refresh sites IP. For Android 5.1 and higher. Put 0 to stop refresh"
+                defaultValue = 12
+          <Preference>
+                title = "Exclude applications"
+                key = "prefTorAppExclude"
+                summary = "Applications list to open directly"
+                dependency = "pref_fast_all_through_tor"
+              <intent>
+          <SwitchPreference>
+                title = "Bypass LAN addresses"
+                key = "Allow LAN"
+                summary = "Do not use Tor for LAN destinations and IANA reserved IP blocks"
+                defaultValue = true
+          <Preference>
+                title = "Bridges"
+                key = "prefTorBridges"
+                summary = "Use it if you can not connect to Tor network"
+              <intent>
+          <pan.alexander.tordnscrypt.views.SwitchPlusClickPreference>
+                id = @0x7f090337
+                title = "Spoof SNI"
+                key = "swFakeSni"
+                defaultValue = false
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Update"
+            key = "fast_update"
+          <SwitchPreference>
+                title = "Automatic updates"
+                key = "pref_fast_auto_update"
+                summary = "Check InviZible Pro and modules updates daily"
+                defaultValue = true
+          <SwitchPreference>
+                title = "Update strictly through Tor"
+                key = "pref_fast through_tor_update"
+                summary = "Check updates only with Tor and when Tor is running"
+                dependency = "pref_fast_auto_update"
+                defaultValue = false
+          <Preference>
+                title = "Check update"
+                key = "pref_fast_chek_update"
+                summary = "Check if new versions are available now"
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Other"
+            key = "fast_other"
+          <SwitchPreference>
+                title = "Real-time logs"
+                key = "pref_fast_logs"
+                summary = "Show application connection logs in the DNS tab"
+                defaultValue = true
+          <SwitchPreference>
+                title = "Block LAN on public Wi-Fi"
+                key = "pref_fast_block_lan_with_free_wifi"
+                summary = "Deny connection to the LAN when a Captive Portal is detected"
+                defaultValue = true
+          <SwitchPreference>
+                title = "Block http"
+                key = "pref_fast_block_http"
+                summary = "Deny connection to http port 80"
+                defaultValue = false
+          <androidx.preference.ListPreference>
+                entries = @0x7f03000c
+                title = "Select theme"
+                key = "pref_fast_theme"
+                defaultValue = 4
+                entryValues = @0x7f03000d
+          <pan.alexander.tordnscrypt.language.LanguagePreference>
+                title = "Select language"
+                key = "pref_fast_language"
+
+########## xml/preferences_firewall   (res/o0.xml)
+  <androidx.preference.PreferenceScreen>
+      <SwitchPreference>
+            id = @0x7f090277
+            title = "Allow connections for new apps"
+            key = "NewAppsInternetAllowed"
+            defaultValue = false
+      <SwitchPreference>
+            id = @0x7f090278
+            title = "Show all apps"
+            key = "FirewallShowsAllApps"
+            defaultValue = false
+
+########## xml/preferences_i2pd   (res/vU.xml)
+  <androidx.preference.PreferenceScreen>
+        key = "itpd_settings_screen"
+      <PreferenceCategory>
+            layout = @0x7f0c00b3
+            title = "For advanced user only!"
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Common settings"
+            key = "itpd_settings_common"
+          <CheckBoxPreference>
+                id = @0x7f090288
+                title = "IPv4"
+                key = "ipv4"
+                summary = "Enable communication through IPv4."
+                defaultValue = true
+          <CheckBoxPreference>
+                id = @0x7f090289
+                title = "IPv6"
+                key = "ipv6"
+                summary = "Enable communication through IPv6."
+                defaultValue = true
+          <CheckBoxPreference>
+                id = @0x7f09028a
+                title = "No transit"
+                key = "notransit"
+                summary = "Router will not accept transit tunnels, disabling transit traffic completely."
+                defaultValue = false
+          <CheckBoxPreference>
+                id = @0x7f090285
+                title = "Floodfill"
+                key = "floodfill"
+                summary = "Router will be floodfill."
+                defaultValue = false
+          <androidx.preference.ListPreference>
+                entries = @0x7f030004
+                title = "Bandwidth"
+                key = "bandwidth"
+                summary = "Bandwidth limit in KBps."
+                defaultValue = "L"
+                entryValues = @0x7f030005
+          <EditTextPreference>
+                id = @0x7f09028d
+                title = "Share"
+                key = "share"
+                summary = "Max % of bandwidth limit for transit. 0–100."
+                defaultValue = 20
+          <CheckBoxPreference>
+                id = @0x7f09028e
+                title = "SSU2"
+                key = "ssu2 enabled"
+                summary = "Enable SSU2 transport protocol (use UDP)."
+                defaultValue = false
+          <CheckBoxPreference>
+                id = @0x7f090293
+                title = "NTCP2"
+                key = "ntcp2 enabled"
+                summary = "Enable NTCP2 transport protocol (use TCP)."
+                defaultValue = true
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "HTTP proxy"
+            key = "itpd_category_http_proxy"
+          <SwitchPreference>
+                id = @0x7f09027b
+                title = "HTTP proxy"
+                key = "HTTP proxy"
+                defaultValue = true
+          <EditTextPreference>
+                id = @0x7f09027c
+                title = "HTTP proxy port"
+                key = "HTTP proxy port"
+                summary = "The port to listen on (HTTP Proxy)."
+                dependency = "HTTP proxy"
+                defaultValue = 4444
+          <SwitchPreference>
+                id = @0x7f090295
+                title = "HTTP outproxy"
+                key = "HTTP outproxy"
+                summary = "Gateway to the regular internet"
+                defaultValue = false
+          <EditTextPreference>
+                id = @0x7f09027a
+                title = "HTTP outproxy address"
+                key = "HTTP outproxy address"
+                summary = "HTTP proxy upstream out proxy url (like http://false.i2p)"
+                dependency = "HTTP outproxy"
+                defaultValue = "http://false.i2p"
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Socks proxy"
+            key = "itpd_category_socks_proxy"
+          <SwitchPreference>
+                id = @0x7f090281
+                title = "Socks proxy"
+                key = "Socks proxy"
+                defaultValue = true
+          <EditTextPreference>
+                id = @0x7f090282
+                title = "Socks proxy port"
+                key = "Socks proxy port"
+                summary = "The port to listen on (SOCKS Proxy)."
+                dependency = "Socks proxy"
+                defaultValue = 4447
+          <SwitchPreference>
+                id = @0x7f090296
+                title = "SOCKS outproxy"
+                key = "Socks outproxy"
+                summary = "Address of outproxy(IP or local). Requests outside I2P will go there."
+                defaultValue = false
+          <EditTextPreference>
+                id = @0x7f09027f
+                title = "SOCKS outproxy address"
+                key = "Socks outproxy address"
+                dependency = "Socks outproxy"
+                defaultValue = "127.0.0.1"
+          <EditTextPreference>
+                id = @0x7f090280
+                title = "SOCKS outproxy port"
+                key = "Socks outproxy port"
+                dependency = "Socks outproxy"
+                defaultValue = 9050
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Outbound proxy"
+            key = "itpd_settings_oubound_proxy"
+          <SwitchPreference>
+                id = @0x7f09028f
+                title = "Outbound proxy"
+                key = "Enable ntcpproxy"
+                defaultValue = false
+          <EditTextPreference>
+                id = @0x7f09028b
+                title = "NTCP proxy"
+                key = "ntcpproxy"
+                summary = "Specify proxy server for NTCP. Should be http://address:port or socks://address:port."
+                dependency = "Enable ntcpproxy"
+                defaultValue = "http://127.0.0.1:8118"
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Incoming connections"
+            key = "itpd_settings_incoming"
+          <SwitchPreference>
+                id = @0x7f090287
+                title = "Incoming connections"
+                key = "Allow incoming connections"
+                defaultValue = false
+          <EditTextPreference>
+                id = @0x7f090286
+                title = "Incoming host"
+                key = "incoming host"
+                summary = "Router external IP for incoming connections (default: auto if SSU2 is enabled)."
+                dependency = "Allow incoming connections"
+                defaultValue = "127.0.0.1"
+          <EditTextPreference>
+                id = @0x7f09028c
+                title = "Incoming port"
+                key = "incoming port"
+                summary = "Port to listen for incoming connections (default: auto (random))."
+                dependency = "Allow incoming connections"
+                defaultValue = 4567
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "SAM interface"
+            key = "category_itpd_sam_interface"
+          <SwitchPreference>
+                id = @0x7f09027d
+                title = "SAM interface"
+                key = "SAM interface"
+                defaultValue = false
+          <EditTextPreference>
+                id = @0x7f09027e
+                title = "SAM interface port"
+                key = "SAM interface port"
+                summary = "Port of SAM bridge."
+                dependency = "SAM interface"
+                defaultValue = 7656
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Cryptography"
+            key = "category_itpd_cryptography"
+          <CheckBoxPreference>
+                id = @0x7f090279
+                title = "Elgamal"
+                key = "elgamal"
+                summary = "Use ElGamal precomputated tables."
+                defaultValue = true
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "UPNP"
+            key = "category_itpd_upnp"
+          <CheckBoxPreference>
+                id = @0x7f090283
+                title = "UPNP"
+                key = "UPNP"
+                summary = "Enable or disable UPnP."
+                defaultValue = true
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Reseeding"
+            key = "category_itpd_reseeding"
+          <CheckBoxPreference>
+                id = @0x7f090294
+                title = "Verify"
+                key = "verify"
+                summary = "Verify su3 signature."
+                defaultValue = true
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Limits"
+            key = "category_itpd_limits"
+          <EditTextPreference>
+                id = @0x7f090292
+                title = "Transit tunnels"
+                key = "transittunnels"
+                summary = "Override maximum number of transit tunnels. 2500 by default."
+                defaultValue = 10
+          <EditTextPreference>
+                id = @0x7f090291
+                title = "Open files"
+                key = "openfiles"
+                summary = "Limit number of open file descriptors (0 - use system limit)."
+                defaultValue = 500
+          <EditTextPreference>
+                id = @0x7f090290
+                title = "Core size"
+                key = "coresize"
+                summary = "Maximum size of core file in Kb (0 - use system limit)."
+                defaultValue = 0
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Address book"
+          <EditTextPreference>
+                id = @0x7f090284
+                title = "Default url"
+                key = "defaulturl"
+                summary = "AddressBook subscription URL for initial setup."
+                defaultValue = "http://shx5vqsw7usdaunyzr2qmes2fq37oumybpudrd4jjj4e4vk4uusa.b32.i2p/hosts.txt"
+          <Preference>
+                title = "Subscriptions"
+                key = "subscriptions"
+                summary = "AddressBook subscriptions URLs."
+              <intent>
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Other"
+            key = "pref_itpd_other"
+          <Preference>
+                title = "Edit i2pd.conf directly"
+                key = "editITPDConfDirectly"
+                summary = "For advanced user only!"
+          <Preference>
+                title = "Edit tunnels.conf directly"
+                key = "editTunnelsDirectly"
+                summary = "For advanced user only!"
+          <Preference>
+                title = "Clear cache"
+                key = "cleanITPDFolder"
+
+########## xml/preferences_tor   (res/sH.xml)
+  <androidx.preference.PreferenceScreen>
+      <PreferenceCategory>
+            layout = @0x7f0c00b3
+            title = "For advanced user only!"
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Nodes"
+            key = "tor_nodes"
+          <SwitchPreference>
+                id = @0x7f0902a5
+                title = "Exclude Exit Nodes"
+                key = "ExcludeExitNodes"
+                summary = "A list of country codes to never use when picking an exit node, that delivers traffic for you outside the Tor network."
+                defaultValue = false
+          <SwitchPreference>
+                id = @0x7f0902a7
+                title = "Exit Nodes"
+                key = "ExitNodes"
+                summary = "A list of country codes to use as exit node - that is, a node that delivers traffic for you outside the Tor network."
+                defaultValue = false
+          <SwitchPreference>
+                id = @0x7f0902a6
+                title = "Exclude Nodes"
+                key = "ExcludeNodes"
+                summary = "A list of country codes to avoid when building a circuit."
+                defaultValue = false
+          <SwitchPreference>
+                id = @0x7f0902a4
+                title = "Entry Nodes"
+                key = "EntryNodes"
+                summary = "A list of country codes of nodes to use for the first hop in your normal circuits."
+                defaultValue = false
+          <CheckBoxPreference>
+                id = @0x7f0902b1
+                title = "Strict Nodes"
+                key = "StrictNodes"
+                summary = "If StrictNodes enabled, Tor will treat solely the ExcludeNodes option as a requirement to follow for all the circuits you generate, even if doing so will break functionality for you."
+                defaultValue = false
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Common settings"
+            key = "tor_settings"
+          <EditTextPreference>
+                id = @0x7f0902b4
+                title = "Virtual Addr Network"
+                key = "VirtualAddrNetwork"
+                summary = "When Tor needs to assign a virtual (unused) address because of a MAPADDRESS command from the controller or the AutomapHostsOnResolve feature, Tor picks an unassigned address from this range."
+                defaultValue = "10.192.0.0/10"
+          <CheckBoxPreference>
+                id = @0x7f0902a9
+                title = "Hardware Accel"
+                key = "HardwareAccel"
+                summary = "Try to use built-in crypto hardware acceleration when available."
+                defaultValue = true
+          <CheckBoxPreference>
+                id = @0x7f09029a
+                title = "Avoid Disk Writes"
+                key = "AvoidDiskWrites"
+                summary = "If non-zero, try to write to disk less frequently."
+                defaultValue = true
+          <CheckBoxPreference>
+                id = @0x7f09029d
+                title = "Connection Padding"
+                key = "ConnectionPadding"
+                summary = "This option governs Tor’s use of padding to defend against some forms of traffic analysis. Disable to save bandwidth."
+                defaultValue = true
+          <CheckBoxPreference>
+                id = @0x7f0902af
+                title = "Reduced Connection Padding"
+                key = "ReducedConnectionPadding"
+                summary = "If set enabled, Tor will not hold OR connections open for very long, and will send less padding on these connections. Enable to save bandwidth."
+                defaultValue = true
+          <CheckBoxPreference>
+                id = @0x7f0902a8
+                title = "Fascist Firewall"
+                key = "FascistFirewall"
+                summary = "If enabled, Tor will only create outgoing connections to ORs running on ports that your firewall allows (defaults to 80 and 443)."
+                defaultValue = false
+          <EditTextPreference>
+                id = @0x7f0902ae
+                title = "New Circuit Period"
+                key = "NewCircuitPeriod"
+                summary = "Every NUM seconds consider whether to build a new circuit."
+                defaultValue = 30
+          <EditTextPreference>
+                id = @0x7f0902ad
+                title = "Max Circuit Dirtiness"
+                key = "MaxCircuitDirtiness"
+                summary = "Feel free to reuse a circuit that was first used at most NUM seconds ago, but never attach a new stream to a circuit that is too old."
+                defaultValue = 600
+          <EditTextPreference>
+                id = @0x7f09029e
+                title = "Dormant Client Timeout"
+                key = "DormantClientTimeout"
+                summary = "Tor enters a dormant state if it does not see client activity for a specified time. Must be at least 10 minutes"
+                defaultValue = 15
+          <CheckBoxPreference>
+                id = @0x7f0902a3
+                title = "Enforce Distinct Subnets"
+                key = "EnforceDistinctSubnets"
+                summary = "If enabled, Tor will not put two servers whose IP addresses are too close on the same circuit. Currently, two addresses are too close if they lie in the same /16 range."
+                defaultValue = true
+          <CheckBoxPreference>
+                id = @0x7f0902b2
+                title = "Track Host Exits"
+                key = "Enable TrackHostExits"
+                summary = "Tor will track recent connections to hosts and attempt to reuse the same exit node for each. This option may help avoid endless captcha."
+                defaultValue = false
+          <CheckBoxPreference>
+                id = @0x7f09029b
+                title = "Client Use IPv4"
+                key = "ClientUseIPv4"
+                summary = "If disable, Tor will avoid connecting to directory servers and entry nodes over IPv4."
+                defaultValue = true
+          <CheckBoxPreference>
+                id = @0x7f09029c
+                title = "Client Use IPv6"
+                key = "ClientUseIPv6"
+                summary = "If enabled, Tor might connect to directory servers or entry nodes over IPv6."
+                defaultValue = true
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Isolation settings"
+            key = "tor_isolation_settings"
+          <SwitchPreference>
+                id = @0x7f0902ac
+                title = "Isolate By UID"
+                key = "pref_tor_isolate_uid"
+                summary = "Don’t share circuits with streams from different apps."
+                defaultValue = true
+          <SwitchPreference>
+                id = @0x7f0902aa
+                title = "Isolate Dest Addr"
+                key = "pref_tor_isolate_dest_address"
+                summary = "Don’t share circuits with streams targeting a different destination address."
+                defaultValue = false
+          <SwitchPreference>
+                id = @0x7f0902ab
+                title = "Isolate Dest Port"
+                key = "pref_tor_isolate_dest_port"
+                summary = "Don’t share circuits with streams targeting a different destination port."
+                defaultValue = false
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Proxy"
+            key = "tor_proxy_settings"
+          <SwitchPreference>
+                id = @0x7f0902a1
+                title = "SOCKS proxy"
+                key = "Enable SOCKS proxy"
+                defaultValue = true
+          <EditTextPreference>
+                id = @0x7f090299
+                title = "SOCKS Port"
+                key = "SOCKSPort"
+                summary = "Open this port to listen for connections from SOCKS-speaking applications."
+                dependency = "Enable SOCKS proxy"
+                defaultValue = 9050
+          <SwitchPreference>
+                id = @0x7f0902a0
+                title = "HTTP Tunnel"
+                key = "Enable HTTPTunnel"
+                defaultValue = false
+          <EditTextPreference>
+                id = @0x7f090298
+                title = "HTTP Tunnel Port"
+                key = "HTTPTunnelPort"
+                summary = "Open this port to listen for proxy connections using the HTTP CONNECT protocol instead of SOCKS."
+                dependency = "Enable HTTPTunnel"
+                defaultValue = 8118
+          <SwitchPreference>
+                id = @0x7f0902a2
+                title = "Transparent proxy"
+                key = "Enable Transparent proxy"
+                defaultValue = true
+          <EditTextPreference>
+                id = @0x7f0902b3
+                title = "Trans Port"
+                key = "TransPort"
+                summary = "Open this port to listen for transparent proxy connections."
+                dependency = "Enable Transparent proxy"
+                defaultValue = 9040
+          <SwitchPreference>
+                id = @0x7f09029f
+                title = "Resolve DNS"
+                key = "Enable DNS"
+                defaultValue = true
+          <EditTextPreference>
+                id = @0x7f090297
+                title = "DNS Port"
+                key = "DNSPort"
+                summary = "Open this port to listen for UDP DNS requests, and resolve them anonymously."
+                dependency = "Enable DNS"
+                defaultValue = 5400
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Snowflake"
+            key = "pref_tor_snowflake_categ"
+          <ListPreference>
+                entries = @0x7f03000e
+                title = "Select rendezvous"
+                key = "SnowflakeRendezvous"
+                summary = "Hides the broker's domain name from the Internet provider. The broker is used to establish a connection."
+                defaultValue = 1
+                entryValues = @0x7f03000f
+          <EditTextPreference>
+                id = @0x7f0902b0
+                title = "STUN servers for SnowFlake bridges"
+                key = "pref_tor_snowflake_stun"
+                defaultValue = ""
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "SOCKS proxy"
+            key = "pref_tor_output_socks_proxy_categ"
+          <SwitchPreference>
+                title = "SOCKS outbound proxy"
+                key = "Enable output Socks5Proxy"
+                defaultValue = false
+          <EditTextPreference>
+                title = "Socks5 Proxy"
+                key = "Socks5Proxy"
+                summary = "Tor will make all OR connections through the SOCKS 5 proxy."
+                dependency = "Enable output Socks5Proxy"
+                defaultValue = "127.0.0.1:1080"
+      <PreferenceCategory>
+            layout = @0x7f0c00b4
+            title = "Other"
+            key = "pref_tor_other"
+          <Preference>
+                title = "Edit tor.conf directly"
+                key = "editTorConfDirectly"
+                summary = "For advanced user only!"
+          <Preference>
+                title = "Clear cache"
+                key = "cleanTorFolder"

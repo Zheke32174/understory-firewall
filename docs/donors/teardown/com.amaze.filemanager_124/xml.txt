@@ -1,0 +1,550 @@
+
+########## xml/appearance_prefs   (res/YY.xml)
+    <PreferenceScreen>
+        <Preference>
+              key = "theme"
+              title = "Theme"
+        <com.amaze.filemanager.ui.views.preference.CheckBox>
+              defaultValue = false
+              key = "follow_battery_saver"
+              summary = "If selected and the battery saver mode is turned on, the theme changes to dark theme"
+              title = "Follow battery saver"
+        <com.amaze.filemanager.ui.views.preference.CheckBox>
+              defaultValue = true
+              key = "circularimages"
+              summary = "Use circular icons for images and videos"
+              title = "Use circular icons"
+        <com.amaze.filemanager.ui.views.preference.CheckBox>
+              defaultValue = true
+              key = "intelliHideToolbar"
+              summary = "Automatically hide toolbar while scrolling"
+              title = "Intellihide Toolbar"
+        <Preference>
+              key = "columnsGrid"
+              title = "Number of columns in grid view"
+        <com.amaze.filemanager.ui.views.preference.CheckBox>
+              defaultValue = true
+              key = "showDividers"
+              title = "Show Dividers"
+        <com.amaze.filemanager.ui.views.preference.CheckBox>
+              defaultValue = true
+              key = "showHeaders"
+              title = "Show Headers"
+        <com.amaze.filemanager.ui.views.preference.CheckBox>
+              defaultValue = true
+              key = "enableMarqueeFilename"
+              title = "Enable marquee effect for file names"
+        <PreferenceCategory>
+              title = "Color"
+            <Preference>
+                  key = "selectcolorconfig"
+                  summary = "Set color to various UI components"
+                  title = "Select color config"
+            <com.amaze.filemanager.ui.views.preference.CheckBox>
+                  defaultValue = true
+                  key = "coloriseIcons"
+                  summary = "Sets static icon color. Doesn't override directory icon color preference."
+                  title = "Colorize Icons"
+            <com.amaze.filemanager.ui.views.preference.CheckBox>
+                  defaultValue = false
+                  key = "colorednavigation"
+                  summary = "Whether or not the system navigation bar is colored with the skin"
+                  title = "Colored Navigation bar"
+
+########## xml/backup_prefs   (res/JS.xml)
+    <PreferenceScreen>
+        <Preference>
+              key = "export_settings"
+              summary = "Export settings"
+              title = "Export"
+        <Preference>
+              key = "import_settings"
+              summary = "Import settings"
+              title = "Import"
+
+########## xml/behavior_prefs   (res/_X.xml)
+    <PreferenceScreen>
+        <com.amaze.filemanager.ui.views.preference.CheckBox>
+              defaultValue = true
+              key = "savepaths"
+              summary = "When starting up, the most recently viewed folder for each tab will be displayed"
+              title = "Remember paths"
+        <com.amaze.filemanager.ui.views.preference.CheckBox>
+              defaultValue = false
+              key = "typeablepaths"
+              summary = "Long press path bar to type a custom path"
+              title = "Custom paths"
+        <com.amaze.filemanager.ui.views.preference.CheckBox>
+              defaultValue = false
+              key = "texteditor_newstack"
+              summary = "Allows you to open files in separate tasks. Access them from system recents screen."
+              title = "Open files as new task"
+        <Preference>
+              key = "clear_open_file"
+              summary = "Clears selected default file opening apps"
+              title = "Clear cache"
+        <com.amaze.filemanager.ui.views.preference.CheckBox>
+              key = "disable_player_intent_filters"
+              summary = "Disables Amaze inbuilt media players from file chooser"
+              title = "Disable player intent filters"
+        <Preference>
+              key = "extractpath"
+              summary = "Archive files will be extracted to this folder. Default value is the directory in which archive is present."
+              title = "Archive Extract Folder"
+        <PreferenceCategory>
+              title = "File Deletion"
+            <Preference>
+                  key = "retention_num_of_files"
+                  summary = "Maximum files trash bin can store"
+                  title = "Retention by number of files"
+            <Preference>
+                  key = "retention_days"
+                  summary = "Maximum days for which trash bin can store a file"
+                  title = "Retention by days"
+            <Preference>
+                  key = "retention_bytes"
+                  summary = "Maximum data (in MBs) trash bin can store"
+                  title = "Retention by data size"
+            <Preference>
+                  key = "cleanup_interval"
+                  summary = "Trigger auto-cleanup interval (hours)"
+                  title = "Cleanup interval"
+            <com.amaze.filemanager.ui.views.preference.CheckBox>
+                  defaultValue = true
+                  key = "delete_confirmation"
+                  summary = "Ask for confirmation before deleting files. Disabling this is highly discouraged!"
+                  title = "Delete confirmation"
+            <com.amaze.filemanager.ui.views.preference.CheckBox>
+                  defaultValue = false
+                  key = "delete_permanently_without_confirmation"
+                  summary = "Delete files permanently without moving to trashbin. Enabling this is highly discouraged!"
+                  title = "Delete permanently (Disable Trashbin)"
+        <PreferenceCategory>
+              title = "Advanced Search"
+            <com.amaze.filemanager.ui.views.preference.CheckBox>
+                  key = "regex"
+                  summary = "Search using a BASH style regular expression"
+                  title = "Regular Expression"
+            <com.amaze.filemanager.ui.views.preference.CheckBox>
+                  key = "matches"
+                  summary = "If set, regular expression will be matched with entire file name, will look for occurrence otherwise."
+                  title = "Match content"
+        <PreferenceCategory>
+              title = "Advanced"
+            <com.amaze.filemanager.ui.views.preference.CheckBox>
+                  defaultValue = false
+                  key = "legacyListing"
+                  summary = "If enabled, uses legacy method to list files"
+                  title = "Use legacy listing for root"
+            <com.amaze.filemanager.ui.views.preference.CheckBox>
+                  defaultValue = false
+                  key = "rootmode"
+                  summary = "For rooted device only. Check it only if you are sure about it."
+                  title = "Root Explorer"
+
+########## xml/bookmarks_prefs   (res/SA.xml)
+  <PreferenceScreen>
+      <com.amaze.filemanager.ui.views.preference.CheckBox>
+            defaultValue = true
+            key = "sidebar_bookmarks_enable"
+            title = "Show bookmarks"
+      <PreferenceCategory>
+            dependency = "sidebar_bookmarks_enable"
+            key = "bookmarks_list"
+            title = "Bookmarks"
+          <Preference>
+                icon = @0x7f0800a9
+                key = "add_bookmarks"
+                title = "Add Item"
+
+########## xml/color_prefs   (res/BH.xml)
+  <PreferenceScreen>
+      <com.amaze.filemanager.ui.views.preference.SelectedColorsPreference>
+            key = "preselectedconfigs"
+            title = "Preselected configs"
+      <PreferenceCategory>
+            title = "Customize"
+          <Preference>
+                key = "skin"
+                summary = "Set color to large UI elements for the left tab"
+                title = "Primary Color (Left Tab)"
+          <Preference>
+                key = "skin_two"
+                summary = "Set color to large UI elements for the right tab"
+                title = "Primary Color (Right Tab)"
+          <Preference>
+                key = "accent_skin"
+                summary = "Set color to FAB and other small UI elements"
+                title = "Accent Color"
+          <Preference>
+                key = "icon_skin"
+                summary = "Set color to icons"
+                title = "Icon Color"
+
+########## xml/locales_config   (res/Br.xml)
+      <locale>
+            name = "af"
+      <locale>
+            name = "am"
+      <locale>
+            name = "ar"
+      <locale>
+            name = "as-IN"
+      <locale>
+            name = "ast-ES"
+      <locale>
+            name = "az-AZ"
+      <locale>
+            name = "be-BY"
+      <locale>
+            name = "bg"
+      <locale>
+            name = "bn"
+      <locale>
+            name = "bn-BD"
+      <locale>
+            name = "bqi-LU"
+      <locale>
+            name = "br-FR"
+      <locale>
+            name = "bs-BA"
+      <locale>
+            name = "ca"
+      <locale>
+            name = "cs"
+      <locale>
+            name = "csb-PL"
+      <locale>
+            name = "cy"
+      <locale>
+            name = "da"
+      <locale>
+            name = "de"
+      <locale>
+            name = "el"
+      <locale>
+            name = "en-AU"
+      <locale>
+            name = "en-GB"
+      <locale>
+            name = "en-IN"
+      <locale>
+            name = "en-PT"
+      <locale>
+            name = "eo"
+      <locale>
+            name = "es"
+      <locale>
+            name = "es-CO"
+      <locale>
+            name = "es-MX"
+      <locale>
+            name = "es-US"
+      <locale>
+            name = "et-EE"
+      <locale>
+            name = "eu"
+      <locale>
+            name = "eu-ES"
+      <locale>
+            name = "fa"
+      <locale>
+            name = "fi"
+      <locale>
+            name = "fil-PH"
+      <locale>
+            name = "fr"
+      <locale>
+            name = "fr-CA"
+      <locale>
+            name = "frp-IT"
+      <locale>
+            name = "fy-NL"
+      <locale>
+            name = "ga-IE"
+      <locale>
+            name = "gd-GB"
+      <locale>
+            name = "gl-ES"
+      <locale>
+            name = "gu-IN"
+      <locale>
+            name = "he"
+      <locale>
+            name = "hi"
+      <locale>
+            name = "hr"
+      <locale>
+            name = "hu"
+      <locale>
+            name = "hy-AM"
+      <locale>
+            name = "id"
+      <locale>
+            name = "is"
+      <locale>
+            name = "it"
+      <locale>
+            name = "ja"
+      <locale>
+            name = "ka-GE"
+      <locale>
+            name = "kk-KZ"
+      <locale>
+            name = "km-KH"
+      <locale>
+            name = "kn-IN"
+      <locale>
+            name = "ko"
+      <locale>
+            name = "ku"
+      <locale>
+            name = "ky-KG"
+      <locale>
+            name = "lb"
+      <locale>
+            name = "lo-LA"
+      <locale>
+            name = "lt"
+      <locale>
+            name = "lv"
+      <locale>
+            name = "mk-MK"
+      <locale>
+            name = "ml-IN"
+      <locale>
+            name = "mn-MN"
+      <locale>
+            name = "mr-IN"
+      <locale>
+            name = "ms-MY"
+      <locale>
+            name = "my"
+      <locale>
+            name = "nb"
+      <locale>
+            name = "ne-NP"
+      <locale>
+            name = "nl"
+      <locale>
+            name = "oc-FR"
+      <locale>
+            name = "or-IN"
+      <locale>
+            name = "pa-IN"
+      <locale>
+            name = "pl"
+      <locale>
+            name = "pt-BR"
+      <locale>
+            name = "pt-PT"
+      <locale>
+            name = "rm"
+      <locale>
+            name = "ro"
+      <locale>
+            name = "ru"
+      <locale>
+            name = "si-LK"
+      <locale>
+            name = "sk"
+      <locale>
+            name = "sl"
+      <locale>
+            name = "sq-AL"
+      <locale>
+            name = "sr"
+      <locale>
+            name = "sv"
+      <locale>
+            name = "sv-SE"
+      <locale>
+            name = "sw"
+      <locale>
+            name = "ta"
+      <locale>
+            name = "ta-IN"
+      <locale>
+            name = "te-IN"
+      <locale>
+            name = "th"
+      <locale>
+            name = "tl"
+      <locale>
+            name = "tr"
+      <locale>
+            name = "ug"
+      <locale>
+            name = "uk"
+      <locale>
+            name = "ur-PK"
+      <locale>
+            name = "uz-UZ"
+      <locale>
+            name = "vi"
+      <locale>
+            name = "zh-CN"
+      <locale>
+            name = "zh-HK"
+      <locale>
+            name = "zh-HN"
+      <locale>
+            name = "zh-TW"
+      <locale>
+            name = "zu"
+
+########## xml/network_security_config   (res/8G.xml)
+        <domain>
+
+########## xml/preferences   (res/DZ.xml)
+    <PreferenceScreen>
+        <Preference>
+              icon = @0x7f08011a
+              key = "appearance"
+              summary = "Customize the theme, colors and appearance of the file manager"
+              title = "Appearance"
+        <Preference>
+              icon = @0x7f08011f
+              key = "ui"
+              summary = "Control what information to show, customize the sidebar, and toggle UI preferences"
+              title = "Interface"
+        <Preference>
+              icon = @0x7f08011b
+              key = "behavior"
+              summary = "Modify behaviors such as advanced search and whether to open files as a new task"
+              title = "Behavior"
+        <Preference>
+              icon = @0x7f08011d
+              key = "security"
+              summary = "Set up password and encryption"
+              title = "Security"
+        <Preference>
+              icon = @0x7f08011e
+              key = "backup"
+              summary = "Export/Import Amaze settings"
+              title = "Backup"
+        <Preference>
+              icon = @0x7f08011c
+              key = "about"
+              title = "About Amaze File Manager"
+        <Preference>
+              key = "feedback"
+              title = "Send Feedback"
+
+########## xml/provider_paths   (res/zz.xml)
+<paths>
+
+########## xml/quickaccess_prefs   (res/pY.xml)
+    <PreferenceScreen>
+        <com.amaze.filemanager.ui.views.preference.CheckBox>
+              defaultValue = true
+              key = "sidebar_quickaccess_enable"
+              title = "Show quick accesses"
+        <PreferenceCategory>
+              dependency = "sidebar_quickaccess_enable"
+              key = "bookmarks_list"
+              title = "Quick accesses"
+            <SwitchPreference>
+                  summary = "Files recently accessed through Amaze"
+                  defaultValue = true
+                  key = "fastaccess"
+                  title = "Quick access"
+            <SwitchPreference>
+                  summary = "Recently created or modified files"
+                  defaultValue = true
+                  key = "recent"
+                  title = "Recent files"
+            <SwitchPreference>
+                  defaultValue = true
+                  key = "image"
+                  title = "Images"
+            <SwitchPreference>
+                  defaultValue = true
+                  key = "video"
+                  title = "Videos"
+            <SwitchPreference>
+                  defaultValue = true
+                  key = "audio"
+                  title = "Audio"
+            <SwitchPreference>
+                  defaultValue = true
+                  key = "documents"
+                  title = "Documents"
+            <SwitchPreference>
+                  defaultValue = true
+                  key = "apks"
+                  title = "APKs"
+
+########## xml/security_prefs   (res/4M.xml)
+    <PreferenceScreen>
+        <Preference>
+              key = "crypt_password"
+              summary = "Set a master password for encryption. Leave empty to remove."
+              title = "Master Password"
+        <com.amaze.filemanager.ui.views.preference.CheckBox>
+              key = "crypt_fingerprint"
+              summary = "Use fingerprint to authenticate encryption"
+              title = "Fingerprint"
+
+########## xml/shortcuts   (res/K7.xml)
+  <shortcuts>
+      <shortcut>
+            icon = @0x7f080135
+          <intent>
+      <shortcut>
+            icon = @0x7f080134
+          <intent>
+      <shortcut>
+            icon = @0x7f080132
+          <intent>
+      <shortcut>
+            icon = @0x7f080133
+          <intent>
+
+########## xml/ui_prefs   (res/AC.xml)
+    <PreferenceScreen>
+        <Preference>
+              key = "language"
+              title = "App Language"
+        <com.amaze.filemanager.ui.views.preference.CheckBox>
+              defaultValue = true
+              key = "showThumbs"
+              summary = "Show Thumbnails of apps and images"
+              title = "Show Thumbnails"
+        <com.amaze.filemanager.ui.views.preference.CheckBox>
+              defaultValue = false
+              key = "showHidden"
+              title = "Show Hidden Files and Folders"
+        <com.amaze.filemanager.ui.views.preference.CheckBox>
+              defaultValue = true
+              key = "showLastModified"
+              summary = "Show the date and time of last modification"
+              title = "Show Last Modified Date and Time"
+        <com.amaze.filemanager.ui.views.preference.CheckBox>
+              defaultValue = true
+              key = "showFileSize"
+              summary = "Show size of files and number of items in folders"
+              title = "Show Sizes"
+        <com.amaze.filemanager.ui.views.preference.CheckBox>
+              defaultValue = false
+              key = "goBack_checkbox"
+              summary = "Enables custom back navigation at top of the list"
+              title = "Back navigation"
+        <Preference>
+              key = "dragAndDropPreference"
+              title = "Select drag and drop preference (Experimental)"
+        <PreferenceCategory>
+              title = "Sidebar"
+            <Preference>
+                  key = "sidebar_bookmarks"
+                  title = "Bookmarks"
+            <Preference>
+                  key = "sidebar_quick_access"
+                  title = "Quick accesses"
+        <PreferenceCategory>
+              title = "Advanced"
+            <com.amaze.filemanager.ui.views.preference.CheckBox>
+                  defaultValue = false
+                  key = "showPermissions"
+                  summary = "Show Permissions of Files and Folders"
+                  title = "Show Permissions"

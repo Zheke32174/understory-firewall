@@ -1,0 +1,180 @@
+# dnscrypt-proxy — Godwall subsystem encrypted upstream resolver
+#
+# WP-3 (DNS stack). Seeded once into the prefix at
+#   /data/local/tmp/godwall/usr/etc/dnscrypt-proxy/dnscrypt-proxy.toml
+# by the Supervisor on first start, then left alone (ServiceConfigFile.overwrite = false)
+# so an edit made through the Advanced raw-config surface survives a restart.
+#
+# Runs as uid 2000 out of Godwall's own prefix — a loopback DNS listener needs no
+# privilege. It answers ONLY the traffic Godwall's tun hands to 127.0.0.1:5353 (dnsmasq),
+# which forwards here. It does not change what any other app on the device uses for DNS.
+#
+# Charter rule C: this is a working default. Configuring it is not the user's job.
+# Every value below is what the stack ships with; the donor is InviZible Pro's
+# preferences_dnscrypt (each mapped preference is noted inline).
+
+# --- Listener ---------------------------------------------------------------------------
+# InviZible's DNSCrypt "Listen port" default is 5354. dnsmasq (the cache + rebind guard on
+# 5353) is the only client; nothing on the LAN can reach this — loopback only.
+listen_addresses = ['127.0.0.1:5354']
+
+# Upstream fan-out cap. dnscrypt-proxy's own default.
+max_clients = 250
+
+# --- Which server protocols to use (InviZible "Require servers …") ----------------------
+# All three encrypted transports on. DoT is deliberately NOT here: dnscrypt-proxy does not
+# implement DNS-over-TLS as an upstream protocol, so Godwall gates DoT honestly in the UI
+# rather than pretend this file provides it (see DnsCapability.DOT).
+dnscrypt_servers = true
+doh_servers = true
+odoh_servers = true
+
+# Reachability of candidate servers by address family. IPv6 stays on (InviZible default);
+# block_ipv6 below handles a device with no IPv6 route without disabling v6-reachable servers.
+ipv4_servers = true
+ipv6_servers = true
+
+# --- Privacy / integrity floor (InviZible "Require … to satisfy specific properties") ---
+# InviZible ships these three as OFF-by-default checkboxes. Godwall raises the floor because
+# this is a security suite, and each choice is defensible as a default:
+#   require_dnssec  — answers must be DNSSEC-validatable, so a stripped/forged record is refused.
+#   require_nolog   — only resolvers that declare they keep no query logs are used.
+#   require_nofilter— the upstream must NOT run its own blacklist; Godwall does its own
+#                     blocklist filtering (WP-6), and a second, unknown filter upstream would
+#                     make "what got blocked and why" unanswerable.
+# All three are overridable via the Advanced raw-config surface.
+require_dnssec = true
+require_nolog = true
+require_nofilter = true
+
+# --- Transport ---------------------------------------------------------------------------
+# InviZible defaults Force TCP = true, but that is specifically for chaining DNSCrypt over
+# Tor's SOCKS inbound (Tor carries no UDP). Godwall's DNS front-end is dnsmasq, not Tor, so
+# UDP is left on here for speed; routing DNS over Tor is a separate egress concern (WP-4/WP-5)
+# and flips this there, not in the shipped default.
+force_tcp = false
+
+# HTTP/3 (DoH3, DNS over QUIC/UDP 443). InviZible "HTTP3" default is on.
+http3 = true
+
+# Per-query timeout (ms) and connection keepalive (s). dnscrypt-proxy defaults.
+timeout = 5000
+keepalive = 30
+
+# --- Bootstrap ---------------------------------------------------------------------------
+# Non-encrypted resolvers used ONLY to fetch the resolver/relay lists the first time, and
+# only when the cached lists are absent. Never used once the lists are cached, and never for
+# user queries. InviZible's "Bootstrap resolvers" default is 9.9.9.9.
+bootstrap_resolvers = ['9.9.9.9:53', '8.8.8.8:53']
+
+# InviZible "Ignore system DNS": do not read Android's resolver config to bootstrap; use the
+# resolvers above unconditionally. Keeps the bootstrap path from leaking to a network-set DNS.
+ignore_system_dns = true
+
+# Startup connectivity probe. dnscrypt-proxy defaults.
+netprobe_address = '9.9.9.9:53'
+netprobe_timeout = 60
+
+# --- Filters (InviZible "Filters") -------------------------------------------------------
+# block_unqualified  — answer A/AAAA for bare hostnames (no dot) immediately; never leak them.
+# block_undelegated  — answer queries for local-only zones locally instead of leaking upstream.
+# block_ipv6         — InviZible default OFF; left off so v6-capable networks keep working.
+block_unqualified = true
+block_undelegated = true
+block_ipv6 = false
+
+# --- Cache -------------------------------------------------------------------------------
+# dnsmasq caches too; a small cache here still helps for queries that skip the front-end.
+cache = true
+cache_size = 4096
+cache_min_ttl = 2400
+cache_max_ttl = 86400
+cache_neg_min_ttl = 60
+cache_neg_max_ttl = 600
+
+# --- Query logging (InviZible "Query logging" / "Suspicious logging", both default OFF) --
+# Off. No file is written. Charter: logging is the user's explicit choice, never the default.
+[query_log]
+
+[nx_log]
+
+# --- Sources: the signed resolver/relay lists --------------------------------------------
+# minisign_key is the DNSCrypt project's public key; a list that does not verify against it
+# is discarded rather than trusted. urls include the two InviZible ships plus the jsDelivr
+# mirror upstream added, for fetch resilience.
+[sources]
+
+  [sources.public-resolvers]
+  urls = [
+    'https://raw.githubusercontent.com/DNSCrypt/dnscrypt-resolvers/master/v3/public-resolvers.md',
+    'https://download.dnscrypt.info/resolvers-list/v3/public-resolvers.md',
+    'https://cdn.jsdelivr.net/gh/DNSCrypt/dnscrypt-resolvers@master/v3/public-resolvers.md'
+  ]
+  cache_file = 'public-resolvers.md'
+  minisign_key = 'RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3'
+  refresh_delay = 72
+  prefix = ''
+
+  [sources.relays]
+  urls = [
+    'https://raw.githubusercontent.com/DNSCrypt/dnscrypt-resolvers/master/v3/relays.md',
+    'https://download.dnscrypt.info/resolvers-list/v3/relays.md',
+    'https://cdn.jsdelivr.net/gh/DNSCrypt/dnscrypt-resolvers@master/v3/relays.md'
+  ]
+  cache_file = 'relays.md'
+  minisign_key = 'RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3'
+  refresh_delay = 72
+  prefix = ''
+
+  # ODoH (Oblivious DoH) target servers and their relays. InviZible has no ODoH surface at
+  # all; Godwall keeps it because dnscrypt-proxy supports it and it is the strongest of the
+  # three (the target never sees the client IP, the relay never sees the query).
+  [sources.odoh-servers]
+  urls = [
+    'https://raw.githubusercontent.com/DNSCrypt/dnscrypt-resolvers/master/v3/odoh-servers.md',
+    'https://download.dnscrypt.info/resolvers-list/v3/odoh-servers.md',
+    'https://cdn.jsdelivr.net/gh/DNSCrypt/dnscrypt-resolvers@master/v3/odoh-servers.md'
+  ]
+  cache_file = 'odoh-servers.md'
+  minisign_key = 'RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3'
+  refresh_delay = 24
+  prefix = ''
+
+  [sources.odoh-relays]
+  urls = [
+    'https://raw.githubusercontent.com/DNSCrypt/dnscrypt-resolvers/master/v3/odoh-relays.md',
+    'https://download.dnscrypt.info/resolvers-list/v3/odoh-relays.md',
+    'https://cdn.jsdelivr.net/gh/DNSCrypt/dnscrypt-resolvers@master/v3/odoh-relays.md'
+  ]
+  cache_file = 'odoh-relays.md'
+  minisign_key = 'RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3'
+  refresh_delay = 24
+  prefix = ''
+
+# --- Anonymized DNSCrypt (InviZible "Relays") --------------------------------------------
+# Route DNSCrypt queries through a relay so the resolver never learns the client IP.
+# server_name = '*' applies the relay set to every DNSCrypt server. skip_incompatible = true
+# means a route that cannot be built (a stale relay name, a DoH-only server) is dropped rather
+# than failing the whole resolver — the query still goes out, just without that hop. The relay
+# names below are current entries from the signed relays.md; if one ages out, the query falls
+# back to a direct (still-encrypted) DNSCrypt path rather than breaking.
+[anonymized_dns]
+routes = [
+  { server_name = '*', via = ['anon-cs-fr', 'anon-cs-nl', 'anon-cs-berlin'] }
+]
+skip_incompatible = true
+
+# --- ODoH routing ------------------------------------------------------------------------
+# ODoH targets are reached only through an ODoH relay; a direct target connection would defeat
+# the point. Same '*' fan-out and skip_incompatible semantics as above.
+[odoh_routes]
+routes = [
+  { server_name = '*', via = ['odohrelay-crypto-sx', 'odohrelay-koki-ams'] }
+]
+
+# --- Reserved sections dnscrypt-proxy expects to exist -----------------------------------
+[doh_client_x509_auth]
+
+[dns64]
+
+[static]

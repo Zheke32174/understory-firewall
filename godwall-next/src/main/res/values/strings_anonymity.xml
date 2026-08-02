@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Anonymity (Tor + i2pd) copy — WP-4.
+
+  Section-scoped file: Android merges every res/values/*.xml, so this section owns its own
+  strings under the anon_ prefix and never edits the shared strings.xml (a concurrent edit to
+  that file already broke CI once this session).
+
+  The preference titles and summaries mirror InviZible Pro's preferences_tor and
+  preferences_i2pd verbatim (github.com/Gedsh/InviZible, GPL-3.0) — they are the real donor
+  option surface WP-9 renders. The honest-gating sentences (what is absent, what is only
+  stored) are dynamic and come from the engine (Anonymity.explain / routingEnforcement); the
+  few static banners here state the REACH of the control, per the house rule.
+-->
+<resources>
+
+    <!-- ── Capability, top level ──────────────────────────────────────────────────────── -->
+    <string name="anon_title">Anonymity</string>
+    <string name="anon_tor">Tor</string>
+    <string name="anon_i2pd">Purple I2P</string>
+    <string name="anon_new_identity">New Tor identity</string>
+    <string name="anon_advanced_warning">For advanced user only!</string>
+
+    <!-- Honest banners. The engine fills the exact absent/stored reason at runtime; these are
+         the fixed reach statements a screen shows beside the controls. -->
+    <string name="anon_reach_tor">Runs the Tor client as uid 2000 in Godwall\'s own prefix and binds a local SOCKS/DNS proxy the tun dials into. It anonymises only the flows the routing policy steers to it.</string>
+    <string name="anon_reach_i2pd">Runs the i2pd router as uid 2000 and serves local HTTP and SOCKS proxies for reaching .i2p services. It does not route device traffic on its own.</string>
+    <string name="anon_routing_stored_no_datapath">These selections are saved, but not yet enforced: steering an app\'s or a site\'s traffic into Tor needs a full-traffic tunnel, and Godwall\'s tunnel carries DNS only in this build.</string>
+    <string name="anon_bridges_absent">This obfuscation needs a pluggable-transport binary that is not in this build. The control stays disabled until it is added.</string>
+
+    <!-- ══ Tor routing — the inclusion/exclusion machinery (Fast Settings > Tor) ═════════ -->
+    <string name="anon_route_all_title">Route All traffic through Tor</string>
+    <string name="anon_select_sites_title">Select sites</string>
+    <string name="anon_select_sites_summ">Sites list to open with Tor. This feature does not work for sites behind CDN</string>
+    <string name="anon_select_apps_title">Select applications</string>
+    <string name="anon_select_apps_summ">Applications list to use with Tor</string>
+    <string name="anon_exclude_sites_title">Exclude sites</string>
+    <string name="anon_exclude_sites_summ">Sites list to open directly. This feature does not work for sites behind CDN</string>
+    <string name="anon_exclude_apps_title">Exclude applications</string>
+    <string name="anon_exclude_apps_summ">Applications list to open directly</string>
+    <string name="anon_refresh_interval_title">Refresh interval</string>
+    <string name="anon_refresh_interval_summ">Period in hours to refresh sites IP. For Android 5.1 and higher. Put 0 to stop refresh</string>
+    <string name="anon_bypass_lan_title">Bypass LAN addresses</string>
+    <string name="anon_bypass_lan_summ">Do not use Tor for LAN destinations and IANA reserved IP blocks</string>
+    <string name="anon_spoof_sni_title">Spoof SNI</string>
+
+    <!-- Bridges (Fast Settings > Bridges) -->
+    <string name="anon_bridges_title">Bridges</string>
+    <string name="anon_bridges_summ">Use it if you can not connect to Tor network</string>
+    <string name="anon_bridges_obfuscation">Obfuscation</string>
+    <string name="anon_bridges_transport_select">Pls select obfuscation type:</string>
+    <string name="anon_bridges_default_list">Use Bridges Default List</string>
+    <string name="anon_bridges_own_list">Use Bridges Own List</string>
+    <string name="anon_bridges_no">Do Not Use Bridges</string>
+    <string name="anon_bridges_add">Add Bridges</string>
+    <string name="anon_bridges_ipv6">IPv6 bridges</string>
+
+    <!-- ══ preferences_tor (Tor Settings) ═══════════════════════════════════════════════ -->
+    <!-- Nodes -->
+    <string name="anon_tor_cat_nodes">Nodes</string>
+    <string name="anon_tor_exclude_exit_title">Exclude Exit Nodes</string>
+    <string name="anon_tor_exclude_exit_summ">A list of country codes to never use when picking an exit node, that delivers traffic for you outside the Tor network.</string>
+    <string name="anon_tor_exit_title">Exit Nodes</string>
+    <string name="anon_tor_exit_summ">A list of country codes to use as exit node - that is, a node that delivers traffic for you outside the Tor network.</string>
+    <string name="anon_tor_exclude_title">Exclude Nodes</string>
+    <string name="anon_tor_exclude_summ">A list of country codes to avoid when building a circuit.</string>
+    <string name="anon_tor_entry_title">Entry Nodes</string>
+    <string name="anon_tor_entry_summ">A list of country codes of nodes to use for the first hop in your normal circuits.</string>
+    <string name="anon_tor_strict_title">Strict Nodes</string>
+    <string name="anon_tor_strict_summ">If StrictNodes enabled, Tor will treat solely the ExcludeNodes option as a requirement to follow for all the circuits you generate, even if doing so will break functionality for you.</string>
+
+    <!-- Common settings -->
+    <string name="anon_tor_cat_common">Common settings</string>
+    <string name="anon_tor_virtual_addr_title">Virtual Addr Network</string>
+    <string name="anon_tor_virtual_addr_summ">When Tor needs to assign a virtual (unused) address because of a MAPADDRESS command from the controller or the AutomapHostsOnResolve feature, Tor picks an unassigned address from this range.</string>
+    <string name="anon_tor_hw_accel_title">Hardware Accel</string>
+    <string name="anon_tor_hw_accel_summ">Try to use built-in crypto hardware acceleration when available.</string>
+    <string name="anon_tor_avoid_disk_title">Avoid Disk Writes</string>
+    <string name="anon_tor_avoid_disk_summ">If non-zero, try to write to disk less frequently.</string>
+    <string name="anon_tor_conn_padding_title">Connection Padding</string>
+    <string name="anon_tor_conn_padding_summ">This option governs Tor’s use of padding to defend against some forms of traffic analysis. Disable to save bandwidth.</string>
+    <string name="anon_tor_reduced_padding_title">Reduced Connection Padding</string>
+    <string name="anon_tor_reduced_padding_summ">If set enabled, Tor will not hold OR connections open for very long, and will send less padding on these connections. Enable to save bandwidth.</string>
+    <string name="anon_tor_fascist_title">Fascist Firewall</string>
+    <string name="anon_tor_fascist_summ">If enabled, Tor will only create outgoing connections to ORs running on ports that your firewall allows (defaults to 80 and 443).</string>
+    <string name="anon_tor_new_circuit_title">New Circuit Period</string>
+    <string name="anon_tor_new_circuit_summ">Every NUM seconds consider whether to build a new circuit.</string>
+    <string name="anon_tor_max_dirtiness_title">Max Circuit Dirtiness</string>
+    <string name="anon_tor_max_dirtiness_summ">Feel free to reuse a circuit that was first used at most NUM seconds ago, but never attach a new stream to a circuit that is too old.</string>
+    <string name="anon_tor_dormant_title">Dormant Client Timeout</string>
+    <string name="anon_tor_dormant_summ">Tor enters a dormant state if it does not see client activity for a specified time. Must be at least 10 minutes</string>
+    <string name="anon_tor_distinct_subnets_title">Enforce Distinct Subnets</string>
+    <string name="anon_tor_distinct_subnets_summ">If enabled, Tor will not put two servers whose IP addresses are too close on the same circuit. Currently, two addresses are too close if they lie in the same /16 range.</string>
+    <string name="anon_tor_track_host_title">Track Host Exits</string>
+    <string name="anon_tor_track_host_summ">Tor will track recent connections to hosts and attempt to reuse the same exit node for each. This option may help avoid endless captcha.</string>
+    <string name="anon_tor_ipv4_title">Client Use IPv4</string>
+    <string name="anon_tor_ipv4_summ">If disable, Tor will avoid connecting to directory servers and entry nodes over IPv4.</string>
+    <string name="anon_tor_ipv6_title">Client Use IPv6</string>
+    <string name="anon_tor_ipv6_summ">If enabled, Tor might connect to directory servers or entry nodes over IPv6.</string>
+
+    <!-- Isolation settings -->
+    <string name="anon_tor_cat_isolation">Isolation settings</string>
+    <string name="anon_tor_isolate_uid_title">Isolate By UID</string>
+    <string name="anon_tor_isolate_uid_summ">Don’t share circuits with streams from different apps.</string>
+    <string name="anon_tor_isolate_dest_addr_title">Isolate Dest Addr</string>
+    <string name="anon_tor_isolate_dest_addr_summ">Don’t share circuits with streams targeting a different destination address.</string>
+    <string name="anon_tor_isolate_dest_port_title">Isolate Dest Port</string>
+    <string name="anon_tor_isolate_dest_port_summ">Don’t share circuits with streams targeting a different destination port.</string>
+
+    <!-- Proxy -->
+    <string name="anon_tor_cat_proxy">Proxy</string>
+    <string name="anon_tor_socks_title">SOCKS proxy</string>
+    <string name="anon_tor_socks_port_title">SOCKS Port</string>
+    <string name="anon_tor_socks_port_summ">Open this port to listen for connections from SOCKS-speaking applications.</string>
+    <string name="anon_tor_http_tunnel_title">HTTP Tunnel</string>
+    <string name="anon_tor_http_tunnel_port_title">HTTP Tunnel Port</string>
+    <string name="anon_tor_http_tunnel_port_summ">Open this port to listen for proxy connections using the HTTP CONNECT protocol instead of SOCKS.</string>
+    <string name="anon_tor_transparent_title">Transparent proxy</string>
+    <string name="anon_tor_trans_port_title">Trans Port</string>
+    <string name="anon_tor_trans_port_summ">Open this port to listen for transparent proxy connections.</string>
+    <string name="anon_tor_dns_title">Resolve DNS</string>
+    <string name="anon_tor_dns_port_title">DNS Port</string>
+    <string name="anon_tor_dns_port_summ">Open this port to listen for UDP DNS requests, and resolve them anonymously.</string>
+
+    <!-- Snowflake -->
+    <string name="anon_tor_cat_snowflake">Snowflake</string>
+    <string name="anon_tor_snowflake_rendezvous_title">Select rendezvous</string>
+    <string name="anon_tor_snowflake_rendezvous_summ">Hides the broker\'s domain name from the Internet provider. The broker is used to establish a connection.</string>
+    <string name="anon_tor_snowflake_stun_title">STUN servers for SnowFlake bridges</string>
+
+    <!-- Output SOCKS proxy -->
+    <string name="anon_tor_cat_output_socks">SOCKS proxy</string>
+    <string name="anon_tor_output_socks_title">SOCKS outbound proxy</string>
+    <string name="anon_tor_socks5proxy_title">Socks5 Proxy</string>
+    <string name="anon_tor_socks5proxy_summ">Tor will make all OR connections through the SOCKS 5 proxy.</string>
+
+    <!-- Other -->
+    <string name="anon_tor_cat_other">Other</string>
+    <string name="anon_tor_edit_conf_title">Edit tor.conf directly</string>
+    <string name="anon_tor_clear_cache_title">Clear cache</string>
+
+    <!-- ══ preferences_i2pd (I2P Settings) ══════════════════════════════════════════════ -->
+    <!-- Common settings -->
+    <string name="anon_i2pd_cat_common">Common settings</string>
+    <string name="anon_i2pd_ipv4_title">IPv4</string>
+    <string name="anon_i2pd_ipv4_summ">Enable communication through IPv4.</string>
+    <string name="anon_i2pd_ipv6_title">IPv6</string>
+    <string name="anon_i2pd_ipv6_summ">Enable communication through IPv6.</string>
+    <string name="anon_i2pd_notransit_title">No transit</string>
+    <string name="anon_i2pd_notransit_summ">Router will not accept transit tunnels, disabling transit traffic completely.</string>
+    <string name="anon_i2pd_floodfill_title">Floodfill</string>
+    <string name="anon_i2pd_floodfill_summ">Router will be floodfill.</string>
+    <string name="anon_i2pd_bandwidth_title">Bandwidth</string>
+    <string name="anon_i2pd_bandwidth_summ">Bandwidth limit in KBps.</string>
+    <string name="anon_i2pd_share_title">Share</string>
+    <string name="anon_i2pd_share_summ">Max % of bandwidth limit for transit. 0–100.</string>
+    <string name="anon_i2pd_ssu2_title">SSU2</string>
+    <string name="anon_i2pd_ssu2_summ">Enable SSU2 transport protocol (use UDP).</string>
+    <string name="anon_i2pd_ntcp2_title">NTCP2</string>
+    <string name="anon_i2pd_ntcp2_summ">Enable NTCP2 transport protocol (use TCP).</string>
+
+    <!-- HTTP proxy -->
+    <string name="anon_i2pd_cat_http_proxy">HTTP proxy</string>
+    <string name="anon_i2pd_http_proxy_title">HTTP proxy</string>
+    <string name="anon_i2pd_http_proxy_port_title">HTTP proxy port</string>
+    <string name="anon_i2pd_http_proxy_port_summ">The port to listen on (HTTP Proxy).</string>
+    <string name="anon_i2pd_http_outproxy_title">HTTP outproxy</string>
+    <string name="anon_i2pd_http_outproxy_summ">Gateway to the regular internet</string>
+    <string name="anon_i2pd_http_outproxy_addr_title">HTTP outproxy address</string>
+    <string name="anon_i2pd_http_outproxy_addr_summ">HTTP proxy upstream out proxy url (like http://false.i2p)</string>
+
+    <!-- Socks proxy -->
+    <string name="anon_i2pd_cat_socks_proxy">Socks proxy</string>
+    <string name="anon_i2pd_socks_proxy_title">Socks proxy</string>
+    <string name="anon_i2pd_socks_proxy_port_title">Socks proxy port</string>
+    <string name="anon_i2pd_socks_proxy_port_summ">The port to listen on (SOCKS Proxy).</string>
+    <string name="anon_i2pd_socks_outproxy_title">SOCKS outproxy</string>
+    <string name="anon_i2pd_socks_outproxy_summ">Address of outproxy(IP or local). Requests outside I2P will go there.</string>
+    <string name="anon_i2pd_socks_outproxy_addr_title">SOCKS outproxy address</string>
+    <string name="anon_i2pd_socks_outproxy_port_title">SOCKS outproxy port</string>
+
+    <!-- Outbound proxy -->
+    <string name="anon_i2pd_cat_outbound_proxy">Outbound proxy</string>
+    <string name="anon_i2pd_outbound_proxy_title">Outbound proxy</string>
+    <string name="anon_i2pd_ntcpproxy_title">NTCP proxy</string>
+    <string name="anon_i2pd_ntcpproxy_summ">Specify proxy server for NTCP. Should be http://address:port or socks://address:port.</string>
+
+    <!-- Incoming connections -->
+    <string name="anon_i2pd_cat_incoming">Incoming connections</string>
+    <string name="anon_i2pd_incoming_title">Incoming connections</string>
+    <string name="anon_i2pd_incoming_host_title">Incoming host</string>
+    <string name="anon_i2pd_incoming_host_summ">Router external IP for incoming connections (default: auto if SSU2 is enabled).</string>
+    <string name="anon_i2pd_incoming_port_title">Incoming port</string>
+    <string name="anon_i2pd_incoming_port_summ">Port to listen for incoming connections (default: auto (random)).</string>
+
+    <!-- SAM interface -->
+    <string name="anon_i2pd_cat_sam">SAM interface</string>
+    <string name="anon_i2pd_sam_title">SAM interface</string>
+    <string name="anon_i2pd_sam_port_title">SAM interface port</string>
+    <string name="anon_i2pd_sam_port_summ">Port of SAM bridge.</string>
+
+    <!-- Cryptography -->
+    <string name="anon_i2pd_cat_cryptography">Cryptography</string>
+    <string name="anon_i2pd_elgamal_title">Elgamal</string>
+    <string name="anon_i2pd_elgamal_summ">Use ElGamal precomputated tables.</string>
+
+    <!-- UPnP -->
+    <string name="anon_i2pd_cat_upnp">UPNP</string>
+    <string name="anon_i2pd_upnp_title">UPNP</string>
+    <string name="anon_i2pd_upnp_summ">Enable or disable UPnP.</string>
+
+    <!-- Reseeding -->
+    <string name="anon_i2pd_cat_reseeding">Reseeding</string>
+    <string name="anon_i2pd_verify_title">Verify</string>
+    <string name="anon_i2pd_verify_summ">Verify su3 signature.</string>
+
+    <!-- Limits -->
+    <string name="anon_i2pd_cat_limits">Limits</string>
+    <string name="anon_i2pd_transit_tunnels_title">Transit tunnels</string>
+    <string name="anon_i2pd_transit_tunnels_summ">Override maximum number of transit tunnels. 2500 by default.</string>
+    <string name="anon_i2pd_open_files_title">Open files</string>
+    <string name="anon_i2pd_open_files_summ">Limit number of open file descriptors (0 - use system limit).</string>
+    <string name="anon_i2pd_core_size_title">Core size</string>
+    <string name="anon_i2pd_core_size_summ">Maximum size of core file in Kb (0 - use system limit).</string>
+
+    <!-- Address book -->
+    <string name="anon_i2pd_cat_addressbook">Address book</string>
+    <string name="anon_i2pd_default_url_title">Default url</string>
+    <string name="anon_i2pd_default_url_summ">AddressBook subscription URL for initial setup.</string>
+    <string name="anon_i2pd_subscriptions_title">Subscriptions</string>
+    <string name="anon_i2pd_subscriptions_summ">AddressBook subscriptions URLs.</string>
+
+    <!-- Other -->
+    <string name="anon_i2pd_cat_other">Other</string>
+    <string name="anon_i2pd_edit_conf_title">Edit i2pd.conf directly</string>
+    <string name="anon_i2pd_edit_tunnels_title">Edit tunnels.conf directly</string>
+    <string name="anon_i2pd_clear_cache_title">Clear cache</string>
+
+</resources>

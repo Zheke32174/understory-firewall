@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Chaos Orb</string>
+    <string name="overlay_watch_summary">Detect apps drawing on top of this one (tapjacking)</string>
+    <string name="overlay_watch_description">Optional. Reports when another app draws a window over this one — the setup used to harvest taps you believe you are giving this app. It reads window position and size only: it never reads screen content, never sees what you type, and never blocks a touch. Findings go to the encrypted vault.</string>
+    <string name="sentinel_channel">Sentinel</string>
+    <string name="sentinel_channel_desc">Shows while the detectors are running.</string>
+</resources>

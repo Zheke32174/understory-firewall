@@ -1,0 +1,118 @@
+
+########## menu/activity_main_drawer   (res/lS.xml)
+  <menu>
+      <group>
+            id = @0x7f090218
+          <item>
+                icon = @0x7f0800d5
+                id = @0x7f090215
+                title = "Fast Settings"
+          <item>
+                icon = @0x7f0800d3
+                id = @0x7f090213
+                title = "Common Settings"
+          <item>
+                icon = @0x7f0800ad
+                id = @0x7f090216
+                title = "Firewall"
+          <item>
+                icon = @0x7f0800d4
+                id = @0x7f09020d
+                title = "DNSCrypt Settings"
+          <item>
+                icon = @0x7f0800d7
+                id = @0x7f090210
+                title = "Tor Settings"
+          <item>
+                icon = @0x7f0800d6
+                id = @0x7f09020f
+                title = "I2P Settings"
+      <group>
+            id = @0x7f090214
+          <item>
+                icon = @0x7f080097
+                id = @0x7f09020e
+                title = "Donate"
+          <item>
+                icon = @0x7f0800aa
+                id = @0x7f09020c
+                title = "Enter Code"
+      <group>
+            id = @0x7f090219
+          <item>
+                icon = @0x7f0800d0
+                id = @0x7f090212
+                title = "Backup & Restore"
+          <item>
+                icon = @0x7f0800ba
+                id = @0x7f090217
+                title = "Logs"
+          <item>
+                icon = @0x7f0800bd
+                id = @0x7f090211
+                title = "About"
+
+########## menu/firewall_menu   (res/4T.xml)
+    <menu>
+        <item>
+              icon = @0x7f08009b
+              id = @0x7f090157
+              title = "Search"
+              showAsAction = 0x00000002
+        <item>
+              id = @0x7f090159
+              title = "Firewall On/Off"
+              showAsAction = 0x00000002
+        <item>
+              id = @0x7f090158
+              title = "Settings"
+              showAsAction = 0x00000000
+
+########## menu/main   (res/xs.xml)
+    <menu>
+        <item>
+              icon = @0x7f0800b3
+              id = @0x7f0901e4
+              title = "Firewall"
+              showAsAction = 0x00000002
+        <item>
+              icon = @0x7f0800dd
+              id = @0x7f0901a3
+              title = "Root"
+              showAsAction = 0x00000002
+        <item>
+              icon = @0x7f0800cd
+              id = @0x7f0901a1
+              title = "HOTSPOT"
+              showAsAction = 0x00000002
+        <item>
+              icon = @0x7f08009a
+              id = @0x7f0901a2
+              title = "New Tor identity"
+              showAsAction = 0x00000002
+        <item>
+              icon = @0x7f0800c0
+              id = @0x7f0901a5
+              title = "Child Lock"
+              showAsAction = 0x00000002
+        <group>
+            <item>
+                  id = @0x7f0901e6
+                  title = "Root Mode"
+                  showAsAction = 0x00000000
+            <item>
+                  id = @0x7f0901e9
+                  title = "VPN Mode"
+                  showAsAction = 0x00000000
+            <item>
+                  id = @0x7f0901e5
+                  title = "Proxy Mode"
+                  showAsAction = 0x00000000
+
+########## menu/settings_menu   (res/x4.xml)
+    <menu>
+        <item>
+              icon = @0x7f08009b
+              id = @0x7f0901e7
+              title = "Search"
+              showAsAction = 0x00000001

@@ -1,0 +1,233 @@
+
+########## menu/access   (res/40.xml)
+  <menu>
+      <item>
+            id = @0x7f0900cd
+            title = ""
+          <menu>
+      <item>
+            id = @0x7f0900eb
+            title = ""
+      <item>
+            id = @0x7f0900da
+            title = ""
+      <item>
+            id = @0x7f0900be
+            title = "Allow"
+      <item>
+            id = @0x7f0900c5
+            title = "Block"
+      <item>
+            id = @0x7f0900e1
+            title = "Reset"
+      <item>
+            id = @0x7f0900c9
+            title = "Copy"
+      <item>
+            id = @0x7f0900e8
+            title = ""
+
+########## menu/dns   (res/pq.xml)
+  <menu>
+      <item>
+            id = @0x7f0900e0
+            title = "Refresh"
+      <item>
+            id = @0x7f0900c7
+            title = "Cleanup"
+      <item>
+            id = @0x7f0900c8
+            title = "Clear"
+      <item>
+            id = @0x7f0900cb
+            title = "Export"
+
+########## menu/forward   (res/1L.xml)
+  <menu>
+      <item>
+            id = @0x7f0900da
+            title = ""
+      <item>
+            id = @0x7f0900ca
+            title = "Delete"
+
+########## menu/forwarding   (res/3Z.xml)
+    <menu>
+        <item>
+              icon = @0x7f08005c
+              id = @0x7f0900bd
+              title = "Add"
+              showAsAction = 0x0000000a
+
+########## menu/log   (res/Ww.xml)
+  <menu>
+      <item>
+            id = @0x7f0900c3
+            title = ""
+      <item>
+            id = @0x7f0900dc
+            title = ""
+      <item>
+            id = @0x7f0900eb
+            title = ""
+      <item>
+            id = @0x7f0900da
+            title = ""
+      <item>
+            id = @0x7f0900be
+            title = "Allow"
+      <item>
+            id = @0x7f0900c5
+            title = "Block"
+      <item>
+            id = @0x7f0900c9
+            title = "Copy"
+      <item>
+            id = @0x7f0900e8
+            title = ""
+
+########## menu/logging   (res/qT.xml)
+    <menu>
+        <item>
+              icon = @0x7f08007d
+              id = @0x7f0900e2
+              title = "Search for app"
+              showAsAction = 0x0000000a
+        <item>
+              icon = @0x7f08006d
+              id = @0x7f0900cc
+              title = "Filter apps"
+              showAsAction = 0x0000000a
+            <menu>
+                <item>
+                      id = @0x7f0900df
+                      title = "UDP"
+                      checkable = true
+                <item>
+                      id = @0x7f0900de
+                      title = "TCP"
+                      checkable = true
+                <item>
+                      id = @0x7f0900dd
+                      title = "Other"
+                      checkable = true
+                <item>
+                      id = @0x7f0900e9
+                      title = "Allowed"
+                      checkable = true
+                <item>
+                      id = @0x7f0900ea
+                      title = "Blocked"
+                      checkable = true
+        <item>
+              id = @0x7f0900d3
+              checked = true
+              title = "Live updates"
+              checkable = true
+        <item>
+              id = @0x7f0900e0
+              title = "Refresh"
+        <item>
+              id = @0x7f0900d5
+              checked = false
+              title = "Show names"
+              checkable = true
+        <item>
+              id = @0x7f0900d4
+              checked = false
+              title = "Show organization"
+              checkable = true
+        <item>
+              id = @0x7f0900d8
+              title = "PCAP enabled"
+              checkable = true
+        <item>
+              id = @0x7f0900d9
+              title = "PCAP export"
+        <item>
+              id = @0x7f0900d2
+              title = "Clear"
+        <item>
+              id = @0x7f0900d6
+              title = "Support"
+
+########## menu/main   (res/xs.xml)
+    <menu>
+        <item>
+              icon = @0x7f08007d
+              id = @0x7f0900e2
+              title = "Search for app"
+              showAsAction = 0x0000000a
+        <item>
+              icon = @0x7f08006d
+              id = @0x7f0900cc
+              title = "Filter apps"
+              showAsAction = 0x0000000a
+            <menu>
+                <item>
+                      id = @0x7f0900c2
+                      title = "Show user apps"
+                      checkable = true
+                <item>
+                      id = @0x7f0900c1
+                      title = "Show system apps"
+                      checkable = true
+                <item>
+                      id = @0x7f0900c0
+                      title = "Show apps without internet"
+                      checkable = true
+                <item>
+                      id = @0x7f0900bf
+                      title = "Show disabled apps"
+                      checkable = true
+        <item>
+              icon = @0x7f080089
+              id = @0x7f0900e4
+              title = "Sort apps"
+              showAsAction = 0x0000000a
+            <menu>
+                <group>
+                    <item>
+                          id = @0x7f0900e5
+                          title = "Sort by name"
+                    <item>
+                          id = @0x7f0900e6
+                          title = "Sort by uid"
+        <item>
+              id = @0x7f0900d0
+              title = "Lockdown traffic"
+              checkable = true
+        <item>
+              id = @0x7f0900d7
+              title = "Malware protection"
+              checkable = true
+        <item>
+              id = @0x7f0900d1
+              title = "Show log"
+        <item>
+              id = @0x7f0900e3
+              title = "Settings"
+        <item>
+              id = @0x7f0900db
+              title = "Pro features"
+        <item>
+              id = @0x7f0900ce
+              title = "Invite"
+        <item>
+              id = @0x7f0900cf
+              title = "Legend"
+        <item>
+              id = @0x7f0900e7
+              title = "Support"
+        <item>
+              id = @0x7f0900bc
+              title = "About"
+        <item>
+              id = @0x7f0900c4
+              title = "Other apps"
+
+########## menu/pro   (res/vx.xml)
+  <menu>
+      <item>
+            id = @0x7f0900c6
+            title = "Challenge"

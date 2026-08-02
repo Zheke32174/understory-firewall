@@ -1,0 +1,972 @@
+
+########## menu/activity_activity_interceptor_actions   (res/TH.xml)
+    <menu>
+        <item>
+              icon = @0x7f0800c3
+              id = @0x7f09004c
+              title = "Copy"
+              showAsAction = 0x00000002
+            <menu>
+                <item>
+                      id = @0x7f09004e
+                      title = "Copy"
+                <item>
+                      id = @0x7f09004d
+                      title = @0x7f120054
+        <item>
+              icon = @0x7f0800c6
+              id = @0x7f090088
+              title = "Paste"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f0800f6
+              id = @0x7f0900b1
+              title = "Create shortcut"
+              showAsAction = 0x00000001
+
+########## menu/activity_app_explorer_selection_actions   (res/6H.xml)
+  <menu>
+      <item>
+            icon = @0x7f0800c7
+            id = @0x7f09009f
+            title = "Extract"
+      <item>
+            icon = @0x7f0800de
+            id = @0x7f090097
+            title = "Replace"
+      <item>
+            icon = @0x7f080132
+            id = @0x7f090055
+            title = "Delete"
+      <item>
+            icon = @0x7f0800e8
+            id = @0x7f090095
+            title = "Rename"
+
+########## menu/activity_app_usage_actions   (res/Cf.xml)
+    <menu>
+        <item>
+              icon = @0x7f080126
+              title = "Sort"
+              showAsAction = 0x00000001
+            <menu>
+                <group>
+                    <item>
+                          id = @0x7f0900b4
+                          title = "App label"
+                    <item>
+                          id = @0x7f0900c0
+                          title = "Package name"
+                    <item>
+                          id = @0x7f0900bc
+                          title = "Last used"
+                    <item>
+                          id = @0x7f0900c4
+                          title = "Screen time"
+                    <item>
+                          id = @0x7f0900c5
+                          title = "Times opened"
+                    <item>
+                          id = @0x7f0900be
+                          title = "Mobile data"
+                    <item>
+                          id = @0x7f0900c7
+                          title = "Wi-Fi data"
+
+########## menu/activity_batch_ops_results_actions   (res/XB.xml)
+    <menu>
+        <item>
+              id = @0x7f09009a
+              title = "Try again"
+              showAsAction = 0x00000001
+
+########## menu/activity_code_editor_actions   (res/kW.xml)
+    <menu>
+        <item>
+              id = @0x7f090073
+              title = "Java"
+              showAsAction = 0x00000002
+        <item>
+              icon = @0x7f08011b
+              id = @0x7f0900a3
+              title = "Search"
+              showAsAction = 0x00000001
+        <item>
+              icon = @0x7f080134
+              id = @0x7f0900ce
+              title = "Undo"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f080113
+              id = @0x7f090091
+              title = "Redo"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f0800c7
+              id = @0x7f09009f
+              title = "Save"
+              showAsAction = 0x00000001
+        <item>
+              icon = @0x7f0800c7
+              id = @0x7f0900a1
+              title = "Save as…"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f08013b
+              id = @0x7f0900d3
+              title = "Toggle word wrap"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f080120
+              id = @0x7f0900af
+              title = "Share"
+              showAsAction = 0x00000000
+
+########## menu/activity_debloater_actions   (res/R7.xml)
+    <menu>
+        <item>
+              icon = @0x7f0800f8
+              id = @0x7f090076
+              title = "List options"
+              showAsAction = 0x00000002
+
+########## menu/activity_debloater_selection_actions   (res/d4.xml)
+  <menu>
+      <item>
+            icon = @0x7f080132
+            id = @0x7f0900cf
+            title = "Uninstall"
+      <item>
+            icon = @0x7f080119
+            id = @0x7f09008f
+            title = "Put back"
+      <item>
+            icon = @0x7f080123
+            id = @0x7f09006c
+            title = "Freeze/unfreeze"
+      <item>
+            icon = @0x7f0800ec
+            id = @0x7f0900a0
+            title = "Save APK"
+      <item>
+            icon = @0x7f0800b9
+            id = @0x7f090044
+            title = "Block/unblock trackers"
+      <item>
+            icon = @0x7f0800dd
+            id = @0x7f090035
+            title = "Add to profile"
+
+########## menu/activity_fm_actions   (res/mh1.xml)
+    <menu>
+        <item>
+              icon = @0x7f0800f8
+              id = @0x7f090076
+              title = "List options"
+              showAsAction = 0x00000001
+        <item>
+              icon = @0x7f080114
+              id = @0x7f090092
+              title = "Refresh"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f08012d
+              id = @0x7f090081
+              title = "New window"
+              showAsAction = 0x00000001
+        <item>
+              icon = @0x7f0800c6
+              id = @0x7f090088
+              title = "Paste"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f0800f6
+              id = @0x7f0900b1
+              title = "Create shortcut"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f08012a
+              id = @0x7f090034
+              title = "Add to favorites"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f08011f
+              id = @0x7f0900ae
+              title = "Settings"
+              showAsAction = 0x00000000
+
+########## menu/activity_help_actions   (res/wA.xml)
+    <menu>
+        <group>
+            <item>
+                  icon = @0x7f08011b
+                  id = @0x7f0900a3
+                  title = "Search"
+                  showAsAction = 0x00000002
+
+########## menu/activity_main_actions   (res/6b.xml)
+    <menu>
+        <item>
+              icon = @0x7f0800f0
+              id = @0x7f090072
+              title = "User manual"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f0800f8
+              id = @0x7f090076
+              title = "List options"
+              showAsAction = 0x00000001
+        <item>
+              icon = @0x7f080114
+              id = @0x7f090092
+              title = "Refresh"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f0800c8
+              id = @0x7f090083
+              title = "1-click ops"
+        <item>
+              icon = @0x7f08011b
+              id = @0x7f090068
+              title = "Finder"
+        <item>
+              icon = @0x7f0800c9
+              id = @0x7f090037
+              title = "App usage"
+        <item>
+              icon = @0x7f080111
+              id = @0x7f09009e
+              title = "Running apps"
+        <item>
+              icon = @0x7f0800da
+              id = @0x7f09008d
+              title = "Profiles"
+        <item>
+              icon = @0x7f08012c
+              id = @0x7f090036
+              title = "APK Updater"
+        <item>
+              icon = @0x7f0800f7
+              id = @0x7f090053
+              title = "Debloater"
+        <item>
+              icon = @0x7f080108
+              id = @0x7f090075
+              title = "Labs"
+        <item>
+              icon = @0x7f08011f
+              id = @0x7f0900ae
+              title = "Settings"
+
+########## menu/activity_main_selection_actions   (res/wb.xml)
+  <menu>
+      <item>
+            icon = @0x7f080132
+            id = @0x7f0900cf
+            title = "Uninstall"
+      <item>
+            icon = @0x7f080123
+            id = @0x7f09006c
+            title = "Freeze/unfreeze"
+      <item>
+            icon = @0x7f08010e
+            id = @0x7f09006a
+            title = "Force-stop"
+      <item>
+            icon = @0x7f0800b0
+            id = @0x7f090048
+            title = "Clear"
+      <item>
+            icon = @0x7f0800ec
+            id = @0x7f0900a0
+            title = "Save APK"
+      <item>
+            icon = @0x7f0800ac
+            id = @0x7f09003a
+            title = "Backup/restore"
+      <item>
+            icon = @0x7f0800ae
+            id = @0x7f090059
+            title = "Prevent background operation"
+      <item>
+            icon = @0x7f0800b9
+            id = @0x7f090044
+            title = "Block/unblock trackers"
+      <item>
+            icon = @0x7f08011e
+            id = @0x7f090080
+            title = "Net policy"
+      <item>
+            icon = @0x7f08011a
+            id = @0x7f090087
+            title = "Optimize"
+      <item>
+            icon = @0x7f0800db
+            id = @0x7f090063
+            title = "Export blocking rules"
+      <item>
+            icon = @0x7f0800db
+            id = @0x7f090062
+            title = "Export app list"
+      <item>
+            icon = @0x7f0800dd
+            id = @0x7f090035
+            title = "Add to profile"
+
+########## menu/activity_profile_navigation   (res/rP.xml)
+  <menu>
+      <item>
+            icon = @0x7f0800a4
+            id = @0x7f090039
+            title = "Apps"
+      <item>
+            icon = @0x7f0800d4
+            id = @0x7f09008a
+            title = "Preview"
+      <item>
+            icon = @0x7f080133
+            id = @0x7f090049
+            title = "Configurations"
+      <item>
+            icon = @0x7f0800ee
+            id = @0x7f090077
+            title = "Log viewer"
+
+########## menu/activity_profiles_actions   (res/Lk.xml)
+    <menu>
+        <item>
+              icon = @0x7f080114
+              id = @0x7f090092
+              title = "Refresh"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f0800dc
+              id = @0x7f090070
+              title = "Import"
+
+########## menu/activity_profiles_popup_actions   (res/U4.xml)
+  <menu>
+      <item>
+            icon = @0x7f08012c
+            id = @0x7f090038
+            title = "Apply now…"
+      <item>
+            icon = @0x7f080132
+            id = @0x7f090055
+            title = "Delete"
+      <item>
+            icon = @0x7f080138
+            id = @0x7f09009c
+            title = "Routine ops"
+      <item>
+            icon = @0x7f0800c5
+            id = @0x7f09005d
+            title = "Duplicate"
+      <item>
+            icon = @0x7f0800c3
+            id = @0x7f09004c
+            title = "Copy profile ID"
+      <item>
+            icon = @0x7f0800db
+            id = @0x7f090061
+            title = "Export"
+      <item>
+            icon = @0x7f0800ef
+            id = @0x7f0900b1
+            title = "Create shortcut"
+
+########## menu/activity_running_apps_actions   (res/Q_.xml)
+    <menu>
+        <item>
+              icon = @0x7f080126
+              title = "Sort"
+              showAsAction = 0x00000001
+            <menu>
+                <group>
+                    <item>
+                          id = @0x7f0900c1
+                          title = "Process ID"
+                    <item>
+                          id = @0x7f0900c3
+                          title = "Process name"
+                    <item>
+                          id = @0x7f0900b6
+                          title = "Apps first"
+                    <item>
+                          id = @0x7f0900bd
+                          title = "Memory usage"
+                    <item>
+                          id = @0x7f0900b8
+                          title = "CPU time"
+        <item>
+              icon = @0x7f0800e4
+              title = "Filter"
+              showAsAction = 0x00000001
+            <menu>
+                <group>
+                    <item>
+                          id = @0x7f090066
+                          title = "Apps"
+                    <item>
+                          id = @0x7f090067
+                          title = "User apps"
+        <item>
+              icon = @0x7f0800bc
+              id = @0x7f0900cd
+              title = "Toggle kill system apps"
+              showAsAction = 0x00000000
+
+########## menu/activity_running_apps_popup_actions   (res/lG.xml)
+  <menu>
+      <item>
+            icon = @0x7f0800bc
+            id = @0x7f090074
+            title = "Kill"
+      <item>
+            icon = @0x7f08010e
+            id = @0x7f09006a
+            title = "Force-stop"
+      <item>
+            icon = @0x7f0800ae
+            id = @0x7f090059
+            title = "Prevent background operation"
+      <item>
+            icon = @0x7f080138
+            id = @0x7f0900d1
+            title = "View logs"
+      <item>
+            icon = @0x7f080139
+            id = @0x7f0900a2
+            title = "Scan in VirusTotal"
+
+########## menu/activity_scanner   (res/pE.xml)
+    <menu>
+        <item>
+              icon = @0x7f0800ec
+              id = @0x7f090071
+              title = "Install"
+              showAsAction = 0x00000001
+
+########## menu/activity_shared_prefs_actions   (res/PT.xml)
+  <menu>
+      <item>
+            icon = @0x7f0800c7
+            id = @0x7f09009f
+            title = "Save"
+      <item>
+            icon = @0x7f0800df
+            id = @0x7f09005b
+            title = "Discard"
+      <item>
+            icon = @0x7f080132
+            id = @0x7f090055
+            title = "Delete"
+      <item>
+            icon = @0x7f080107
+            id = @0x7f0900ac
+            title = "New window"
+
+########## menu/fragment_app_details_app_ops_actions   (res/Tl.xml)
+    <menu>
+        <item>
+              icon = @0x7f080114
+              id = @0x7f090094
+              title = "Refresh"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f080119
+              id = @0x7f090098
+              title = "Reset to default"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f0800ae
+              id = @0x7f090056
+              title = "Deny dangerous app ops"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f080138
+              id = @0x7f0900cc
+              title = "Toggle default app ops"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f0800a3
+              id = @0x7f090051
+              title = "Set custom app op"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f080126
+              title = "Sort"
+              showAsAction = 0x00000000
+            <menu>
+                <group>
+                    <item>
+                          id = @0x7f0900bf
+                          title = "App ops name"
+                    <item>
+                          id = @0x7f0900b5
+                          title = "App ops value"
+                    <item>
+                          id = @0x7f0900ba
+                          title = "Denied first"
+
+########## menu/fragment_app_details_components_actions   (res/7L.xml)
+    <menu>
+        <item>
+              icon = @0x7f080114
+              id = @0x7f090094
+              title = "Refresh"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f0800ae
+              id = @0x7f0900ca
+              title = ""
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f0800b9
+              id = @0x7f090044
+              title = "Block/unblock trackers"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f080126
+              title = "Sort"
+              showAsAction = 0x00000000
+            <menu>
+                <group>
+                    <item>
+                          id = @0x7f0900bf
+                          title = "Component name"
+                    <item>
+                          id = @0x7f0900b7
+                          title = "Blocked first"
+                    <item>
+                          id = @0x7f0900c6
+                          title = "Trackers first"
+
+########## menu/fragment_app_details_components_selection_actions   (res/Gu.xml)
+  <menu>
+      <item>
+            id = @0x7f09006e
+            title = "IFW + disable"
+      <item>
+            id = @0x7f09006d
+            title = "IFW"
+      <item>
+            id = @0x7f090058
+            title = "Disable"
+      <item>
+            id = @0x7f09005f
+            title = "Enable"
+      <item>
+            id = @0x7f090054
+            title = "Use default"
+
+########## menu/fragment_app_details_overlay_actions   (res/lI.xml)
+    <menu>
+        <item>
+              icon = @0x7f080114
+              id = @0x7f090094
+              title = "Refresh"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f080126
+              title = "Sort"
+              showAsAction = 0x00000000
+            <menu>
+                <group>
+                    <item>
+                          id = @0x7f0900bf
+                          title = "Overlay name"
+                    <item>
+                          id = @0x7f0900c2
+                          title = "Priority"
+
+########## menu/fragment_app_details_permissions_actions   (res/-G.xml)
+    <menu>
+        <item>
+              icon = @0x7f080114
+              id = @0x7f090094
+              title = "Refresh"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f0800ae
+              id = @0x7f090057
+              title = "Deny dangerous permissions"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f080126
+              title = "Sort"
+              showAsAction = 0x00000000
+            <menu>
+                <group>
+                    <item>
+                          id = @0x7f0900bf
+                          title = "Permission name"
+                    <item>
+                          id = @0x7f0900b9
+                          title = "Dangerous first"
+                    <item>
+                          id = @0x7f0900bb
+                          title = "Denied first"
+
+########## menu/fragment_app_details_refresh_actions   (res/VQ.xml)
+    <menu>
+        <item>
+              icon = @0x7f080114
+              id = @0x7f090094
+              title = "Refresh"
+              showAsAction = 0x00000000
+
+########## menu/fragment_app_info_actions   (res/up.xml)
+    <menu>
+        <item>
+              icon = @0x7f080120
+              id = @0x7f0900b0
+              title = "Share APK"
+              showAsAction = 0x00000001
+        <item>
+              icon = @0x7f080114
+              id = @0x7f090093
+              title = "Refresh"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f08011f
+              id = @0x7f0900d2
+              title = "View in Settings"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f0800ac
+              id = @0x7f09003a
+              title = "Backup/restore"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f0800db
+              id = @0x7f090063
+              title = "Export blocking rules"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f0800eb
+              id = @0x7f090085
+              title = "Open in Termux"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f0800eb
+              id = @0x7f09009d
+              title = "Run in Termux"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f08011d
+              id = @0x7f090079
+              title = "MagiskHide"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f08011d
+              id = @0x7f090078
+              title = "Magisk DenyList"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f0800ad
+              id = @0x7f090042
+              title = "Battery optimization"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f080111
+              id = @0x7f0900ab
+              title = "Sensors"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f08011e
+              id = @0x7f090080
+              title = "Net policy"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f0800ef
+              id = @0x7f090064
+              title = "Extract icon"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f08011a
+              id = @0x7f090087
+              title = "Optimize"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f0800dd
+              id = @0x7f090035
+              title = "Add to profile"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f0800ec
+              id = @0x7f090071
+              title = "Install for…"
+              showAsAction = 0x00000000
+
+########## menu/fragment_class_lister_actions   (res/15.xml)
+    <menu>
+        <group>
+            <item>
+                  id = @0x7f0900a3
+                  title = "Search"
+                  showAsAction = 0x00000002
+            <item>
+                  icon = @0x7f0800c1
+                  id = @0x7f0900cb
+                  title = "Toggle class listing"
+                  showAsAction = 0x00000000
+
+########## menu/fragment_fm_item_actions   (res/Qk.xml)
+  <menu>
+      <item>
+            icon = @0x7f080107
+            id = @0x7f090086
+            title = "Open with"
+      <item>
+            icon = @0x7f0800c4
+            id = @0x7f090052
+            title = "Cut"
+      <item>
+            icon = @0x7f0800d8
+            id = @0x7f09004c
+            title = "Copy"
+      <item>
+            icon = @0x7f0800e8
+            id = @0x7f090095
+            title = "Rename"
+      <item>
+            icon = @0x7f080132
+            id = @0x7f090055
+            title = "Delete"
+      <item>
+            icon = @0x7f080120
+            id = @0x7f0900af
+            title = "Share"
+      <item>
+            icon = @0x7f0800f6
+            id = @0x7f0900b1
+            title = "Create shortcut"
+      <item>
+            icon = @0x7f08012a
+            id = @0x7f090034
+            title = "Add to favorites"
+      <item>
+            icon = @0x7f0800c3
+            id = @0x7f09004f
+            title = "Copy path"
+      <item>
+            icon = @0x7f0800bb
+            id = @0x7f0900a9
+            title = "Select"
+      <item>
+            icon = @0x7f0800f0
+            id = @0x7f09008e
+            title = "Properties"
+
+########## menu/fragment_fm_selection_actions   (res/kN.xml)
+  <menu>
+      <item>
+            icon = @0x7f080120
+            id = @0x7f0900af
+            title = "Share"
+      <item>
+            icon = @0x7f0800e8
+            id = @0x7f090095
+            title = "Rename"
+      <item>
+            icon = @0x7f080132
+            id = @0x7f090055
+            title = "Delete"
+      <item>
+            icon = @0x7f0800c4
+            id = @0x7f090052
+            title = "Cut"
+      <item>
+            icon = @0x7f0800d8
+            id = @0x7f09004c
+            title = "Copy"
+      <item>
+            icon = @0x7f0800c3
+            id = @0x7f09004f
+            title = "Copy paths"
+
+########## menu/fragment_fm_speed_dial   (res/uM.xml)
+  <menu>
+      <item>
+            icon = @0x7f0800d7
+            id = @0x7f090065
+            title = "File"
+      <item>
+            icon = @0x7f0800e6
+            id = @0x7f090069
+            title = "Folder"
+      <item>
+            icon = @0x7f0800a8
+            id = @0x7f0900c8
+            title = "Symbolic link"
+
+########## menu/fragment_live_log_viewer_actions   (res/DG.xml)
+    <menu>
+        <item>
+              icon = @0x7f08010a
+              id = @0x7f090089
+              title = "Play/pause"
+              showAsAction = 0x00000002
+        <item>
+              icon = @0x7f0800d2
+              id = @0x7f090060
+              title = "Expand all"
+              showAsAction = 0x00000002
+        <item>
+              icon = @0x7f0800b0
+              id = @0x7f090047
+              title = "Clear"
+              showAsAction = 0x00000001
+        <item>
+              icon = @0x7f0800d9
+              title = "File"
+            <menu>
+                <item>
+                      icon = @0x7f0800e6
+                      id = @0x7f090084
+                      title = "Open"
+                <item>
+                      icon = @0x7f0800c7
+                      id = @0x7f09009f
+                      title = "Save"
+                <item>
+                      icon = @0x7f080112
+                      id = @0x7f090090
+                      title = "Record"
+                <item>
+                      icon = @0x7f080132
+                      id = @0x7f090055
+                      title = "Manage saved logs"
+        <item>
+              icon = @0x7f080126
+              id = @0x7f090046
+              title = "Log level"
+        <item>
+              icon = @0x7f0800e0
+              id = @0x7f0900b2
+              title = "Saved filters"
+        <item>
+              icon = @0x7f080120
+              id = @0x7f0900af
+              title = "Share"
+        <item>
+              icon = @0x7f0800db
+              id = @0x7f090061
+              title = "Export"
+        <item>
+              icon = @0x7f08011f
+              id = @0x7f0900ae
+              title = "Settings"
+        <item>
+              id = @0x7f090050
+              title = "Crazy Logger"
+
+########## menu/fragment_logcat_selection_actions   (res/t4.xml)
+  <menu>
+      <item>
+            icon = @0x7f0800c7
+            id = @0x7f09009f
+            title = "Save"
+      <item>
+            icon = @0x7f0800c3
+            id = @0x7f09004c
+            title = "Copy"
+      <item>
+            icon = @0x7f080120
+            id = @0x7f0900af
+            title = "Share"
+      <item>
+            icon = @0x7f0800db
+            id = @0x7f090061
+            title = "Export"
+
+########## menu/fragment_profile_apps_actions   (res/8D.xml)
+    <menu>
+        <item>
+              icon = @0x7f08012c
+              id = @0x7f090038
+              title = "Apply"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f0800c7
+              id = @0x7f09009f
+              title = "Save"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f0800df
+              id = @0x7f09005b
+              title = "Discard"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f080132
+              id = @0x7f090055
+              title = "Delete"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f0800c5
+              id = @0x7f09005d
+              title = "Duplicate"
+        <item>
+              icon = @0x7f0800ef
+              id = @0x7f0900b1
+              title = "Create shortcut"
+
+########## menu/fragment_saved_log_viewer_actions   (res/jG.xml)
+    <menu>
+        <item>
+              icon = @0x7f0800d2
+              id = @0x7f090060
+              title = "Expand all"
+              showAsAction = 0x00000002
+        <item>
+              icon = @0x7f0800d9
+              title = "File"
+            <menu>
+                <item>
+                      icon = @0x7f0800e6
+                      id = @0x7f090084
+                      title = "Open"
+                <item>
+                      icon = @0x7f0800c7
+                      id = @0x7f09009f
+                      title = "Save as…"
+                <item>
+                      icon = @0x7f080132
+                      id = @0x7f090055
+                      title = "Manage saved logs"
+        <item>
+              icon = @0x7f080126
+              id = @0x7f090046
+              title = "Log level"
+        <item>
+              icon = @0x7f0800e0
+              id = @0x7f0900b2
+              title = "Saved filters"
+        <item>
+              icon = @0x7f080120
+              id = @0x7f0900af
+              title = "Share"
+        <item>
+              icon = @0x7f0800db
+              id = @0x7f090061
+              title = "Export"
+        <item>
+              icon = @0x7f08011f
+              id = @0x7f0900ae
+              title = "Settings"
+
+########## menu/view_advanced_search_type_selections   (res/O-.xml)
+  <menu>
+      <item>
+            id = @0x7f0900a4
+            title = "Contains"
+      <item>
+            id = @0x7f0900a5
+            title = "Prefix"
+      <item>
+            id = @0x7f0900a7
+            title = "Suffix"
+      <item>
+            id = @0x7f0900a6
+            title = "Regex"

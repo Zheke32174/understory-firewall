@@ -55,11 +55,15 @@ is absent — the controller says so rather than pretending.
 The CONTAINER transport is backed by container-server donors that extend **all**
 the apps, not just Godwall:
 
-- **Docker-on-Android** (e.g. `com.pavit.docker`) — a Docker/container manager for
-  Android. As a container server it lets Godwall run proxy/routing containers,
-  gives Masamune a container runtime for the ryznix/second-OS layer, and gives
-  Yojimbo privileged container orchestration. One donor, capability for the whole
-  suite.
+- **"Docker Manager" (`com.pavit.docker`)** — CORRECTED after reverse-engineering
+  the shipped APK (see `docs/donors/RE-docker-manager.md`). It does **not** run
+  containers on the device: it ships with `INTERNET` as its only permission and is
+  a **remote Docker control client**, SSHing to a host and driving the `docker` CLI
+  there. What we absorb is therefore the *shape*, not a runtime: the SSH transport,
+  the typed Docker command surface, SFTP file browse/edit, and multi-server
+  management. Our superior variant splits control from transport so the same client
+  drives a remote host **or** a local one (Elevation shell / ryznix guest) — the
+  local case being exactly what the donor cannot do.
 - The `underhall` stratum model (nspawn + distro strata under `/strat/<name>`) is
   the same idea at the substrate level.
 
@@ -79,15 +83,39 @@ firewall-side handle for exactly this; ryznix + the container-server donors
 ## Honest status (what is real vs seam today)
 - REAL: the chain model, typed hops, ordering, persistence, per-hop readiness, the
   Tailscale config surface, and the transport tiering + honest degradation.
-- SEAM (PENDING): the data planes — libtailscale (Tailscale), the userspace
-  SOCKS5/HTTP clients, WireGuard/Shadowsocks/Tor transports, and the KERNEL/
-  CONTAINER establishment via the privilege brokers + container servers. Each is a
-  declared backend the controller lights up as it lands. Nothing claims to carry
-  traffic until its backend is linked.
+- **REAL (data plane, shipped): SOCKS5 and HTTP CONNECT.** `Socks5Client`
+  (RFC 1928 + RFC 1929 user/pass) and `HttpConnectClient` are full in-tree
+  implementations with no external dependency and nothing native. `ChainDialer`
+  composes them into a genuine MULTI-HOP chain: one socket is connected to hop 0,
+  then each hop is handshaked toward the NEXT hop's address, and the last toward the
+  real destination. Hostnames are handed to the proxy, never resolved locally, so the
+  destination is not leaked to the local resolver. 22 JVM unit tests cover the
+  framing, including the stream-desync cases (variable-length SOCKS5 bound addresses,
+  HTTP header consumption without read-ahead) that would otherwise corrupt a tunnel
+  silently.
+- **REAL (first traffic on the chain): encrypted DNS.** `DnsFilterTun` dials its
+  DoT/DoH upstream through the chain when one is enabled. TLS is layered ON TOP of
+  the chained carrier, so the resolver's certificate is still verified end-to-end and
+  a proxy hop sees only ciphertext.
+- SEAM (PENDING): libtailscale (Tailscale), WireGuard/Shadowsocks/Tor transports, and
+  KERNEL/CONTAINER establishment via the privilege brokers + container servers. Each
+  is a declared backend the controller lights up as it lands.
+- Boundary worth stating: only the TCP-based encrypted transports ride the chain
+  today. The plaintext-UDP DNS path does not — SOCKS5 UDP ASSOCIATE is not
+  implemented. Arbitrary app TCP does not yet ride the chain either; that needs a
+  tun-to-stream netstack (below).
+
+**Fail-closed guarantee.** If a chain is enabled but contains a hop with no linked
+transport, `ChainDialer` connects to NOTHING and reports why. It never silently falls
+back to a direct connection. A chain that quietly bypasses itself is worse than no
+chain, because the user believes they are covered.
 
 ## Build order
-1. Userspace SOCKS5 + HTTP CONNECT hops (no external dependency — pure in-tunnel).
+1. ~~Userspace SOCKS5 + HTTP CONNECT hops~~ — **done** (real, tested, wired to
+   encrypted DNS).
 2. Link libtailscale → Tailscale node in the slot (the headline donor).
-3. KERNEL transport via the Yojimbo shell (netns/nftables).
-4. CONTAINER transport via a container-server donor (Docker-on-Android / strata).
-5. WireGuard / Shadowsocks / Tor hops as demand dictates.
+3. Tun-to-stream netstack so ARBITRARY app TCP rides the chain, not just DNS.
+4. KERNEL transport via the Yojimbo shell (netns/nftables).
+5. CONTAINER transport via a container-server donor (Docker-on-Android / strata) —
+   with ryznix this makes the "external" node local.
+6. WireGuard / Shadowsocks / Tor hops, and SOCKS5 UDP ASSOCIATE, as demand dictates.

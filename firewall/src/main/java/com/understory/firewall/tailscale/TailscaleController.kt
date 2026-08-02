@@ -54,6 +54,35 @@ object TailscaleController {
 
     fun isLinked(ctx: Context): Boolean = backend != null
 
+    /**
+     * Link the real libtailscale backend if this build has one.
+     *
+     * The implementation lives in the `src/tailscale` source set, which is compiled
+     * ONLY when libtailscale.aar was supplied (see build.gradle.kts). This module —
+     * `src/main` — must still compile without it, so it cannot name that class
+     * directly. One narrow reflective lookup is the honest way to bridge that: if the
+     * class is absent the seam simply stays NOT_LINKED, which is exactly the truth.
+     *
+     * Call from the VpnService once it exists, since the backend needs it to build
+     * the tun. Returns true only if a real backend was linked.
+     */
+    fun tryLinkNative(vpnService: android.net.VpnService): Boolean {
+        if (backend != null) return true
+        return runCatching {
+            val cls = Class.forName("com.understory.firewall.tailscale.LibtailscaleBackend")
+            val instance = cls.getConstructor(android.net.VpnService::class.java)
+                .newInstance(vpnService) as Backend
+            link(instance)
+            com.understory.security.Diagnostics.log(
+                "firewall.tailscale", "libtailscale backend linked — tailnet available",
+            )
+            true
+        }.getOrElse {
+            // ClassNotFoundException here is the NORMAL no-aar build, not an error.
+            false
+        }
+    }
+
     fun configOf(ctx: Context): NodeConfig = NodeConfig(
         loginServer = TailscaleSettings.loginServer(ctx),
         authKey = TailscaleSettings.authKey(ctx),
