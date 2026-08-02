@@ -39,6 +39,8 @@ object FirewallSettings {
     private const val K_DOT_HOSTNAME = "tunnel_dot_hostname"
     private const val K_UPSTREAM_MODE = "tunnel_upstream_mode" // "plaintext" | "dot" | "doh"
     private const val K_DOH_PATH = "tunnel_doh_path"
+    private const val K_NEW_APP_NOTIFY = "new_app_notify"
+    private const val K_NEW_APP_AUTO_BLOCK = "new_app_auto_block"
 
     // ---- Legacy keys (read once during migration, then deleted) ----
     private const val K_LEGACY_BLOCKLIST = "blocklist"
@@ -212,6 +214,28 @@ object FirewallSettings {
     fun setDohPath(ctx: Context, path: String) {
         prefs(ctx).edit().putString(K_DOH_PATH, path.trim().ifBlank { "/dns-query" }).apply()
     }
+
+    // ---------------------------------------------------------------
+    // New-app install watch (De1984 / Fyrypt "notified when new apps are installed")
+    // ---------------------------------------------------------------
+
+    /** Notify when a new (non-system, non-update) app is installed. Default on. */
+    fun isNewAppNotifyEnabled(ctx: Context): Boolean =
+        prefs(ctx).getBoolean(K_NEW_APP_NOTIFY, true)
+
+    fun setNewAppNotifyEnabled(ctx: Context, on: Boolean) =
+        prefs(ctx).edit().putBoolean(K_NEW_APP_NOTIFY, on).apply()
+
+    /**
+     * Auto-block a newly installed app's network access on install (our superior variant of the
+     * donors' "notify only" — RethinkDNS calls this the "block newly installed apps" rule). Default
+     * OFF, since it needs an active firewall backend and silently changes an app's connectivity.
+     */
+    fun isNewAppAutoBlockEnabled(ctx: Context): Boolean =
+        prefs(ctx).getBoolean(K_NEW_APP_AUTO_BLOCK, false)
+
+    fun setNewAppAutoBlockEnabled(ctx: Context, on: Boolean) =
+        prefs(ctx).edit().putBoolean(K_NEW_APP_AUTO_BLOCK, on).apply()
 
     // ---------------------------------------------------------------
     // DNS provider

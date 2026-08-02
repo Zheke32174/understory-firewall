@@ -30,6 +30,7 @@ import androidx.compose.ui.semantics.semantics
 import com.understory.firewall.AppEntry
 import com.understory.firewall.AppListLoader
 import com.understory.firewall.BoundaryText
+import com.understory.firewall.FirewallSettings
 import com.understory.security.SecureButton
 import com.understory.security.SecureOutlinedButton
 import com.understory.security.ui.components.EmptyState
@@ -80,6 +81,8 @@ fun PolicyControlsScreen(
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var showSaveDialog by remember { mutableStateOf(false) }
+    var newAppNotify by remember { mutableStateOf(FirewallSettings.isNewAppNotifyEnabled(ctx)) }
+    var newAppAutoBlock by remember { mutableStateOf(FirewallSettings.isNewAppAutoBlockEnabled(ctx)) }
 
     LaunchedEffect(Unit) {
         available = manager.isAvailable()
@@ -183,6 +186,46 @@ fun PolicyControlsScreen(
                             "Add a \"Lockdown\" tile from your Quick Settings edit panel to " +
                                 "toggle this from anywhere. After a reboot rules are inactive " +
                                 "until Shizuku reconnects, then re-applied automatically."
+                        )
+                    }
+                }
+
+                // --- New-app install watch (De1984 / Fyrypt feature) ---
+                item {
+                    SuiteCard {
+                        Text(
+                            "New apps",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+                        SwitchRow(
+                            label = "Notify on new app install",
+                            supporting = "Posts a notification when a new third-party app is " +
+                                "installed, routing you here to set its network access. Updates " +
+                                "and system apps are ignored.",
+                            checked = newAppNotify,
+                            onCheckedChange = {
+                                newAppNotify = it
+                                FirewallSettings.setNewAppNotifyEnabled(ctx, it)
+                            },
+                        )
+                        Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+                        SwitchRow(
+                            label = "Auto-block newly installed apps",
+                            supporting = if (available) {
+                                "New apps are blocked from the network the moment they install; " +
+                                    "allow them individually here. Needs the active firewall backend."
+                            } else {
+                                "Requires an active firewall backend (Shizuku/root or Android 13+). " +
+                                    "Currently unavailable, so this stays notify-only."
+                            },
+                            checked = newAppAutoBlock,
+                            enabled = available,
+                            onCheckedChange = {
+                                newAppAutoBlock = it
+                                FirewallSettings.setNewAppAutoBlockEnabled(ctx, it)
+                            },
                         )
                     }
                 }
