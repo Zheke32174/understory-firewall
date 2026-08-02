@@ -168,33 +168,41 @@ class TamperGuard(private val ctx: Context) {
                 }
             }
         } catch (_: Exception) {}
-        // A hooking engine has to make pages writable+executable to install trampolines.
+        // A hooking engine typically both makes pages writable+executable to install
+        // trampolines AND loads a recognisable agent library. On Android neither is
+        // conclusive alone — and one of them is not a signal at all:
+        //
+        //   rwx pages on their own are NOT evidence of Frida. The ART runtime's JIT cache,
+        //   WebView, and several ordinary libraries create writable+executable mappings on a
+        //   perfectly clean device. The old code raised "N writable+executable mapping(s)" for
+        //   any rwx page, so it fired on essentially every launch and held the integrity
+        //   readout permanently un-clean for no real reason — telling the user they might be
+        //   instrumented when nothing was. That is a textbook false positive.
+        //
+        // Fixed: a single pass over the map. A bare rwx count is no longer a finding on its
+        // own; it is reported ONLY when a genuine named agent-library hint appears in the same
+        // map, so the two corroborate instead of crying wolf. The named-library hint on its
+        // own remains a real, specific signal.
         try {
             File("/proc/self/maps").takeIf { it.canRead() }?.let { f ->
                 var rwx = 0
+                var libHint = false
+                val needles = listOf("frida", "gum-js-loop", "linjector")
                 BufferedReader(InputStreamReader(f.inputStream())).use { r ->
                     var line: String?; var n = 0
-                    while (r.readLine().also { line = it } != null && n < 6000) {
+                    while (r.readLine().also { line = it } != null && n < 8000) {
                         n++
-                        val l = line ?: continue
-                        if (l.contains(" rwxp ")) rwx++
+                        val raw = line ?: continue
+                        if (raw.contains(" rwxp ")) rwx++
+                        if (needles.any { raw.lowercase().contains(it) }) libHint = true
                     }
                 }
-                if (rwx > 0) hits.add("$rwx writable+executable mapping(s)")
-            }
-        } catch (_: Exception) {}
-        try {
-            File("/proc/self/maps").takeIf { it.canRead() }?.let { f ->
-                BufferedReader(InputStreamReader(f.inputStream())).use { r ->
-                    val needles = listOf("frida", "gum-js-loop", "gmain", "linjector")
-                    var line: String?
-                    var lines = 0
-                    while (r.readLine().also { line = it } != null && lines < 4000) {
-                        lines++
-                        val l = line?.lowercase() ?: continue
-                        if (needles.any { l.contains(it) }) { hits.add("proc/maps: matched loaded-library hint"); break }
-                    }
+                if (libHint) {
+                    hits.add("proc/maps: matched loaded agent-library hint" +
+                        if (rwx > 0) " (alongside $rwx writable+executable mapping(s))" else "")
                 }
+                // rwx WITHOUT a named agent-library hint is deliberately NOT reported: on
+                // Android it is ordinary runtime behaviour, not evidence of instrumentation.
             }
         } catch (_: Exception) {}
         try {

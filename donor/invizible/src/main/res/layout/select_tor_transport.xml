@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.appcompat.widget.LinearLayoutCompat xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="8dp">
+
+    <RadioGroup
+        android:id="@+id/rbgTorTransport"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:checkedButton="@+id/rbObfsNone">
+
+        <androidx.appcompat.widget.AppCompatRadioButton
+            android:id="@+id/rbObfsNone"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Vanilla" />
+
+        <androidx.appcompat.widget.AppCompatRadioButton
+            android:id="@+id/rbObfs4"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Obfs4" />
+
+        <androidx.appcompat.widget.AppCompatRadioButton
+            android:id="@+id/rbWebTunnel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="WebTunnel" />
+
+    </RadioGroup>
+
+    <androidx.appcompat.widget.AppCompatCheckBox
+        android:id="@+id/chbRequestIPv6Bridges"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="@string/pref_fast_use_tor_bridges_ipv6" />
+</androidx.appcompat.widget.LinearLayoutCompat>

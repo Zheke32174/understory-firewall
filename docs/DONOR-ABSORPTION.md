@@ -1,15 +1,31 @@
 # Godwall — donor absorption ledger
 
-Godwall (the understory firewall) is built by reverse-engineering the feature
-sets of a set of donor apps, then re-implementing each capability as a *superior
-variant* native to our stack — never by bundling the donor or a daemon. This
-ledger tracks, per donor, what the donor does, how Godwall covers it, and where
-our variant is better or where a gap remains.
+> **Method correction (2026-08-02).** An earlier pass wrote the method below as
+> "reverse-engineer → re-implement a superior variant, never bundle the donor."
+> That is **mimicry**, and it was wrong. It produced ~167 hand-written files in
+> this repo containing **zero** donor code, then recorded them as "Done."
+>
+> The actual method is two staged phases:
+>
+> 1. **Stage 1 — graft.** Transplant the donor's real source and real layouts
+>    into the tree and get them running. Not a lookalike: the donor's own code
+>    paths, byte-identical on the way in, so it can be diffed against upstream.
+> 2. **Stage 2 — replace.** Only *after* the graft is confirmed working, replace
+>    the donor's parts piece by piece with native Godwall implementations.
+>
+> Everything marked "Done" below is a **stage-2-shaped native lookalike written
+> without a stage-1 graft under it.** Those rows are not deleted — the code is
+> real and is probably the right replacement target — but they must not be read
+> as donor absorption. Stage 1 for InviZible begins at `donor/invizible/`
+> (see its `PROVENANCE.md`); stage 1 for the other three donors has not started.
 
-Method: **reverse-engineer → understand the function → innovate a superior
-variant.** A row is only "done" when the capability runs inside Godwall's own
-code paths (the Elevation Shizuku/Yojimbo shell, the DNS-filter tunnel, or the
-policy backends), with honest degradation when a privilege isn't granted.
+Godwall (the understory firewall) absorbs a set of donor apps. This ledger tracks,
+per donor, what the donor does, how Godwall covers it, and where a gap remains.
+
+A row is "stage-2 done" when the capability runs inside Godwall's own code paths
+(the Elevation Shizuku/Yojimbo shell, the DNS-filter tunnel, or the policy
+backends), with honest degradation when a privilege isn't granted. A row is
+"stage-1 done" only when the donor's own code for it is in-tree and runs.
 
 Donors: **InviZible Pro**, **RethinkDNS**, **De1984**, **Fyrypt**.
 
@@ -86,6 +102,12 @@ says so; every action reports Success / Unsupported / Failed truthfully.
 ---
 
 ## Coverage summary
+
+> Read every "Absorbed" claim below as **stage-2 native code with no stage-1 graft
+> beneath it.** The capability exists in Godwall's own paths; it is not evidence
+> that any donor was absorbed. Stage-1 status per donor:
+> **InviZible — source + layouts grafted** (`donor/invizible/`, engine binaries and
+> build wiring still pending); **RethinkDNS, De1984, Fyrypt — not started.**
 
 **Absorbed (native, superior or on-par):** encrypted DNS (DoT + DoH),
 DNS content filtering + per-app attribution, per-app firewall + universal
