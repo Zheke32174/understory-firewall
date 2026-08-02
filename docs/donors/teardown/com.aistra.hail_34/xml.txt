@@ -1,0 +1,82 @@
+
+########## xml/_generated_res_locale_config   (res/Ed.xml)
+      <locale>
+            name = "en-US"
+      <locale>
+            name = "ang"
+      <locale>
+            name = "ar"
+      <locale>
+            name = "be"
+      <locale>
+            name = "cs"
+      <locale>
+            name = "de"
+      <locale>
+            name = "eo"
+      <locale>
+            name = "es"
+      <locale>
+            name = "fa"
+      <locale>
+            name = "fi"
+      <locale>
+            name = "fr"
+      <locale>
+            name = "hi"
+      <locale>
+            name = "hu"
+      <locale>
+            name = "in"
+      <locale>
+            name = "it"
+      <locale>
+            name = "ja-JP"
+      <locale>
+            name = "ko"
+      <locale>
+            name = "lzh"
+      <locale>
+            name = "nb-NO"
+      <locale>
+            name = "or"
+      <locale>
+            name = "pl"
+      <locale>
+            name = "pt"
+      <locale>
+            name = "pt-BR"
+      <locale>
+            name = "ro"
+      <locale>
+            name = "ru"
+      <locale>
+            name = "ta"
+      <locale>
+            name = "tr"
+      <locale>
+            name = "uk"
+      <locale>
+            name = "ur"
+      <locale>
+            name = "vi"
+      <locale>
+            name = "yue"
+      <locale>
+            name = "zh-CN"
+      <locale>
+            name = "zh-TW"
+
+########## xml/device_admin   (res/pO.xml)
+
+
+########## xml/m3_button_group_child_size_change   (res/cA.xml)
+    <selector>
+        <item>
+        <item>
+
+########## xml/m3_split_button_inner_corner_size_state_list   (res/vn.xml)
+    <selector>
+        <item>
+        <item>
+        <item>

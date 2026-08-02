@@ -1,0 +1,201 @@
+
+########## xml/list_searchable   (res/TF.xml)
+  <searchable>
+        label = "AdAway"
+        hint = "Search hostname…"
+
+########## xml/network_security_config   (res/8G.xml)
+        <domain>
+            <certificates>
+
+########## xml/preferences_backup_restore   (res/7f.xml)
+  <PreferenceScreen>
+        title = "Backup & restore"
+      <Preference>
+            icon = @0x7f0800b7
+            key = "backup"
+            summary = "Backup to external storage your block rules"
+            title = "Backup"
+      <Preference>
+            icon = @0x7f0800bb
+            key = "restore"
+            summary = "Restore your block rules from backup file"
+            title = "Restore"
+
+########## xml/preferences_main   (res/rx.xml)
+    <PreferenceScreen>
+          title = "Preferences"
+        <PreferenceCategory>
+              title = "General"
+            <ListPreference>
+                  defaultValue = "MODE_NIGHT_YES"
+                  entries = @0x7f030003
+                  entryValues = @0x7f030002
+                  icon = @0x7f080094
+                  key = "darkThemeMode"
+                  title = "Dark theme"
+            <Preference>
+                  icon = @0x7f0800be
+                  title = "Automatic updates"
+        <PreferenceCategory>
+              title = "Ad blocking"
+            <Preference>
+                  icon = @0x7f0800bd
+                  key = "rootAdBlockMethod"
+                  title = "Root based ad blocker"
+            <Preference>
+                  icon = @0x7f0800bf
+                  key = "vpnAdBlockMethod"
+                  title = "VPN based ad blocker"
+            <SwitchPreferenceCompat>
+                  defaultValue = @0x7f05000a
+                  icon = @0x7f0800a5
+                  key = "enableIpv6"
+                  title = "Enable IPv6 support"
+            <Preference>
+                  icon = @0x7f0800b8
+                  title = "Backup / restore block rules"
+        <PreferenceCategory>
+              title = "Debug"
+            <SwitchPreferenceCompat>
+                  defaultValue = @0x7f05000b
+                  icon = @0x7f08010b
+                  key = "enableTelemetry"
+                  summary = "Report to Sentry (sentry.io)"
+                  title = "Send crash reports"
+            <SwitchPreferenceCompat>
+                  defaultValue = @0x7f050009
+                  icon = @0x7f080095
+                  key = "debugEnabled"
+                  summary = "App restart is needed to apply"
+                  title = "Verbose logging"
+
+########## xml/preferences_root   (res/cA.xml)
+  <PreferenceScreen>
+        title = "Root based ad blocker"
+      <PreferenceCategory>
+            title = "Hosts install"
+          <Preference>
+                key = "openHosts"
+                title = "Open hosts file"
+          <SwitchPreferenceCompat>
+                defaultValue = @0x7f05000c
+                key = "neverReboot"
+                title = "Hide reboot dialog after apply"
+      <PreferenceCategory>
+            summary = "Define where to redirect blocked hosts"
+            title = "Redirection"
+          <EditTextPreference>
+                defaultValue = "127.0.0.1"
+                key = "redirectionIP"
+                title = "Configure IPv4 redirection"
+          <EditTextPreference>
+                defaultValue = "::1"
+                key = "redirectionIPv6"
+                title = "Configure IPv6 redirection"
+      <PreferenceCategory>
+            title = "Local web server"
+          <Preference>
+                summary = "The local web server listens on local IP addresses to answer to blocked hostname requests. It may help with app freezing on blocked connection."
+          <SwitchPreferenceCompat>
+                defaultValue = @0x7f050015
+                key = "webserverEnabled"
+                title = "Enable web server"
+          <Preference>
+                dependency = "webserverEnabled"
+                key = "webserverTest"
+                summary = "Checking…"
+                title = "Test web server"
+          <Preference>
+                dependency = "webserverEnabled"
+                key = "webserverCertificate"
+                title = "Install self-signed certificate"
+          <SwitchPreferenceCompat>
+                defaultValue = @0x7f050016
+                dependency = "webserverEnabled"
+                key = "webserverIcon"
+                title = "Replace blank ad space by app icon"
+
+########## xml/preferences_update   (res/zt.xml)
+  <PreferenceScreen>
+        title = "Updates"
+      <Preference>
+            icon = @0x7f080109
+            key = "openNotificationPreferences"
+            summary = "Application notifications won't show. Tap to enable them."
+            title = "Notifications are disabled"
+      <PreferenceCategory>
+            title = "Application updates"
+          <SwitchPreferenceCompat>
+                defaultValue = @0x7f05000e
+                key = "updateCheckAppStartup"
+                title = "Check for update at startup"
+          <SwitchPreferenceCompat>
+                defaultValue = @0x7f05000d
+                key = "updateCheckAppDaily"
+                title = "Periodically check for update"
+          <SwitchPreferenceCompat>
+                defaultValue = @0x7f050011
+                key = "includeBetaReleases"
+                title = "Include beta releases"
+      <PreferenceCategory>
+            title = "Hosts updates"
+          <SwitchPreferenceCompat>
+                defaultValue = @0x7f05000f
+                key = "updateCheck"
+                title = "Check for update at startup"
+          <SwitchPreferenceCompat>
+                defaultValue = @0x7f050010
+                key = "updateCheckHostsDaily"
+                title = "Periodically check for update"
+          <SwitchPreferenceCompat>
+                defaultValue = @0x7f050007
+                dependency = "updateCheckHostsDaily"
+                key = "automaticUpdateDaily"
+                title = "Sync on update"
+          <SwitchPreferenceCompat>
+                defaultValue = @0x7f050012
+                dependency = "updateCheckHostsDaily"
+                key = "updateOnlyOnWifi"
+                title = "Sync on unmetered network only"
+
+########## xml/preferences_vpn   (res/_m.xml)
+  <PreferenceScreen>
+        title = "Root based ad blocker"
+      <PreferenceCategory>
+            title = "General"
+          <SwitchPreferenceCompat>
+                defaultValue = @0x7f050013
+                key = "vpnOnBoot"
+                title = "Enable at startup"
+          <SwitchPreferenceCompat>
+                defaultValue = @0x7f050014
+                key = "vpnWatchdog"
+                summary = "Periodically check the network state to restart VPN on disconnection."
+                title = "Monitor connection"
+      <PreferenceCategory>
+            title = "Excluded applications"
+          <Preference>
+                summary = "Configure which applications should not use the VPN so no connections will be blocked."
+          <ListPreference>
+                defaultValue = "none"
+                entries = @0x7f030004
+                entryValues = @0x7f030005
+                key = "excludeSystemAppFromVpn"
+                title = "Exclude system applications"
+          <Preference>
+                defaultValue = ""
+                key = "excludeUserAppFromVpn"
+                title = "Exclude user applications"
+
+########## xml/shortcuts   (res/Eq.xml)
+  <shortcuts>
+      <shortcut>
+            icon = @0x7f0f0004
+          <intent>
+      <shortcut>
+            icon = @0x7f0f0003
+          <intent>
+      <shortcut>
+            icon = @0x7f0f0005
+          <intent>

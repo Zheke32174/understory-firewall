@@ -1,0 +1,84 @@
+
+########## menu/app_actions   (res/Vk.xml)
+  <menu>
+      <item>
+            icon = @0x7f080127
+            id = @0x7f090117
+            title = "Freeze"
+            showAsAction = 0x00000005
+      <item>
+            icon = @0x7f080135
+            id = @0x7f090122
+            title = "Unfreeze"
+            showAsAction = 0x00000005
+      <item>
+            icon = @0x7f080133
+            id = @0x7f090114
+            title = "App settings"
+            showAsAction = 0x00000005
+      <item>
+            icon = @0x7f080112
+            id = @0x7f090115
+            title = "Clone"
+            showAsAction = 0x00000005
+      <item>
+            id = @0x7f090119
+            title = "Reinstall"
+            showAsAction = 0x00000001
+      <item>
+            id = @0x7f09011f
+            title = "Suspend"
+            showAsAction = 0x00000000
+      <item>
+            id = @0x7f090118
+            title = "Auto-freeze with Greenify"
+            showAsAction = 0x00000000
+      <item>
+            id = @0x7f09011e
+            title = "Create Unfreeze & Launch shortcut"
+            showAsAction = 0x00000000
+      <item>
+            id = @0x7f09011a
+            title = "Remove"
+            showAsAction = 0x00000000
+      <item>
+            id = @0x7f090123
+            title = "Uninstall"
+            showAsAction = 0x00000000
+
+########## menu/main_actions   (res/fX.xml)
+  <menu>
+      <item>
+            icon = @0x7f080126
+            id = @0x7f090121
+            title = "Tip…"
+            showAsAction = 0x00000001
+      <item>
+            icon = @0x7f080132
+            id = @0x7f09011c
+            title = "Search"
+            showAsAction = 0x00000009
+      <item>
+            icon = @0x7f08011d
+            id = @0x7f090116
+            title = "Filter"
+            showAsAction = 0x00000001
+      <item>
+            id = @0x7f09011d
+            title = "Settings"
+            showAsAction = 0x00000000
+      <item>
+            id = @0x7f090120
+            title = "Test"
+            showAsAction = 0x00000000
+
+########## menu/pref_island_actions   (res/CW.xml)
+  <menu>
+      <item>
+            id = @0x7f09011b
+            title = "Rename"
+            showAsAction = 0x00000000
+      <item>
+            id = @0x7f090120
+            title = "Test"
+            showAsAction = 0x00000000

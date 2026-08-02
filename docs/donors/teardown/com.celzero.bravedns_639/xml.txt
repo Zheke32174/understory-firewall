@@ -1,0 +1,94 @@
+
+########## xml/accessibility_service_config   (res/-N.xml)
+
+
+########## xml/backup_rules   (res/Qq.xml)
+    <exclude>
+    <exclude>
+    <exclude>
+
+########## xml/data_extraction_rules   (res/4j.xml)
+        <exclude>
+        <exclude>
+        <exclude>
+
+########## xml/file_provider_paths   (res/7Y.xml)
+<paths>
+
+########## xml/locale_config   (res/YN.xml)
+      <locale>
+            name = "en-US"
+      <locale>
+            name = "ab"
+      <locale>
+            name = "ar"
+      <locale>
+            name = "bn"
+      <locale>
+            name = "zh-CN"
+      <locale>
+            name = "zh-TW"
+      <locale>
+            name = "zh-HK"
+      <locale>
+            name = "cs"
+      <locale>
+            name = "nl"
+      <locale>
+            name = "fr"
+      <locale>
+            name = "de"
+      <locale>
+            name = "iw"
+      <locale>
+            name = "hi"
+      <locale>
+            name = "hu"
+      <locale>
+            name = "id"
+      <locale>
+            name = "it"
+      <locale>
+            name = "ja"
+      <locale>
+            name = "ko"
+      <locale>
+            name = "lt"
+      <locale>
+            name = "pl"
+      <locale>
+            name = "pt-BR"
+      <locale>
+            name = "pt-PT"
+      <locale>
+            name = "ro"
+      <locale>
+            name = "ru"
+      <locale>
+            name = "sr"
+      <locale>
+            name = "es"
+      <locale>
+            name = "ta"
+      <locale>
+            name = "th"
+      <locale>
+            name = "tr"
+      <locale>
+            name = "uk"
+      <locale>
+            name = "vi"
+
+########## xml/m3_button_group_child_size_change   (res/cA.xml)
+    <selector>
+        <item>
+        <item>
+
+########## xml/m3_split_button_inner_corner_size_state_list   (res/vn.xml)
+    <selector>
+        <item>
+        <item>
+        <item>
+
+########## xml/network_security_config   (res/8G.xml)
+            <certificates>

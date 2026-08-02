@@ -1,0 +1,24 @@
+
+########## menu/bottom_nav_menu   (res/_l.xml)
+    <menu>
+        <item>
+              icon = @0x7f080120
+              id = @0x7f09059c
+              title = "Home"
+        <item>
+              icon = @0x7f080174
+              id = @0x7f09096f
+              title = "Stats"
+        <item>
+              icon = @0x7f080160
+              id = @0x7f0907bc
+              title = "RPN"
+              showAsAction = 0x00000002
+        <item>
+              icon = @0x7f080169
+              id = @0x7f09021d
+              title = "Configure"
+        <item>
+              icon = @0x7f0800b6
+              id = @0x7f09003e
+              title = "About"

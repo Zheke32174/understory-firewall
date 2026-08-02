@@ -1,0 +1,643 @@
+
+########## xml/accessibility_service_config   (res/-N.xml)
+
+
+########## xml/app_widget_info_clear_cache   (res/rn.xml)
+
+
+########## xml/app_widget_info_data_usage   (res/PL.xml)
+
+
+########## xml/app_widget_info_screen_time   (res/mh.xml)
+
+
+########## xml/backup_rules   (res/Qq.xml)
+        <exclude>
+        <exclude>
+        <exclude>
+        <include>
+        <exclude>
+        <exclude>
+        <include>
+        <exclude>
+        <exclude>
+        <exclude>
+        <exclude>
+        <include>
+        <exclude>
+        <exclude>
+        <include>
+        <exclude>
+
+########## xml/full_backup_rules   (res/SN.xml)
+    <exclude>
+    <exclude>
+    <exclude>
+    <include>
+    <exclude>
+    <exclude>
+    <include>
+    <exclude>
+
+########## xml/locales_config   (res/Br.xml)
+      <locale>
+            name = "ar"
+      <locale>
+            name = "de"
+      <locale>
+            name = "en"
+      <locale>
+            name = "es-ES"
+      <locale>
+            name = "fa"
+      <locale>
+            name = "fr"
+      <locale>
+            name = "hi"
+      <locale>
+            name = "id"
+      <locale>
+            name = "it"
+      <locale>
+            name = "ja"
+      <locale>
+            name = "ko"
+      <locale>
+            name = "nb-NO"
+      <locale>
+            name = "pl"
+      <locale>
+            name = "pt"
+      <locale>
+            name = "pt-BR"
+      <locale>
+            name = "ro"
+      <locale>
+            name = "ru-RU"
+      <locale>
+            name = "tr-TR"
+      <locale>
+            name = "uk-UA"
+      <locale>
+            name = "vi"
+      <locale>
+            name = "zh-CN"
+      <locale>
+            name = "zh-TW"
+
+########## xml/m3_button_group_child_size_change   (res/cA.xml)
+    <selector>
+        <item>
+        <item>
+
+########## xml/m3_split_button_inner_corner_size_state_list   (res/vn.xml)
+    <selector>
+        <item>
+        <item>
+        <item>
+
+########## xml/m3expressive_button_shape_state_list   (res/E9.xml)
+    <selector>
+        <item>
+        <item>
+        <item>
+
+########## xml/m3expressive_connected_buttons_inner_corner_size_state_list   (res/hy.xml)
+    <selector>
+        <item>
+        <item>
+        <item>
+
+########## xml/network_security_config   (res/8G.xml)
+        <domain>
+            <pin>
+            <pin>
+            <pin>
+            <pin>
+            <pin>
+            <pin>
+        <domain>
+        <domain>
+
+########## xml/preferences_about   (res/kJ.xml)
+  <PreferenceScreen>
+      <PreferenceCategory>
+            layout = @0x7f0c00be
+          <io.github.muntashirakon.preference.HyperlinkPreference>
+                summary = @0x7f12010c
+                title = "App Manager"
+          <Preference>
+                key = "version"
+                title = "Version/changelog"
+          <io.github.muntashirakon.preference.HyperlinkPreference>
+                key = "license"
+                summary = @0x7f12028d
+                title = "License"
+      <PreferenceCategory>
+            layout = @0x7f0c00be
+          <io.github.muntashirakon.preference.HyperlinkPreference>
+                summary = @0x7f120514
+                title = "Source code"
+          <io.github.muntashirakon.preference.HyperlinkPreference>
+                summary = @0x7f1200f8
+                title = "Community"
+          <Preference>
+                key = "website"
+                title = "Website"
+          <Preference>
+                key = "user_manual"
+                title = "User manual"
+          <Preference>
+                key = "get_help"
+                title = "Get help"
+      <PreferenceCategory>
+            layout = @0x7f0c00be
+          <Preference>
+                key = "third_party_libraries"
+                title = "Third-party libraries and icons"
+          <Preference>
+                key = "credits"
+                title = "Credits"
+
+########## xml/preferences_advanced   (res/Fo.xml)
+  <PreferenceScreen>
+      <PreferenceCategory>
+            layout = @0x7f0c00be
+          <Preference>
+                key = "selected_users"
+                summary = "Restrict App Manager to work with the selected users only."
+                title = "Selected users"
+          <Preference>
+                key = "saved_apk_format"
+                summary = "The format to be used for naming the APK files when you save them."
+                title = "Saved APK name format"
+          <Preference>
+                key = "thread_count"
+                title = "Parallel execution"
+          <Preference>
+                key = "adb_local_server_port"
+                title = "ADB local server port"
+          <SwitchPreferenceCompat>
+                key = "send_notifications_to_connected_devices"
+                summary = "Set whether to send notifications to connected devices such as wearables."
+                title = "Send notifications to the connected devices"
+      <PreferenceCategory>
+            layout = @0x7f0c00be
+          <Preference>
+                key = "import_export_keystore"
+                summary = "Import/export Bouncy Castle KeyStore (BKS) internally used by App Manager."
+                title = "Import/export KeyStore"
+
+########## xml/preferences_appearance   (res/I7.xml)
+  <PreferenceScreen>
+      <PreferenceCategory>
+            layout = @0x7f0c00be
+          <Preference>
+                key = "app_theme"
+                title = "App theme"
+          <SwitchPreferenceCompat>
+                key = "app_theme_pure_black"
+                summary = "Use a completely black background when night mode is enabled."
+                title = "Pure black theme"
+          <SwitchPreferenceCompat>
+                key = "use_system_font"
+                summary = @0x7f12043e
+                title = "Use system font"
+          <Preference>
+                key = "layout_orientation"
+                title = "Layout direction"
+      <PreferenceCategory>
+            layout = @0x7f0c00be
+          <Preference>
+                key = "enabled_features"
+                summary = "Enable or disable features in App Manager."
+                title = "Enable/disable features"
+
+########## xml/preferences_backup_restore   (res/7f.xml)
+  <PreferenceScreen>
+        title = "Backup/restore"
+      <PreferenceCategory>
+            layout = @0x7f0c00be
+          <Preference>
+                key = "backup_compression_method"
+                title = "Compression method"
+          <Preference>
+                key = "backup_flags"
+                summary = "Adding a preset for backup options removes the burden of selecting flags every time you back up/restore."
+                title = "Backup options"
+          <SwitchPreferenceCompat>
+                key = "backup_android_keystore"
+                summary = "Not all apps will work after being restored. Restoring KeyStore doesn't work on most devices."
+                title = "Back up apps with Android KeyStore"
+          <Preference>
+                key = "encryption"
+                summary = "Encryption for backups."
+                title = "Encryption"
+          <Preference>
+                key = "backup_volume"
+                summary = "Select the volume or disk where the backups will be stored."
+                title = "Backup volume"
+      <PreferenceCategory>
+            layout = @0x7f0c00be
+          <Preference>
+                key = "import_backups"
+                summary = "Import backups from OAndBackup, Swift Backup (3.0–3.2) or Titanium Backup."
+                title = "Import backups"
+
+########## xml/preferences_file_manager   (res/C5.xml)
+  <PreferenceScreen>
+      <SwitchPreferenceCompat>
+            key = "fm_display_in_launcher"
+            title = "Display “Files” in app drawer"
+      <SwitchPreferenceCompat>
+            key = "fm_remember_last_path"
+            summary = "When this option is enabled, opening a new window opens the last opened folder instead of the home folder."
+            title = "Remember last opened path and its position"
+      <Preference>
+            key = "fm_home"
+            title = "Set home"
+
+########## xml/preferences_installer   (res/4I.xml)
+  <PreferenceScreen>
+      <io.github.muntashirakon.preference.TopSwitchPreference>
+            key = "use_installer"
+            title = "Use the installer"
+      <PreferenceCategory>
+            key = "cat_general"
+            title = "General"
+          <Preference>
+                key = "installer_install_location"
+                title = "Install location"
+          <SwitchPreferenceCompat>
+                key = "installer_block_trackers"
+                summary = "Block tracking components after installing an app using App Manager."
+                title = "Block trackers"
+          <SwitchPreferenceCompat>
+                key = "installer_display_changes"
+                summary = "Display changes in version, trackers, components, permissions, signatures, SDK, etc. in a version controlled manner."
+                title = "Display changes"
+      <PreferenceCategory>
+            key = "cat_advanced"
+            title = "Advanced"
+          <Preference>
+                key = "installer_installer_app"
+                title = "Installer app"
+          <SwitchPreferenceCompat>
+                key = "installer_disable_verification"
+                summary = "Ask the installer to skip running the package verifier (e.g., Play Protect) during the installation."
+                title = "Disable package verification"
+          <SwitchPreferenceCompat>
+                key = "installer_update_ownership"
+                summary = "Set the installer app as the "update owner" during the initial installation to prevent other installers from installing the app without user interaction."
+                title = "Request "update ownership""
+          <Preference>
+                key = "installer_default_pkg_source"
+                title = "Default package source"
+          <SwitchPreferenceCompat>
+                key = "installer_set_origin"
+                summary = "Record the origin or source of the app to be installed, reported by "APK source" in the App Info tab"
+                title = "Set package origin and URI"
+          <SwitchPreferenceCompat>
+                key = "installer_sign_apk"
+                summary = "Sign APK files before installing them."
+                title = "Sign APK"
+          <SwitchPreferenceCompat>
+                key = "installer_force_dex_opt"
+                summary = "Perform DEX optimization immediately after installing the app without waiting for the system to do it when the system is idle."
+                title = "Immediately perform DEX optimization"
+          <SwitchPreferenceCompat>
+                key = "installer_always_on_background"
+                summary = "Always install apps in the background and display a notification when finished."
+                title = "Install in the background"
+
+########## xml/preferences_log_viewer   (res/2v.xml)
+  <PreferenceScreen>
+      <io.github.muntashirakon.preference.TopSwitchPreference>
+            key = "use_log_viewer"
+            title = "Use log viewer"
+      <PreferenceCategory>
+            key = "cat_appearance"
+            title = "Appearance"
+          <SwitchPreferenceCompat>
+                key = "log_viewer_expand_by_default"
+                summary = "Show full log text by default."
+                title = "Expand by default"
+          <SwitchPreferenceCompat>
+                key = "log_viewer_show_pid_tid_timestamp"
+                summary = "Show process id and timestamp when expanded."
+                title = "Show PID & timestamp"
+      <PreferenceCategory>
+            key = "cat_conf"
+            title = "Configuration"
+          <Preference>
+                key = "log_viewer_buffer"
+                title = "Log buffer(s)"
+          <Preference>
+                key = "log_viewer_default_log_level"
+                summary = "Log level at startup, when opening files, and when recording."
+                title = "Default log level"
+      <PreferenceCategory>
+            key = "cat_advanced"
+            title = "Advanced"
+          <Preference>
+                key = "log_viewer_write_period"
+                title = "Write period"
+          <Preference>
+                key = "log_viewer_display_limit"
+                title = "Log display limit"
+          <Preference>
+                key = "log_viewer_filter_pattern"
+                summary = "Filter out the selected tags from logs."
+                title = "Filter out tags"
+          <SwitchPreferenceCompat>
+                key = "log_viewer_omit_sensitive_info"
+                summary = "Omit sensitive info like web urls, phone numbers or emails."
+                title = "Omit sensitive info"
+
+########## xml/preferences_main   (res/rx.xml)
+    <PreferenceScreen>
+        <PreferenceCategory>
+              key = "app_manager_expiring_notice"
+              layout = @0x7f0c00be
+            <io.github.muntashirakon.preference.WarningAlertPreference>
+                  icon = @0x7f0800b8
+                  summary = "This version of App Manager will expire very soon. Please update it to the latest version."
+        <PreferenceCategory>
+              key = "funding_campaign_notice"
+              layout = @0x7f0c00be
+            <io.github.muntashirakon.preference.InfoAlertPreference>
+                  icon = @0x7f0800ba
+                  summary = @0x7f1201f8
+        <PreferenceCategory>
+              layout = @0x7f0c00be
+            <Preference>
+                  icon = @0x7f080131
+                  key = "custom_locale"
+                  title = "Language"
+            <Preference>
+                  icon = @0x7f080109
+                  key = "appearance_prefs"
+                  summary = "Theme, orientation, features, etc."
+                  title = "Appearance"
+            <Preference>
+                  icon = @0x7f08011d
+                  key = "privacy_prefs"
+                  summary = "Screen lock, authorization, etc."
+                  title = "Privacy"
+            <Preference>
+                  icon = @0x7f08011a
+                  key = "mode_of_operations"
+                  title = "Mode of operation"
+        <PreferenceCategory>
+              layout = @0x7f0c00be
+            <Preference>
+                  icon = @0x7f080121
+                  key = "apk_signing_prefs"
+                  summary = "Set signature schemes, custom signing key, etc."
+                  title = "APK signing"
+            <Preference>
+                  icon = @0x7f0800ec
+                  key = "installer"
+                  summary = "Configure the behaviours of the app installer."
+                  title = "Installer"
+            <Preference>
+                  icon = @0x7f0800ac
+                  key = "backup_restore_prefs"
+                  summary = "Customise backup/restore."
+                  title = "Backup/restore"
+            <Preference>
+                  icon = @0x7f080138
+                  key = "log_viewer_prefs"
+                  summary = "Configure how logs are displayed."
+                  title = "Log viewer"
+            <Preference>
+                  icon = @0x7f0800da
+                  key = "files_prefs"
+                  summary = "Configure file manager."
+                  title = "Files"
+            <Preference>
+                  icon = @0x7f0800f8
+                  key = "rules_prefs"
+                  summary = "Instant blocking, import/export/remove rules, etc."
+                  title = "Rules"
+            <Preference>
+                  icon = @0x7f080139
+                  key = "vt"
+                  summary = "Enable scanning APK files via VirusTotal."
+                  title = "VirusTotal"
+        <PreferenceCategory>
+              layout = @0x7f0c00be
+            <Preference>
+                  icon = @0x7f08010c
+                  key = "about_device"
+                  summary = "Basic device info including Android system, CPU, GPU, RAM, battery, etc."
+                  title = "About the device"
+            <Preference>
+                  icon = @0x7f0800f0
+                  key = "about"
+                  summary = "App Manager version, license, credits, etc."
+                  title = "About"
+        <PreferenceCategory>
+              layout = @0x7f0c00be
+            <Preference>
+                  icon = @0x7f080133
+                  key = "advanced_prefs"
+                  summary = "Users, APK name format, parallel execution, etc."
+                  title = "Advanced"
+            <Preference>
+                  icon = @0x7f0800ed
+                  key = "troubleshooting_prefs"
+                  title = "Troubleshooting"
+
+########## xml/preferences_privacy   (res/IS.xml)
+  <PreferenceScreen>
+      <PreferenceCategory>
+            layout = @0x7f0c00be
+          <SwitchPreferenceCompat>
+                key = "enable_screen_lock"
+                summary = "Lock App Manager using Android screen lock"
+                title = "Screen lock"
+          <SwitchPreferenceCompat>
+                key = "enable_persistent_session"
+                summary = "Running App Manager in the background reduces initialisation delay. Useful if you use App Manager frequently."
+                title = "Run App Manager in the background"
+          <SwitchPreferenceCompat>
+                key = "enable_auto_lock"
+                summary = "Lock App Manager when the device is locked."
+                title = "Automatic lockdown"
+          <SwitchPreferenceCompat>
+                key = "toggle_internet"
+                summary = "Activate the Internet features in App Manager"
+                title = "Use the Internet"
+      <PreferenceCategory>
+            layout = @0x7f0c00be
+          <Preference>
+                key = "auth_manager"
+                title = "Authorization manager"
+
+########## xml/preferences_profile_config   (res/Pc.xml)
+  <PreferenceScreen>
+      <PreferenceCategory>
+            layout = @0x7f0c00be
+          <Preference>
+                key = "profile_id"
+                title = "Profile ID"
+          <Preference>
+                key = "comment"
+                title = "Comment"
+          <Preference>
+                key = "state"
+                summary = "Custom on/off state for this profile"
+          <Preference>
+                key = "users"
+                title = "Users"
+      <PreferenceCategory>
+            layout = @0x7f0c00be
+          <Preference>
+                key = "components"
+                title = "Components"
+          <Preference>
+                key = "app_ops"
+                title = "App ops"
+          <Preference>
+                key = "permissions"
+                title = "Permissions"
+          <Preference>
+                key = "backup_data"
+                title = "Backup/restore"
+          <Preference>
+                key = "export_rules"
+                title = "Export blocking rules"
+          <SwitchPreferenceCompat>
+                key = "freeze"
+                summary = "Freezes or unfreezes apps based on state"
+                title = "Freeze"
+          <SwitchPreferenceCompat>
+                key = "force_stop"
+                summary = "Force-stops apps"
+                title = "Force-stop"
+          <SwitchPreferenceCompat>
+                key = "clear_cache"
+                summary = "Clears the app cache of apps"
+                title = "Clear cache"
+          <SwitchPreferenceCompat>
+                key = "clear_data"
+                summary = "Clears the data of apps"
+                title = "Clear data"
+          <SwitchPreferenceCompat>
+                key = "block_trackers"
+                summary = "Blocks the trackers in apps"
+                title = "Block trackers"
+          <SwitchPreferenceCompat>
+                key = "save_apk"
+                summary = @0x7f120457
+                title = "Save APK"
+      <PreferenceCategory>
+            layout = @0x7f0c00be
+          <SwitchPreferenceCompat>
+                key = "allow_routine"
+                summary = "Allow the profile to be used in the routine operations"
+                title = "Allow routine ops"
+
+########## xml/preferences_rules   (res/Mi.xml)
+    <PreferenceScreen>
+        <PreferenceCategory>
+              layout = @0x7f0c00be
+            <Preference>
+                  key = "freeze_type"
+                  title = "Default freezing method"
+            <Preference>
+                  key = "default_blocking_method"
+                  title = "Default blocking method"
+            <SwitchPreferenceCompat>
+                  key = "global_blocking_enabled"
+                  summary = "Lets you block any component of any app without explicitly turning on blocking for the app."
+                  title = "Instant component blocking"
+        <PreferenceCategory>
+              layout = @0x7f0c00be
+            <Preference>
+                  key = "import_export_rules"
+                  summary = "Import/export rules, import external rules from Watt or Blocker."
+                  title = "Import/export blocking rules"
+        <PreferenceCategory>
+              layout = @0x7f0c00be
+            <io.github.muntashirakon.preference.PrimaryButtonPreference>
+                  icon = @0x7f080119
+                  key = "remove_all_rules"
+                  title = "Remove all rules"
+
+########## xml/preferences_rules_import_export   (res/VF.xml)
+  <PreferenceScreen>
+      <Preference>
+            key = "export"
+            summary = "Export blocking rules configured within App Manager to external storage."
+            title = "Export"
+      <Preference>
+            key = "import"
+            summary = "Import previously exported blocking rules from App Manager."
+            title = "Import"
+      <Preference>
+            key = "import_existing"
+            summary = "Add components disabled by others apps to App Manager. Be careful when using this tool as there can be many false positives. Choose only the apps you're certain about."
+            title = "Import existing rules"
+      <Preference>
+            key = "import_watt"
+            summary = @0x7f120410
+            title = "Import from Watt"
+      <Preference>
+            key = "import_blocker"
+            summary = "Import blocking rules from Blocker, each file containing rules for a single package."
+            title = "Import from Blocker"
+
+########## xml/preferences_signature   (res/vp.xml)
+  <PreferenceScreen>
+        title = "APK signing"
+      <Preference>
+            key = "signature_schemes"
+            summary = "At least v1 and v2 schemes should be selected for a greater compatibility. v4 scheme requires v2 or v3."
+            title = "Signature schemes"
+      <Preference>
+            key = "signing_keys"
+            title = "Signing key"
+      <SwitchPreferenceCompat>
+            key = "zip_align"
+            summary = @0x7f120447
+            title = "Align APK files"
+
+########## xml/preferences_troubleshooting   (res/sk.xml)
+  <PreferenceScreen>
+      <Preference>
+            key = "reload_apps"
+            summary = "Reload the list of apps stored in App Manager database in case of unexpected behaviour."
+            title = "Reload apps"
+
+########## xml/preferences_virus_total   (res/RH.xml)
+  <PreferenceScreen>
+      <PreferenceCategory>
+            layout = @0x7f0c00be
+          <io.github.muntashirakon.preference.TopSwitchPreference>
+                key = "use_vt"
+                title = "Use VirusTotal"
+      <PreferenceCategory>
+            key = "info_no_internet"
+            layout = @0x7f0c00be
+          <io.github.muntashirakon.preference.WarningAlertPreference>
+                icon = @0x7f0800b8
+                summary = @0x7f120440
+      <PreferenceCategory>
+            layout = @0x7f0c00be
+          <Preference>
+                key = "virus_total_api_key"
+                title = "VirusTotal API Key"
+          <SwitchPreferenceCompat>
+                key = "virus_total_prompt_before_uploading"
+                title = "Display prompt before uploading a file."
+      <PreferenceCategory>
+            layout = @0x7f0c00be
+          <io.github.muntashirakon.preference.DefaultAlertPreference>
+                icon = @0x7f0800f1
+                key = "info"
+                summary = "An API key enables App Manager to upload APK files to VirusTotal as well as fetch reports. Sign up at https://virustotal.com to get an API key for free."
+
+########## xml/recording_widget_info   (res/gL.xml)
+

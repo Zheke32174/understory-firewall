@@ -1,0 +1,162 @@
+
+########## menu/menu_apps   (res/sv.xml)
+    <menu>
+        <item>
+              icon = @0x7f0800ad
+              id = @0x7f090052
+              title = "Search"
+              showAsAction = 0x0000000a
+        <item>
+              icon = @0x7f0800a7
+              title = "Filter"
+              showAsAction = 0x00000001
+            <menu>
+                <group>
+                      id = @0x7f090107
+                    <item>
+                          id = @0x7f0900f0
+                          title = "User"
+                    <item>
+                          id = @0x7f0900ee
+                          title = "System"
+                <group>
+                      id = @0x7f090108
+                    <item>
+                          id = @0x7f0900ed
+                          title = "Frozen"
+                    <item>
+                          id = @0x7f0900ef
+                          title = "Unfrozen"
+        <item>
+              icon = @0x7f0800b0
+              title = "Sort by"
+              showAsAction = 0x00000001
+            <menu>
+                <group>
+                    <item>
+                          id = @0x7f0901f9
+                          title = "Name"
+                    <item>
+                          id = @0x7f0901f8
+                          title = "First install"
+                    <item>
+                          id = @0x7f0901fa
+                          title = "Last update"
+
+########## menu/menu_apps_action   (res/zt.xml)
+  <menu>
+      <item>
+            id = @0x7f09003d
+            title = "App info"
+      <item>
+            id = @0x7f090040
+            title = "Export to Clipboard"
+      <item>
+            id = @0x7f090042
+            title = "Extract APK"
+      <item>
+            id = @0x7f090057
+            title = "Uninstall"
+      <item>
+            id = @0x7f090050
+            title = "Reinstall"
+
+########## menu/menu_home   (res/hG.xml)
+    <menu>
+        <item>
+              icon = @0x7f0800ad
+              id = @0x7f090052
+              title = "Search"
+              showAsAction = 0x0000000a
+        <item>
+              icon = @0x7f0800ae
+              id = @0x7f09004f
+              title = "Tap to multiselect"
+              showAsAction = 0x00000002
+        <group>
+              id = @0x7f09010a
+            <item>
+                  id = @0x7f090044
+                  title = "Freeze visible"
+                  showAsAction = 0x00000000
+            <item>
+                  id = @0x7f090056
+                  title = "Unfreeze visible"
+                  showAsAction = 0x00000000
+        <group>
+              id = @0x7f090109
+            <item>
+                  id = @0x7f090043
+                  title = "Freeze all"
+                  showAsAction = 0x00000000
+            <item>
+                  id = @0x7f090055
+                  title = "Unfreeze all"
+                  showAsAction = 0x00000000
+            <item>
+                  id = @0x7f090045
+                  title = "Freeze non-whitelisted"
+                  showAsAction = 0x00000000
+        <item>
+              title = "Import app"
+              showAsAction = 0x00000000
+            <menu>
+                <group>
+                    <item>
+                          id = @0x7f090048
+                          title = "Import from Clipboard"
+                          showAsAction = 0x00000000
+                    <item>
+                          id = @0x7f090049
+                          title = "Import frozen app"
+                          showAsAction = 0x00000000
+        <item>
+              title = "Export to Clipboard"
+              showAsAction = 0x00000000
+            <menu>
+                <group>
+                    <item>
+                          id = @0x7f090041
+                          title = "Export visible"
+                          showAsAction = 0x00000000
+                    <item>
+                          id = @0x7f09003f
+                          title = "Export all"
+                          showAsAction = 0x00000000
+
+########## menu/menu_settings   (res/v5.xml)
+    <menu>
+        <item>
+              icon = @0x7f08008e
+              id = @0x7f090053
+              title = "Terminal"
+              showAsAction = 0x00000001
+        <item>
+              icon = @0x7f0800ac
+              id = @0x7f090051
+              title = "Remove Device Owner"
+              showAsAction = 0x00000001
+        <item>
+              icon = @0x7f0800a8
+              id = @0x7f090046
+              title = "Help"
+              showAsAction = 0x00000002
+
+########## menu/nav_main   (res/ch.xml)
+  <menu>
+      <item>
+            icon = @0x7f0800b1
+            id = @0x7f090179
+            title = "Home"
+      <item>
+            icon = @0x7f08008b
+            id = @0x7f090177
+            title = "Apps"
+      <item>
+            icon = @0x7f0800b6
+            id = @0x7f09017d
+            title = "Settings"
+      <item>
+            icon = @0x7f080099
+            id = @0x7f090176
+            title = "About"

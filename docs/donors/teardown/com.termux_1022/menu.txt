@@ -1,0 +1,34 @@
+
+########## menu/menu_report   (res/Rl.xml)
+    <menu>
+        <item>
+              icon = @0x7f070075
+              id = @0x7f0800f0
+              title = "Share"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f070069
+              id = @0x7f0800ed
+              title = "Copy"
+              showAsAction = 0x00000000
+        <item>
+              id = @0x7f0800ef
+              title = "Save To File"
+              showAsAction = 0x00000000
+
+########## menu/menu_text_io   (res/UN.xml)
+    <menu>
+        <item>
+              id = @0x7f0800ec
+              title = "Cancel"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f070075
+              id = @0x7f0800f1
+              title = "Share"
+              showAsAction = 0x00000000
+        <item>
+              icon = @0x7f070069
+              id = @0x7f0800ee
+              title = "Copy"
+              showAsAction = 0x00000000

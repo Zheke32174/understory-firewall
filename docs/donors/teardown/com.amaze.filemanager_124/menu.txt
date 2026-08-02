@@ -1,0 +1,250 @@
+
+########## menu/activity_extra   (res/yQ.xml)
+    <menu>
+        <item>
+              icon = @0x7f080128
+              id = @0x7f09029e
+              title = "Search"
+              showAsAction = 0x00000002
+        <item>
+              icon = @0x7f080100
+              id = @0x7f09015e
+              title = "Home"
+              showAsAction = 0x00000001
+        <item>
+              icon = @0x7f080138
+              id = @0x7f0902eb
+              title = "Sort"
+              showAsAction = 0x00000001
+            <menu>
+                <item>
+                      id = @0x7f0902ec
+                      title = "Sort By"
+                <item>
+                      id = @0x7f0900f6
+                      title = "Directory Sort Mode"
+        <item>
+              icon = @0x7f0800ff
+              id = @0x7f09015d
+              title = "History"
+              showAsAction = 0x00000001
+        <item>
+              id = @0x7f0903c2
+              title = ""
+        <item>
+              id = @0x7f090159
+              title = "Hidden Files"
+        <item>
+              id = @0x7f0902d4
+              title = "Set As Home"
+        <item>
+              id = @0x7f090122
+              title = "Extract"
+        <item>
+              id = @0x7f09011e
+              title = "Exit"
+
+########## menu/app_menu   (res/av.xml)
+  <menu>
+      <item>
+            id = @0x7f090098
+            title = "Show system apps"
+            checkable = true
+
+########## menu/app_options   (res/7g.xml)
+  <menu>
+      <item>
+            id = @0x7f090236
+            title = "Open"
+      <item>
+            id = @0x7f090070
+            title = "Backup"
+      <item>
+            id = @0x7f0903bc
+            title = "Uninstall"
+      <item>
+            id = @0x7f090268
+            title = "Properties"
+      <item>
+            id = @0x7f090259
+            title = "Play store"
+      <item>
+            id = @0x7f0902d5
+            title = "Share"
+
+########## menu/contextual   (res/PK.xml)
+    <menu>
+        <item>
+              icon = @0x7f0800c6
+              id = @0x7f0900ba
+              title = "Copy"
+              showAsAction = 0x00000002
+        <item>
+              icon = @0x7f0800cc
+              id = @0x7f0900cf
+              title = "Delete"
+              showAsAction = 0x00000002
+        <item>
+              icon = @0x7f0801a0
+              id = @0x7f09027e
+              title = "Restore"
+              showAsAction = 0x00000002
+        <item>
+              id = @0x7f090239
+              title = "Open Parent Directory"
+        <item>
+              icon = @0x7f0800c8
+              id = @0x7f0900c1
+              title = "Cut"
+              showAsAction = 0x00000002
+        <item>
+              icon = @0x7f080129
+              id = @0x7f090058
+              title = "Select All"
+              showAsAction = 0x00000001
+        <item>
+              id = @0x7f0902d5
+              title = "Share"
+        <item>
+              id = @0x7f0900ae
+              title = "Compress"
+        <item>
+              id = @0x7f09023a
+              title = "Open with"
+        <item>
+              id = @0x7f09015a
+              title = "Hide"
+        <item>
+              id = @0x7f090055
+              title = "Add Shortcut"
+        <item>
+              id = @0x7f09011d
+              title = "Extract"
+              showAsAction = 0x00000002
+
+########## menu/error_menu   (res/8e.xml)
+    <menu>
+        <item>
+              id = @0x7f0901eb
+              title = "Share"
+              showAsAction = 0x00000001
+
+########## menu/ftp_server_menu   (res/s9.xml)
+  <menu>
+      <item>
+            id = @0x7f0900a0
+            title = "FTP port"
+      <item>
+            id = @0x7f090147
+            title = "Shared Path"
+      <item>
+            id = @0x7f090145
+            title = "Login"
+      <item>
+            id = @0x7f090097
+            title = "Secure Connection"
+            checkable = true
+      <item>
+            id = @0x7f090096
+            title = "Read-only access"
+            checkable = true
+      <item>
+            id = @0x7f090148
+            title = "Idle timeout"
+      <item>
+            id = @0x7f090095
+            title = "Use legacy filesystem"
+            checkable = true
+
+########## menu/item_extras   (res/co.xml)
+    <menu>
+        <item>
+              id = @0x7f09027f
+              title = "Select"
+        <item>
+              id = @0x7f090238
+              title = "Open with"
+        <item>
+              icon = @0x7f0800c8
+              id = @0x7f0900c1
+              title = "Cut"
+        <item>
+              icon = @0x7f0800c7
+              id = @0x7f0900ba
+              title = "Copy"
+        <item>
+              id = @0x7f0900cf
+              title = "Delete"
+        <item>
+              id = @0x7f09027e
+              title = "Restore"
+        <item>
+              id = @0x7f09027d
+              title = "Rename"
+        <item>
+              id = @0x7f090109
+              title = "Encrypt"
+        <item>
+              id = @0x7f0900ca
+              title = "Decrypt"
+        <item>
+              id = @0x7f09000e
+              title = "Properties"
+        <item>
+              id = @0x7f0900ae
+              title = "Compress"
+        <item>
+              id = @0x7f0902d5
+              title = "Share"
+        <item>
+              id = @0x7f09011d
+              title = "Extract"
+        <item>
+              id = @0x7f090076
+              title = "Add to Bookmarks"
+
+########## menu/selection_criteria   (res/Sz.xml)
+  <menu>
+      <item>
+            id = @0x7f0902ca
+            title = "Select All"
+      <item>
+            id = @0x7f0902cf
+            title = "Select Inverse"
+      <item>
+            id = @0x7f0902cc
+            title = "Select by type"
+      <item>
+            id = @0x7f0902cb
+            title = "Select by date"
+      <item>
+            id = @0x7f0902d0
+            title = "Select similar"
+      <item>
+            id = @0x7f0902ce
+            title = "Select fill"
+
+########## menu/text   (res/gh.xml)
+    <menu>
+        <item>
+              icon = @0x7f08009e
+              id = @0x7f09028b
+              title = "Save"
+              showAsAction = 0x00000001
+        <item>
+              icon = @0x7f08009f
+              id = @0x7f090134
+              title = "Find in page"
+              showAsAction = 0x00000001
+        <item>
+              id = @0x7f0900d9
+              title = "Details"
+              showAsAction = 0x00000000
+        <item>
+              id = @0x7f09023a
+              title = "Open with"
+        <item>
+              id = @0x7f0901f3
+              title = "Monospace Font"
+              checkable = true
+              showAsAction = 0x00000000

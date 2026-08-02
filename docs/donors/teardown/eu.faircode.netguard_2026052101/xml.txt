@@ -1,0 +1,391 @@
+
+########## xml/network_security_config   (res/8G.xml)
+            <certificates>
+            <certificates>
+
+########## xml/predefined   (res/0H.xml)
+<predefined>
+    <wifi>
+    <other>
+    <wifi>
+    <other>
+    <wifi>
+    <other>
+    <wifi>
+    <other>
+    <wifi>
+    <other>
+    <wifi>
+    <other>
+    <wifi>
+    <other>
+    <relation>
+    <relation>
+    <type>
+    <type>
+    <type>
+    <type>
+    <type>
+    <type>
+    <type>
+    <type>
+    <type>
+    <type>
+
+########## xml/preferences   (res/Zx.xml)
+  <PreferenceScreen>
+      <PreferenceScreen>
+            title = "Defaults (white/blacklist)"
+            key = "screen_defaults"
+          <PreferenceCategory>
+                title = "Defaults (white/blacklist)"
+                key = "category_defaults"
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Block Wi-Fi"
+                    key = "whitelist_wifi"
+                    defaultValue = true
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Block mobile"
+                    key = "whitelist_other"
+                    defaultValue = true
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Apply 'when screen on' rules"
+                    key = "screen_on"
+                    defaultValue = true
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Allow Wi-Fi when screen on"
+                    key = "screen_wifi"
+                    dependency = "screen_on"
+                    defaultValue = false
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Allow mobile when screen on"
+                    key = "screen_other"
+                    dependency = "screen_on"
+                    defaultValue = false
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Block roaming"
+                    key = "whitelist_roaming"
+                    defaultValue = true
+      <PreferenceScreen>
+            title = "Options"
+            key = "screen_options"
+          <PreferenceCategory>
+                title = "Options"
+                key = "category_options"
+              <ListPreference>
+                    entries = @0x7f030005
+                    key = "theme"
+                    defaultValue = "teal"
+                    entryValues = @0x7f030006
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Use dark theme"
+                    key = "dark_theme"
+                    defaultValue = false
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Notify on new install"
+                    key = "install"
+                    summary = "Show status bar notification to directly configure newly installed apps (pro feature)"
+                    defaultValue = true
+              <EditTextPreference>
+                    key = "auto_enable"
+                    summary = "After disabling using the widget, automatically enable NetGuard again after the selected number of minutes (enter zero to disable this option)"
+                    defaultValue = 0
+              <EditTextPreference>
+                    key = "screen_delay"
+                    summary = "After turning the screen off, keep screen on rules active for the selected number of minutes (enter zero to disable this option)"
+                    defaultValue = 0
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Check for updates"
+                    key = "update_check"
+                    summary = "Check for new releases on GitHub twice daily"
+                    defaultValue = true
+      <PreferenceScreen>
+            title = "Network options"
+            key = "screen_network_options"
+          <PreferenceCategory>
+                title = "Network options"
+                key = "category_network_options"
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Subnet routing"
+                    key = "subnet"
+                    summary = "Enable subnet routing; might enable Wi-Fi calling, but might also trigger bugs in Android and increase battery usage"
+                    defaultValue = false
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Allow tethering"
+                    key = "tethering"
+                    summary = "Depending on the Android version, tethering may work or may not work. Tethered traffic cannot be filtered."
+                    dependency = "subnet"
+                    defaultValue = false
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Allow LAN access"
+                    key = "lan"
+                    summary = "Allow apps to connect to local area network addresses, like 10.0.0.0/8, 172.16.0.0/12 and 192.168.0.0/16"
+                    dependency = "subnet"
+                    defaultValue = false
+              <MultiSelectListPreference>
+                    key = "wifi_homes"
+                    summary = "Apply Wi-Fi network rules for selected network only (apply mobile network rules for other Wi-Fi networks)"
+                    defaultValue = @0x7f030000
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Handle metered Wi-Fi networks"
+                    key = "use_metered"
+                    summary = "Apply mobile network rules to metered (paid, tethered) Wi-Fi networks"
+                    defaultValue = false
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Consider 2G unmetered"
+                    key = "unmetered_2g"
+                    summary = "Apply Wi-Fi network rules for 2G data connections"
+                    defaultValue = false
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Consider 3G unmetered"
+                    key = "unmetered_3g"
+                    summary = "Apply Wi-Fi network rules for 3G data connections"
+                    defaultValue = false
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Consider LTE unmetered"
+                    key = "unmetered_4g"
+                    summary = "Apply Wi-Fi network rules for LTE data connections"
+                    defaultValue = false
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Ignore national roaming"
+                    key = "national_roaming"
+                    summary = "Do not apply roaming rules when the SIM and mobile network country are the same"
+                    defaultValue = false
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Ignore EU roaming"
+                    key = "eu_roaming"
+                    summary = "Do not apply roaming rules when the SIM and mobile network country are within the EU (roam like at home)"
+                    defaultValue = false
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Disable on call"
+                    key = "disable_on_call"
+                    summary = "Disable NetGuard on incoming or outgoing telephone call. This can be used to work around IP/Wi-Fi calling problems."
+                    defaultValue = false
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Lockdown Wi-Fi"
+                    key = "lockdown_wifi"
+                    defaultValue = true
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Lockdown mobile"
+                    key = "lockdown_other"
+                    defaultValue = true
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Reload on every connectivity change"
+                    key = "reload_onconnectivity"
+                    defaultValue = false
+      <PreferenceScreen>
+            title = "Advanced options"
+            key = "screen_advanced_options"
+          <PreferenceCategory>
+                title = "Advanced options"
+                key = "category_advanced_options"
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Manage system apps"
+                    key = "manage_system"
+                    summary = "Define rules for system apps (for experts)"
+                    defaultValue = false
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Log internet access"
+                    key = "log_app"
+                    summary = "Log attempts to access the internet for apps. This might result in extra battery usage."
+                    defaultValue = false
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Notify on internet access"
+                    key = "notify_access"
+                    summary = "Show a status bar notification when an app attempts to access a new internet address (when filtering is disabled, only blocked internet access attempts will be notified)"
+                    dependency = "log_app"
+                    defaultValue = false
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Filter traffic"
+                    key = "filter"
+                    summary = "Filter IP packets going out of the VPN tunnel. This might result in extra battery usage."
+                    defaultValue = false
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Filter UDP traffic"
+                    key = "filter_udp"
+                    dependency = "filter"
+                    defaultValue = false
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Seamless VPN handover on reload"
+                    key = "handover"
+                    dependency = "filter"
+                    defaultValue = false
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Track network usage"
+                    key = "track_usage"
+                    summary = "Track the number of bytes sent and received for each app and address. This might result in extra battery usage."
+                    dependency = "filter"
+                    defaultValue = false
+              <Preference>
+                    title = "Reset network usage"
+                    key = "reset_usage"
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Block domain names"
+                    key = "use_hosts"
+                    summary = "Respond with the configured DNS response code for blocked domain names. This switch is disabled when no hosts file is available."
+                    dependency = "filter"
+                    defaultValue = true
+              <EditTextPreference>
+                    key = "rcode"
+                    summary = "The default value is 3 (NXDOMAIN), which means 'non-existent domain'."
+                    dependency = "filter"
+              <Preference>
+                    title = "Port forwarding"
+                    key = "forwarding"
+                    dependency = "filter"
+              <EditTextPreference>
+                    hint = "10.1.10.1"
+                    key = "vpn4"
+              <EditTextPreference>
+                    hint = "fd00:1:fd00:1:fd00:1:fd00:1"
+                    key = "vpn6"
+              <EditTextPreference>
+                    key = "dns"
+                    dependency = "filter"
+              <EditTextPreference>
+                    key = "dns2"
+                    dependency = "filter"
+              <EditTextPreference>
+                    hint = "www.google.com"
+                    key = "validate"
+                    summary = "Domain name used to validate the internet connection at port 443 (https)."
+              <EditTextPreference>
+                    key = "ttl"
+                    dependency = "filter"
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Use SOCKS5 proxy"
+                    key = "socks5_enabled"
+                    summary = "Only TCP traffic will be sent to the proxy server"
+                    dependency = "filter"
+                    defaultValue = false
+              <EditTextPreference>
+                    hint = "127.0.0.1"
+                    key = "socks5_addr"
+                    dependency = "filter"
+              <EditTextPreference>
+                    hint = "1080"
+                    key = "socks5_port"
+                    dependency = "filter"
+              <EditTextPreference>
+                    key = "socks5_username"
+                    dependency = "filter"
+              <EditTextPreference>
+                    key = "socks5_password"
+                    dependency = "filter"
+              <EditTextPreference>
+                    key = "pcap_record_size"
+                    defaultValue = 64
+              <EditTextPreference>
+                    key = "pcap_file_size"
+                    defaultValue = 2
+              <EditTextPreference>
+                    key = "watchdog"
+                    summary = "Periodically check if NetGuard is still running (enter zero to disable this option). This might result in extra battery usage."
+                    defaultValue = 0
+              <Preference>
+                    title = "Show resolved domain names"
+                    key = "show_resolved"
+      <PreferenceScreen>
+            title = "Speed notification"
+            key = "screen_stats"
+          <PreferenceCategory>
+                title = "Speed notification"
+                key = "category_stats"
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Show speed notification"
+                    key = "show_stats"
+                    summary = "Show network speed graph in status bar notification"
+                    defaultValue = false
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Show top apps"
+                    key = "show_top"
+                    dependency = "show_stats"
+                    defaultValue = false
+              <EditTextPreference>
+                    key = "stats_frequency"
+                    dependency = "show_stats"
+                    defaultValue = 1000
+              <EditTextPreference>
+                    key = "stats_samples"
+                    dependency = "show_stats"
+                    defaultValue = 90
+      <PreferenceScreen>
+            title = "Backup"
+            key = "screen_backup"
+          <PreferenceCategory>
+                title = "Backup"
+                key = "category_backup"
+              <Preference>
+                    title = "Export settings"
+                    key = "export"
+              <Preference>
+                    title = "Import settings"
+                    key = "import"
+              <Preference>
+                    title = "Import hosts file"
+                    key = "hosts_import"
+              <Preference>
+                    title = "Import hosts file (append)"
+                    key = "hosts_import_append"
+              <EditTextPreference>
+                    hint = "https://www.netguard.me/hosts"
+                    title = "Hosts file download URL"
+                    key = "hosts_url"
+                    defaultValue = "https://www.netguard.me/hosts"
+              <Preference>
+                    title = "Download hosts file"
+                    key = "hosts_download"
+                    dependency = "hosts_url"
+      <PreferenceScreen>
+            title = "Development"
+            key = "screen_development"
+          <PreferenceCategory>
+                title = "Development"
+                key = "category_development"
+              <ListPreference>
+                    entries = @0x7f030001
+                    title = "Native log level"
+                    key = "loglevel"
+                    summary = "Log level verbose, debug and info will impact performance and battery usage"
+                    defaultValue = 6
+                    entryValues = @0x7f030002
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Enable IPv6 traffic"
+                    key = "ip6"
+                    summary = "Route IP version 6 traffic to NetGuard so it can selectively be allowed or blocked"
+                    defaultValue = true
+              <eu.faircode.netguard.SwitchPreference>
+                    title = "Debug IAB"
+                    key = "debug_iab"
+                    defaultValue = false
+      <PreferenceScreen>
+            title = "Technical information"
+            key = "screen_technical"
+          <PreferenceCategory>
+                title = "Technical information"
+                key = "category_technical"
+              <Preference>
+                    title = "General"
+                    key = "technical_info"
+              <Preference>
+                    title = "Networks"
+                    key = "technical_network"
+
+########## xml/shortcuts   (res/Eq.xml)
+  <shortcuts>
+      <shortcut>
+            icon = @0x01080049
+          <intent>
+          <categories>
+                name = "android.shortcut.settings"
+      <shortcut>
+            icon = @0x0108004a
+          <intent>
+          <categories>
+                name = "android.shortcut.log"
+
+########## xml/widgetlockdown   (res/Cf.xml)
+
+
+########## xml/widgetmain   (res/om.xml)
+

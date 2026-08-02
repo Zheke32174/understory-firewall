@@ -1,0 +1,180 @@
+
+########## menu/activity_launch   (res/qz.xml)
+  <menu>
+      <item>
+            id = @0x7f0a002e
+            title = "About"
+      <item>
+            id = @0x7f0a0039
+            title = "Permissions: duplicates"
+      <item>
+            id = @0x7f0a0041
+            title = "Permissions: misses"
+      <item>
+            id = @0x7f0a0045
+            title = "PackagesInfo"
+
+########## menu/appinfos_activity_main   (res/rg.xml)
+  <menu>
+      <item>
+            id = @0x7f0a002e
+            title = "About"
+
+########## menu/appinfos_fragment_detail   (res/Hr.xml)
+  <menu>
+      <item>
+            id = @0x7f0a0055
+            title = "Uninstall"
+      <item>
+            id = @0x7f0a0058
+            title = "View in settings"
+      <item>
+            id = @0x7f0a0059
+            title = "View Manifest file"
+      <item>
+            id = @0x7f0a0056
+            title = "ClassyShark3xodus ?"
+      <item>
+            id = @0x7f0a0057
+            title = "F-Droid ?"
+
+########## menu/appinfos_fragment_detail_bar   (res/6u.xml)
+    <menu>
+        <item>
+              icon = @0x7f08005b
+              id = @0x7f0a0047
+              title = "Refresh"
+              showAsAction = 0x00000001
+
+########## menu/appinfos_fragment_main_list   (res/um.xml)
+    <menu>
+        <item>
+              icon = @0x7f08005c
+              title = "Sort"
+              showAsAction = 0x00000002
+            <menu>
+                <group>
+                    <item>
+                          id = @0x7f0a0049
+                          title = "System/User"
+                    <item>
+                          id = @0x7f0a004c
+                          title = "Name"
+                    <item>
+                          id = @0x7f0a004d
+                          title = "Package"
+                    <item>
+                          id = @0x7f0a004b
+                          title = "Update"
+                    <item>
+                          id = @0x7f0a004f
+                          title = "Shared user id"
+                    <item>
+                          id = @0x7f0a0050
+                          title = "Size"
+                    <item>
+                          id = @0x7f0a004e
+                          title = "Signatures"
+        <item>
+              icon = @0x7f08005b
+              id = @0x7f0a0046
+              title = "Refresh"
+              showAsAction = 0x00000001
+
+########## menu/fragment_launch_list   (res/hY.xml)
+    <menu>
+        <item>
+              icon = @0x7f08005c
+              title = "Sort"
+              showAsAction = 0x00000002
+            <menu>
+                <group>
+                    <item>
+                          id = @0x7f0a0049
+                          title = "System/User"
+                    <item>
+                          id = @0x7f0a004a
+                          title = "Task affinity"
+                    <item>
+                          id = @0x7f0a004c
+                          title = "Name"
+                    <item>
+                          id = @0x7f0a004d
+                          title = "Package"
+                    <item>
+                          id = @0x7f0a004b
+                          title = "Update"
+                    <item>
+                          id = @0x7f0a004f
+                          title = "Shared user id"
+                    <item>
+                          id = @0x7f0a0050
+                          title = "∑"
+                    <item>
+                          id = @0x7f0a004e
+                          title = "Loading applications"
+        <item>
+              icon = @0x7f08005b
+              id = @0x7f0a0046
+              title = "Refresh"
+              showAsAction = 0x00000001
+
+########## menu/menu_launch_sort   (res/21.xml)
+    <menu>
+        <item>
+              icon = @0x7f08005c
+              title = "Sort"
+              showAsAction = 0x00000002
+            <menu>
+                <group>
+                    <item>
+                          id = @0x7f0a0049
+                          title = "System/User"
+                    <item>
+                          id = @0x7f0a004c
+                          title = "Name"
+                    <item>
+                          id = @0x7f0a004d
+                          title = "Package"
+                    <item>
+                          id = @0x7f0a004b
+                          title = "Update"
+                    <item>
+                          id = @0x7f0a004f
+                          title = "Installation"
+        <item>
+              icon = @0x7f08005b
+              id = @0x7f0a0046
+              title = "Refresh"
+              showAsAction = 0x00000001
+
+########## menu/menu_main   (res/KD.xml)
+    <menu>
+        <group>
+            <item>
+                  id = @0x7f0a0048
+                  title = "ℹ⁞ 603 exoTrackers(455)"
+                  showAsAction = 0x00000000
+            <item>
+                  id = @0x7f0a0051
+                  title = "Sub totals: ∑ [ ... ] ..."
+                  showAsAction = 0x00000000
+            <item>
+                  id = @0x7f0a0054
+                  title = "Toggle list ↯"
+                  showAsAction = 0x00000000
+            <item>
+                  id = @0x7f0a0052
+                  title = "Super"
+                  showAsAction = 0x00000000
+            <item>
+                  id = @0x7f0a003a
+                  title = "Exit"
+                  showAsAction = 0x00000000
+
+########## menu/menu_source_viewer   (res/vs.xml)
+    <menu>
+        <item>
+              id = @0x7f0a0048
+              title = "Back"
+              showAsAction = 0x00000000
