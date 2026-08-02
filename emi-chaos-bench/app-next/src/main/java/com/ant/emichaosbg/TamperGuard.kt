@@ -134,7 +134,15 @@ class TamperGuard(private val ctx: Context) {
     )
 
     private fun checkSignature(): SigResult {
-        val expected = SuiteCertPins.expected(BuildConfig.DEBUG)
+        // Which pin applies is decided by WHICH KEYSTORE SIGNED THIS APK, not by whether the build
+        // is debuggable. Those two came apart here: this app's debug build type deliberately sets
+        // `isDebuggable = false` (sideloaded security software is never jdwp-attachable), and AGP
+        // derives BuildConfig.DEBUG from exactly that flag — so BuildConfig.DEBUG was false in the
+        // debug build, the release pin was selected, and an APK correctly signed by the committed
+        // debug keystore reported itself as NOT signed by the certificate it pins. SIGNED_BY_DEBUG_
+        // KEYSTORE is set in build.gradle.kts right beside each variant's `signingConfig`, so it
+        // tracks the signing key it names and cannot drift from it again.
+        val expected = SuiteCertPins.expected(BuildConfig.SIGNED_BY_DEBUG_KEYSTORE)
         val hash = try {
             val pm = ctx.packageManager
             val sigs: Array<Signature> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {

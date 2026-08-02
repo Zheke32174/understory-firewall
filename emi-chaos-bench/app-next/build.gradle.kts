@@ -57,8 +57,14 @@ android {
             // Sideloaded security software: never jdwp-attachable.
             isDebuggable = false
             isJniDebuggable = false
-            // -PminifyDebug=true shrinks the sideload APK while keeping
-            // BuildConfig.DEBUG=true, so the DEBUG cert pin stays the one
+            // WHICH CERT PIN THE RUNTIME CHECKS RIDES THIS FLAG, not BuildConfig.DEBUG.
+            // `isDebuggable = false` above makes AGP generate BuildConfig.DEBUG = false even for
+            // the debug variant, so the old `SuiteCertPins.expected(BuildConfig.DEBUG)` selected
+            // the RELEASE pin for an APK signed by the committed DEBUG keystore — and the app
+            // correctly-but-confusingly reported "NOT signed by the certificate this build pins".
+            // Declared beside the signingConfig it describes, it cannot drift from the key again.
+            buildConfigField("boolean", "SIGNED_BY_DEBUG_KEYSTORE", "true")
+            // -PminifyDebug=true shrinks the sideload APK; the DEBUG cert pin stays the one
             // checked and the committed debug keystore verifies.
             val minifyDebug = (project.findProperty("minifyDebug") as String?) == "true"
             isMinifyEnabled = minifyDebug
@@ -74,6 +80,8 @@ android {
         release {
             isDebuggable = false
             isJniDebuggable = false
+            // Signed by the offline release keystore (docs/SIGNING.md), so the RELEASE pin applies.
+            buildConfigField("boolean", "SIGNED_BY_DEBUG_KEYSTORE", "false")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
