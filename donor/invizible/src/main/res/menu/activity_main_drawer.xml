@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:showIn="navigation_view">
+
+    <group android:checkableBehavior="none"
+        android:id="@+id/nav_main_group">
+        <item
+            android:id="@+id/nav_fast_Pref"
+            android:icon="@drawable/ic_settings_fast"
+            android:title="@string/drawer_menu_fastSettings" />
+        <item
+            android:id="@+id/nav_common_Pref"
+            android:icon="@drawable/ic_settings_common"
+            android:title="@string/drawer_menu_commonSettings" />
+        <item
+            android:id="@+id/nav_firewall"
+            android:icon="@drawable/ic_firewall"
+            android:title="@string/menu_firewall" />
+        <item
+            android:id="@+id/nav_DNS_Pref"
+            android:icon="@drawable/ic_settings_dnscrypt"
+            android:title="@string/drawer_menu_DNSSettings" />
+        <item
+            android:id="@+id/nav_Tor_Pref"
+            android:icon="@drawable/ic_settings_tor"
+            android:title="@string/drawer_menu_TorSettings" />
+        <item
+            android:id="@+id/nav_I2PD_Pref"
+            android:icon="@drawable/ic_settings_itpd"
+            android:title="@string/drawer_menu_I2PDSettings" />
+    </group>
+
+    <group android:checkableBehavior="none"
+        android:id="@+id/nav_donate_group">
+        <item
+            android:id="@+id/nav_Donate"
+            android:icon="@drawable/ic_attach_money_black_24dp"
+            android:title="@string/drawer_menu_donate"
+            android:visible="false"/>
+        <item
+            android:id="@+id/nav_Code"
+            android:icon="@drawable/ic_enter_black_24dp"
+            android:title="@string/enter_code_button"
+            android:visible="false"/>
+    </group>
+
+    <group android:checkableBehavior="none"
+        android:id="@+id/nav_secondary_group">
+        <item
+            android:id="@+id/nav_backup"
+            android:icon="@drawable/ic_save_black_24dp"
+            android:title="@string/drawer_menu_backup" />
+        <item
+            android:id="@+id/nav_help"
+            android:icon="@drawable/ic_help_black_24dp"
+            android:title="@string/drawer_menu_help" />
+        <item
+            android:id="@+id/nav_about"
+            android:icon="@drawable/ic_info_black_24dp"
+            android:title="@string/drawer_menu_about" />
+    </group>
+
+</menu>

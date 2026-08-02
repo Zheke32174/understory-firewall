@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    android:key="pref_common">
+
+    <PreferenceCategory
+        android:key="HOTSPOT"
+        android:layout="@layout/preferences_category_custom"
+        android:title="@string/pref_common_categ_hotspot">
+
+        <SwitchPreference
+            android:id="@+id/pref_common_tethering_autostart"
+            android:defaultValue="false"
+            android:key="pref_common_tethering_autostart"
+            android:title="@string/pref_common_tethering_autostart" />
+        <SwitchPreference
+            android:id="@+id/pref_common_tor_tethering"
+            android:defaultValue="false"
+            android:key="pref_common_tor_tethering"
+            android:title="@string/pref_common_tor_tethering" />
+        <SwitchPreference
+            android:id="@+id/pref_common_tor_route_all"
+            android:defaultValue="true"
+            android:dependency="pref_common_tor_tethering"
+            android:key="pref_common_tor_route_all"
+            android:summary="@string/pref_common_tor_route_all_summ"
+            android:title="@string/pref_common_tor_route_all" />
+        <Preference
+            android:dependency="pref_common_tor_tethering"
+            android:key="prefTorSiteUnlockTether"
+            android:summary="@string/pref_common_unblock_with_tor_summ"
+            android:title="@string/pref_common_unblock_with_tor">
+            <intent
+                android:action="tor_sites_unlock_tether"
+                android:targetClass="pan.alexander.tordnscrypt.settings.SettingsActivity"
+                android:targetPackage="@string/package_name" />
+        </Preference>
+        <Preference
+            android:dependency="pref_common_tor_route_all"
+            android:key="prefTorSiteExcludeTether"
+            android:summary="@string/pref_common_excludes_from_tor_summ"
+            android:title="@string/pref_common_excludes_from_tor">
+            <intent
+                android:action="tor_sites_unlock_tether"
+                android:targetClass="pan.alexander.tordnscrypt.settings.SettingsActivity"
+                android:targetPackage="@string/package_name" />
+        </Preference>
+        <SwitchPreference
+            android:id="@+id/pref_common_itpd_tethering"
+            android:defaultValue="false"
+            android:key="pref_common_itpd_tethering"
+            android:title="@string/pref_common_itpd_tethering" />
+        <SwitchPreference
+            android:id="@+id/pref_common_fix_ttl"
+            android:defaultValue="false"
+            android:key="pref_common_fix_ttl"
+            android:summary="@string/pref_common_fix_ttl_summ"
+            android:title="@string/pref_common_fix_ttl" />
+        <EditTextPreference
+            android:id="@+id/pref_common_local_eth_device_addr"
+            android:defaultValue="192.168.0.100"
+            android:key="pref_common_local_eth_device_addr"
+            android:selectAllOnFocus="false"
+            android:singleLine="true"
+            android:title="@string/pref_common_local_eth_device_addr" />
+        <Preference
+            android:key="pref_common_tethering_settings"
+            android:title="@string/pref_common_tethering_settings" />
+        <SwitchPreference
+            android:defaultValue="false"
+            android:key="pref_common_block_http"
+            android:summary="@string/pref_common_block_http_summ"
+            android:title="@string/pref_common_block_http" />
+    </PreferenceCategory>
+    <PreferenceCategory
+        android:key="categoryUseModulesRoot"
+        android:layout="@layout/preferences_category_custom"
+        android:title="@string/pref_common_categ_run_with_root">
+        <SwitchPreference
+            android:id="@+id/swUseModulesRoot"
+            android:defaultValue="false"
+            android:key="swUseModulesRoot"
+            android:summary="@string/pref_common_run_with_root_summ"
+            android:title="@string/pref_common_run_with_root" />
+    </PreferenceCategory>
+    <PreferenceCategory
+        android:key="pref_common_mitm_categ"
+        android:layout="@layout/preferences_category_custom"
+        android:title="@string/pref_common_mitm_categ">
+        <SwitchPreference
+            android:id="@+id/pref_common_arp_spoofing_detection"
+            android:defaultValue="false"
+            android:key="pref_common_arp_spoofing_detection"
+            android:summary="@string/pref_common_arp_spoofing_detection_summ"
+            android:title="@string/pref_common_arp_spoofing_detection" />
+        <SwitchPreference
+            android:id="@+id/pref_common_arp_block_internet"
+            android:defaultValue="false"
+            android:dependency="pref_common_arp_spoofing_detection"
+            android:key="pref_common_arp_block_internet"
+            android:summary="@string/pref_common_arp_block_internet_summ"
+            android:title="@string/pref_common_arp_block_internet" />
+        <SwitchPreference
+            android:id="@+id/pref_common_dns_rebind_protection"
+            android:defaultValue="false"
+            android:key="pref_common_dns_rebind_protection"
+            android:summary="@string/pref_common_dns_rebind_protection_summ"
+            android:title="@string/pref_common_dns_rebind_protection" />
+    </PreferenceCategory>
+    <PreferenceCategory
+        android:key="categoryCommonProxy"
+        android:layout="@layout/preferences_category_custom"
+        android:title="@string/pref_common_proxy_categ">
+        <Preference
+            android:id="@+id/swUseProxy"
+            android:key="swUseProxy"
+            android:summary="@string/pref_common_proxy_summ"
+            android:title="@string/pref_common_proxy" />
+    </PreferenceCategory>
+    <PreferenceCategory
+        android:key="common_other"
+        android:layout="@layout/preferences_category_custom"
+        android:title="@string/pref_common_categ_other">
+
+        <Preference
+            android:id="@+id/always_on_vpn"
+            android:key="always_on_vpn"
+            android:title="@string/pref_common_kill_switch"
+            android:summary="@string/pref_common_always_on_vpn_summ" />
+        <SwitchPreference
+            android:id="@+id/swShowNotification"
+            android:defaultValue="true"
+            android:key="swShowNotification"
+            android:summary="@string/pref_common_notification_summ"
+            android:title="@string/pref_common_show_notification" />
+        <SwitchPreference
+            android:id="@+id/swKillSwitch"
+            android:defaultValue="false"
+            android:key="swKillSwitch"
+            android:summary="@string/pref_common_kill_switch_summ"
+            android:title="@string/pref_common_kill_switch" />
+        <SwitchPreference
+            android:id="@+id/swRefreshRules"
+            android:defaultValue="false"
+            android:key="swRefreshRules"
+            android:summary="@string/pref_common_refresh_rules_summ"
+            android:title="@string/pref_common_refresh_rules" />
+        <SwitchPreference
+            android:id="@+id/swWakelock"
+            android:defaultValue="false"
+            android:key="swWakelock"
+            android:summary="@string/pref_common_wakelock_summ"
+            android:title="@string/pref_common_wakelock" />
+        <SwitchPreference
+            android:id="@+id/swCompatibilityMode"
+            android:defaultValue="false"
+            android:key="swCompatibilityMode"
+            android:summary="@string/pref_common_compatibility_mode_summ"
+            android:title="@string/pref_common_compatibility_mode" />
+        <SwitchPreference
+            android:id="@+id/pref_common_multi_user"
+            android:defaultValue="true"
+            android:key="pref_common_multi_user"
+            android:summary="@string/pref_common_multi_user_summ"
+            android:title="@string/pref_common_multi_user" />
+        <SwitchPreference
+            android:id="@+id/pref_common_fast_network_switching"
+            android:defaultValue="true"
+            android:key="pref_common_fast_network_switching"
+            android:summary="@string/pref_common_fast_network_switching_summ"
+            android:title="@string/pref_common_fast_network_switching" />
+        <SwitchPreference
+            android:id="@+id/pref_common_show_help"
+            android:defaultValue="false"
+            android:key="pref_common_show_help"
+            android:summary="@string/pref_common_show_help_summ"
+            android:title="@string/pref_common_show_help" />
+        <SwitchPreference
+            android:id="@+id/pref_common_shell_control"
+            android:defaultValue="false"
+            android:key="pref_common_shell_control"
+            android:title="@string/pref_common_shell_control" />
+        <androidx.preference.ListPreference
+            android:defaultValue="1"
+            android:entries="@array/pref_common_categ_use_busybox_titles"
+            android:entryValues="@array/pref_common_use_busybox_values"
+            android:key="pref_common_use_busybox"
+            android:title="@string/pref_common_use_busybox" />
+        <androidx.preference.ListPreference
+            android:defaultValue="2"
+            android:entries="@array/pref_common_categ_use_iptables_titles"
+            android:entryValues="@array/pref_common_use_iptables_values"
+            android:key="pref_common_use_iptables"
+            android:title="@string/pref_common_use_iptables" />
+        <SwitchPreference
+            android:id="@+id/pref_common_wait_iptables"
+            android:defaultValue="true"
+            android:key="pref_common_wait_iptables"
+            android:summary="@string/pref_common_wait_iptables_summ"
+            android:title="@string/pref_common_wait_iptables" />
+    </PreferenceCategory>
+</androidx.preference.PreferenceScreen>
