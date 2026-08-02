@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  WARD (Home) copy.
+
+  Section-scoped file: Android merges every res/values/*.xml, so this section owns its own
+  strings and never edits the shared strings.xml.
+
+  House rule, applied hard here because this is the screen that makes the claim: every string
+  states the REACH of the control it labels. Godwall denies by NAME inside its own tunnel unless
+  a privileged shell is attached, so "block" without qualification is a lie the user pays for.
+-->
+<resources>
+
+    <!-- Navigation -->
+    <string name="nav_ward">Ward</string>
+    <string name="cd_nav_ward">Ward — status and controls</string>
+    <string name="title_ward">Godwall</string>
+    <string name="title_enforcement">Enforcement</string>
+
+    <!-- ── Master switch ───────────────────────────────────────────────────────────────── -->
+    <string name="ward_engage">Engage</string>
+    <string name="ward_stand_down">Stand down</string>
+    <string name="ward_state_up">Engaged — Godwall holds the VPN slot</string>
+    <string name="ward_state_starting">Engaging…</string>
+    <string name="ward_state_down">Stood down — nothing is being filtered</string>
+    <string name="ward_state_down_detail">Stood down — %1$s</string>
+    <string name="ward_state_failed">Failed to engage — %1$s</string>
+    <string name="ward_consent_declined">you declined the VPN permission</string>
+    <string name="ward_scope_note">Godwall filters DNS: it decides which names resolve, for which
+        app, over an encrypted upstream. It is not a packet firewall on its own — an app denied
+        here can still reach an address it already knows. Packet-level denial needs the privileged
+        shell from Yojimbo, and the enforcement badge below says whether one is in force.</string>
+    <string name="ward_counts">%1$d queries this session, %2$d blocked</string>
+
+    <!-- ── Mode chips ──────────────────────────────────────────────────────────────────── -->
+    <string name="ward_mode_header">Mode</string>
+    <string name="ward_mode_dns_only">DNS only</string>
+    <string name="ward_mode_firewall_only">Firewall only</string>
+    <string name="ward_mode_dns_firewall">DNS + Firewall</string>
+    <string name="ward_mode_tailnet_only">Tailnet only</string>
+    <string name="ward_mode_full_stack">Full stack</string>
+    <string name="ward_mode_desc_dns_only">Battery saver. Name lookups are filtered and encrypted;
+        no per-app network denial is applied.</string>
+    <string name="ward_mode_desc_firewall_only">Per-app network denial through the platform
+        firewall chain. Name lookups still go to your configured upstream but are not filtered by
+        name.</string>
+    <string name="ward_mode_desc_dns_firewall">The default. Name filtering and per-app network
+        denial together.</string>
+    <string name="ward_mode_desc_tailnet_only">The slot carries Godwall\'s own tailnet node and
+        nothing else. Names are not filtered while this mode is selected.</string>
+    <string name="ward_mode_desc_full_stack">Name filtering, per-app network denial, and the
+        tailnet node, all inside the one slot.</string>
+    <string name="ward_mode_applied_live">Applied to the next lookup — the engine keeps the slot,
+        so nothing reconnects.</string>
+    <string name="ward_mode_applied_on_engage">Saved. It takes effect when you engage.</string>
+    <string name="ward_mode_tier_inert">This mode asks for a tier this device cannot run — see the
+        banner above.</string>
+    <string name="cd_ward_mode_chips">Mode</string>
+
+    <!-- ── Enforcement badge ───────────────────────────────────────────────────────────── -->
+    <string name="ward_enforcement_badge">Enforcing via %1$s</string>
+    <string name="ward_enforcement_none">No enforcement backend available</string>
+    <string name="ward_enforcement_pin_failed">Pinned to %1$s, which is not available right now —
+        %2$s is carrying enforcement instead.</string>
+    <string name="ward_enforcement_probing">Probing enforcement backends…</string>
+    <string name="enf_iptables">iptables</string>
+    <string name="enf_connectivity">ConnectivityManager</string>
+    <string name="enf_netpolicy">NetworkPolicyManager</string>
+    <string name="enf_vpn">VPN</string>
+    <string name="enf_proxy">Proxy</string>
+    <string name="enf_screen_intro">Which mechanism actually carries out per-app denial. Each row
+        below was probed on this device just now — an unavailable backend says why, and pinning
+        one that is unavailable does not silently become the pin.</string>
+    <string name="enf_auto">Auto-select (strongest available)</string>
+    <string name="enf_auto_help">Walks iptables → ConnectivityManager → NetworkPolicyManager → VPN
+        → Proxy and takes the first that answered.</string>
+    <string name="enf_in_force">In force</string>
+    <string name="enf_pinned">Pinned</string>
+    <string name="enf_unavailable">Unavailable</string>
+    <string name="enf_refresh">Probe again</string>
+    <string name="enf_operating_modes">Operating mode</string>
+    <string name="enf_operating_modes_help">The donor apps call these Root mode, VPN mode and
+        Proxy mode. They are the same choice as the rows above: Root mode is iptables, VPN mode is
+        Godwall\'s own tunnel, Proxy mode is the egress chain.</string>
+
+    <!-- ── Status cards ────────────────────────────────────────────────────────────────── -->
+    <string name="ward_cards_header">Status</string>
+    <string name="card_tunnel">Tunnel</string>
+    <string name="card_tunnel_state">Tailnet %1$s</string>
+    <string name="card_tunnel_exit">exit node %1$s</string>
+    <string name="card_tunnel_no_exit">no exit node</string>
+    <string name="card_tunnel_posture_ok">device posture clean</string>
+    <string name="card_tunnel_posture_warn">device posture: %1$s</string>
+    <string name="card_dns">DNS</string>
+    <string name="card_dns_filter_on">filter on, %1$d domains</string>
+    <string name="card_dns_filter_off">filter off</string>
+    <string name="card_dns_leak_ok">leaks OK</string>
+    <string name="card_dns_leak_fail">LEAK</string>
+    <string name="card_dns_leak_na">leak check n/a</string>
+    <string name="card_firewall">Firewall</string>
+    <string name="card_firewall_counts">%1$d blocked · %2$d name-isolated · %3$d excluded from the
+        tunnel · %4$d refused</string>
+    <string name="card_firewall_unavailable">Packet-level denial unavailable: %1$s</string>
+    <string name="card_proxy">Proxy</string>
+    <string name="card_proxy_off">Chain configured but not routing — %1$s</string>
+    <string name="card_proxy_gated">Not in this build: %1$s</string>
+    <string name="card_logs">Logs</string>
+    <string name="card_logs_rate">%1$d queries/min, %2$d blocked/min</string>
+    <string name="card_logs_totals">%1$d queries this session, %2$d blocked</string>
+    <string name="card_apps">Apps</string>
+    <string name="card_apps_counts">%1$d installed · %2$d with internet · %3$d blocked</string>
+
+    <!-- ── Health &amp; alerts banner ──────────────────────────────────────────────────── -->
+    <string name="ward_health_header">Health</string>
+    <string name="ward_health_ok">Operating normally. Nothing is claiming a state it cannot
+        reach.</string>
+    <string name="ward_alert_engine_failed">The engine failed to start: %1$s Nothing is being
+        filtered.</string>
+    <string name="ward_alert_conflicting_vpn">Another app is holding a VPN on this device. While
+        it does, Godwall cannot take the slot and filters nothing.</string>
+    <string name="ward_alert_dns_leak">Some lookups are going to a resolver Godwall does not see.
+        Open the DNS card for the addresses.</string>
+    <string name="ward_alert_self_block">%1$d stored rule(s) name Godwall itself. They are refused
+        rather than applied — cutting Godwall off would take the filter down with it.</string>
+    <string name="ward_alert_firewall_inert">This mode asks for per-app network denial, which
+        needs the privileged shell from Yojimbo. Until one is attached, only name-based denial is
+        in force.</string>
+    <string name="ward_alert_tailnet_inert">This mode asks for the tailnet node, and the mesh data
+        plane is not in this build. No tunnel is running.</string>
+    <string name="ward_alert_refused_denials">%1$d denial(s) you set cannot be applied: they name
+        core networking or a VPN provider, and applying them could take this device off the
+        network.</string>
+    <string name="ward_alert_mitm">This device trusts %1$d certificate authority you or an
+        administrator installed. Any holder of one can read TLS from apps that trust user CAs.
+        Godwall\'s own upstream never does.</string>
+    <string name="ward_alert_filter_empty">The name filter is on but no domains are loaded, so
+        nothing is being blocked by list.</string>
+    <string name="ward_alert_paused">Protection is paused. Every name resolves normally until the
+        countdown ends.</string>
+    <string name="ward_alert_lockdown">Lockdown is on: every name lookup that reaches Godwall is
+        answered with the block response.</string>
+    <string name="ward_alert_child_lock">Child lock is on. The engine keeps running; the controls
+        stay frozen until the PIN is entered.</string>
+
+    <!-- ── Quick actions ───────────────────────────────────────────────────────────────── -->
+    <string name="ward_quick_header">Quick actions</string>
+    <string name="qa_pause">Pause protection</string>
+    <string name="qa_pause_help">Keeps the slot and the tunnel; stops applying every name rule for
+        the countdown, then resumes on its own.</string>
+    <string name="qa_pause_unavailable">Nothing to pause — Godwall is not engaged.</string>
+    <string name="qa_paused_remaining">Paused — %1$s left</string>
+    <string name="qa_pause_add">+1 min</string>
+    <string name="qa_pause_sub">−1 min</string>
+    <string name="qa_resume">Resume now</string>
+    <string name="qa_lockdown">Lockdown</string>
+    <string name="qa_lockdown_on">Lockdown is ON</string>
+    <string name="qa_lockdown_help">Answers every name lookup that reaches Godwall with the block
+        response, in every mode. Apps you excluded from the tunnel are unaffected — their traffic
+        never enters it. An app that already knows an address can still reach it.</string>
+    <string name="qa_lockdown_not_engaged">Godwall is not engaged, so no lookup reaches it and
+        this changes nothing yet. It applies the moment you engage.</string>
+    <string name="qa_killswitch">Kill switch</string>
+    <string name="qa_killswitch_state_on">Always-on VPN is on, and connections without a VPN are
+        blocked.</string>
+    <string name="qa_killswitch_state_alwayson">Always-on VPN is on, but connections without a VPN
+        are still allowed.</string>
+    <string name="qa_killswitch_state_off">Always-on VPN is off for this device.</string>
+    <string name="qa_killswitch_state_unknown">Android only reports this to a running VPN service.
+        Engage Godwall once and it will be read.</string>
+    <string name="qa_killswitch_help">Android owns this switch — no app can set it. This opens the
+        system screen where it lives.</string>
+    <string name="qa_killswitch_no_screen">This device has no system VPN settings screen to
+        open.</string>
+    <string name="qa_canary">Canary run</string>
+    <string name="qa_canary_help">Sends real traffic and reports what came back — the slot, the
+        upstream, the filter, the leak check, the chain and the enforcement backend.</string>
+    <string name="qa_canary_running">Running canaries…</string>
+    <string name="qa_tor_identity">New Tor identity</string>
+
+    <!-- ── Canary results ──────────────────────────────────────────────────────────────── -->
+    <string name="canary_title">Canary run</string>
+    <string name="canary_check_slot">VPN slot</string>
+    <string name="canary_check_upstream">Encrypted upstream</string>
+    <string name="canary_check_filter">Name filter</string>
+    <string name="canary_check_leak">Leak check</string>
+    <string name="canary_check_chain">Egress chain</string>
+    <string name="canary_check_enforcement">Enforcement backend</string>
+    <string name="canary_pass">PASS</string>
+    <string name="canary_fail">FAIL</string>
+    <string name="canary_skipped">SKIPPED</string>
+    <string name="canary_close">Close</string>
+
+    <!-- ── Overflow ────────────────────────────────────────────────────────────────────── -->
+    <string name="ward_more">More</string>
+    <string name="cd_ward_more">More Ward actions</string>
+    <string name="of_choose_mode">Choose mode</string>
+    <string name="of_child_lock">Child lock</string>
+    <string name="of_child_lock_off">Off — controls are not frozen</string>
+    <string name="of_child_lock_on">On — controls are frozen until the PIN is entered</string>
+    <string name="of_child_lock_set">Set a PIN</string>
+    <string name="of_child_lock_engage">Freeze the controls</string>
+    <string name="of_child_lock_unlock">Unlock</string>
+    <string name="of_child_lock_remove">Remove the PIN</string>
+    <string name="of_child_lock_help">Freezes the master switch, the mode, lockdown and pause. The
+        engine keeps doing whatever it was already doing — a lock that stopped protection would be
+        a way to turn protection off without the PIN.</string>
+    <string name="of_child_lock_pin">PIN (at least %1$d digits)</string>
+    <string name="of_child_lock_wrong">That PIN did not match.</string>
+    <string name="of_child_lock_too_short">A PIN must be at least %1$d characters.</string>
+    <string name="of_hotspot">Hotspot sharing</string>
+    <string name="of_enforcement">Enforcement backend</string>
+    <string name="ward_locked_notice">Child lock is on — enter the PIN to use this control.</string>
+    <string name="ward_cancel">Cancel</string>
+
+    <!-- ── Gated capabilities (docs/DONOR-ASSETS.md) ───────────────────────────────────── -->
+    <string name="gated_tor">Tor is not in this build: it needs the tor binary and its config
+        tree, which are a separate payload this build was not given. Nothing Tor-related is
+        running, and no control here pretends otherwise.</string>
+    <string name="gated_i2p">I2P is not in this build: it needs the i2pd binary and i2pd.conf,
+        which are a separate payload this build was not given.</string>
+    <string name="gated_dnscrypt">Local dnscrypt-proxy is not in this build: it needs the
+        dnscrypt-proxy binary and its .toml, which are a separate payload this build was not
+        given. DoT and DoH upstreams are unaffected and are what the DNS card reports.</string>
+    <string name="gated_hotspot">Hotspot sharing is not in this build: routing tethered clients
+        through the tunnel is done with iptables rules through a bundled busybox, which is a
+        separate payload this build was not given.</string>
+    <string name="gated_short_tor">Tor</string>
+    <string name="gated_short_i2p">I2P</string>
+    <string name="gated_short_dnscrypt">dnscrypt-proxy</string>
+
+    <!-- ── Search (not built) ──────────────────────────────────────────────────────────── -->
+    <string name="of_search">Search</string>
+    <string name="ward_search_absent">Search covers apps, UIDs and rules, which live on the
+        Wardens and Firewall screens. It is not on this screen because there is nothing here it
+        could search.</string>
+</resources>

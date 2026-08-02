@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DNS stack (WP-3) copy.
+
+  Section-scoped file: Android merges every res/values/*.xml, so this section owns its own
+  strings and never edits the shared strings.xml. Every id is prefixed `dns_` so it cannot
+  collide with a sibling package's section file.
+
+  House rule, applied hard: every string states the REACH of the control it labels. Godwall's
+  DNS stack resolves the names in the traffic its own tun carries — it does not change what
+  other apps on the device use for DNS — and each reach sentence says so, because a control that
+  overstates its boundary is the failure this campaign exists to remove.
+-->
+<resources>
+
+    <!-- ── Section ─────────────────────────────────────────────────────────────────────── -->
+    <string name="dns_section_title">DNS</string>
+    <string name="dns_section_summary">Godwall\'s own encrypted DNS stack: dnscrypt-proxy behind dnsmasq, run at uid 2000 out of the Linux subsystem. It resolves the names in traffic Godwall\'s tun carries; it changes nothing about the DNS other apps use.</string>
+
+    <!-- ── Backed by dnscrypt-proxy ────────────────────────────────────────────────────── -->
+    <string name="dns_cap_dnscrypt_title">DNSCrypt resolver</string>
+    <string name="dns_cap_dnscrypt_reach">Encrypts Godwall\'s upstream DNS with the DNSCrypt protocol on 127.0.0.1:5354. It resolves the names in the traffic Godwall\'s tun carries; it does not change the DNS any other app on the device uses.</string>
+
+    <string name="dns_cap_relays_title">Anonymized DNSCrypt relays</string>
+    <string name="dns_cap_relays_reach">Routes DNSCrypt queries through a relay so the resolver never sees your IP address. It covers only the queries this stack resolves, and only for servers a relay can carry; an incompatible route falls back to a direct, still-encrypted path.</string>
+
+    <string name="dns_cap_doh_title">DNS-over-HTTPS (DoH)</string>
+    <string name="dns_cap_doh_reach">Lets the resolver use DoH servers, including HTTP/3, among its encrypted upstreams. It applies to the DNS this stack resolves, not to any other app\'s own DoH setting.</string>
+
+    <string name="dns_cap_odoh_title">Oblivious DNS-over-HTTPS (ODoH)</string>
+    <string name="dns_cap_odoh_reach">Sends queries to an ODoH target through an ODoH relay, so the target never sees your IP and the relay never sees your query. It covers only the DNS this stack resolves.</string>
+
+    <string name="dns_cap_dnssec_title">DNSSEC, no-log, no-filter floor</string>
+    <string name="dns_cap_dnssec_reach">Requires every chosen resolver to be DNSSEC-validatable, to declare it keeps no query logs, and to run no blacklist of its own. It constrains which upstreams this stack will use; Godwall does its own blocklist filtering separately.</string>
+
+    <!-- ── Backed by dnsmasq ───────────────────────────────────────────────────────────── -->
+    <string name="dns_cap_cache_title">Local DNS cache</string>
+    <string name="dns_cap_cache_reach">Caches answers on 127.0.0.1:5353 so repeat lookups are served locally without a round trip. It caches only the DNS this stack resolves.</string>
+
+    <string name="dns_cap_rebind_title">DNS rebind protection</string>
+    <string name="dns_cap_rebind_reach">Rejects upstream answers that map a public name to a private or loopback address — the core of a DNS-rebinding attack. It guards only the DNS this stack resolves; 127.0.0.0/8 is allowed so Godwall\'s own loopback services still resolve.</string>
+
+    <string name="dns_cap_noleak_title">No cleartext fallback</string>
+    <string name="dns_cap_noleak_reach">The front-end forwards every query to the encrypted resolver and has no plaintext upstream, so a lookup it handles cannot leave the device unencrypted — if the encrypted resolver is down it fails the query rather than leaking it. This is the resolver path only; forcing other apps through it is the separate control below.</string>
+
+    <!-- ── Honestly gated: not in this build ───────────────────────────────────────────── -->
+    <string name="dns_cap_dot_title">DNS-over-TLS (DoT)</string>
+    <string name="dns_cap_dot_reach">Would carry upstream DNS over a TLS connection on port 853. Not provided by this build\'s DNS engine — see the note below.</string>
+    <string name="dns_gate_dot">DNS-over-TLS is not provided by this build\'s DNS engine: dnscrypt-proxy speaks DNSCrypt, DoH and ODoH, not DoT. A DoT transport would come from firestack\'s Intra engine (addDoTTransport), which is not wired into this package. This control stays disabled rather than claim a DoT upstream that does not exist.</string>
+
+    <string name="dns_cap_leak_enforce_title">System-wide DNS leak prevention</string>
+    <string name="dns_cap_leak_enforce_reach">Would force every app\'s port-53 traffic through Godwall\'s resolver so nothing can use a DNS server of its own. Not enforced by this build — see the note below.</string>
+    <string name="dns_gate_leak_enforce">Godwall\'s resolvers listen on loopback; forcing every app\'s port-53 traffic through them is a redirect performed in the VPN tun datapath or the privileged netfilter tier, not in this socket-space DNS package. Until that redirect is wired, an app that hard-codes its own DNS server can still bypass these resolvers, so this control stays disabled rather than claim protection it cannot enforce.</string>
+
+</resources>

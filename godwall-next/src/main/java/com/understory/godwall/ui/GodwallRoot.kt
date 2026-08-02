@@ -26,8 +26,11 @@ import com.understory.security.ui.components.SuiteTab
  * rather than ported. What is left is the set of things Godwall does.
  */
 enum class GodwallRoute {
-    /** Arm/disarm, and the truth about what is currently filtered. */
-    SHIELD,
+    /**
+     * WARD — the home screen: master switch, mode chips, enforcement badge, status cards, the
+     * health banner and the quick actions. The donors' home fragment, ported.
+     */
+    WARD,
 
     /** Per-app blackhole and per-app bypass. */
     APPS,
@@ -47,21 +50,30 @@ enum class GodwallRoute {
     /** Privilege state — from Yojimbo, from nowhere else. */
     PRIVILEGE,
 
+    /**
+     * Which mechanism is carrying out per-app denial, and the probe that decided it.
+     *
+     * Pushed from the WARD enforcement badge. The spec puts this under Settings; Settings does
+     * not exist yet, and a badge that taps through to nothing would be a dead control, so it is
+     * a route of its own until that screen lands.
+     */
+    ENFORCEMENT,
+
     /** Shared suite diagnostics ring. */
     DIAGNOSTICS,
 }
 
 @Composable
 fun GodwallRoot() {
-    val nav = rememberSuiteNav(home = GodwallRoute.SHIELD, tag = "godwall.nav")
+    val nav = rememberSuiteNav(home = GodwallRoute.WARD, tag = "godwall.nav")
 
     val tabs = listOf(
         SuiteTab(
-            route = GodwallRoute.SHIELD.name,
-            label = stringResource(R.string.nav_shield),
+            route = GodwallRoute.WARD.name,
+            label = stringResource(R.string.nav_ward),
             icon = Icons.Filled.Shield,
-            contentDescription = stringResource(R.string.cd_nav_shield),
-            title = stringResource(R.string.title_shield),
+            contentDescription = stringResource(R.string.cd_nav_ward),
+            title = stringResource(R.string.title_ward),
         ),
         SuiteTab(
             route = GodwallRoute.APPS.name,
@@ -116,15 +128,17 @@ fun GodwallRoot() {
     )
 
     SuiteNavShell(nav = nav, tabs = tabs) { current, inner ->
-        when (runCatching { GodwallRoute.valueOf(current) }.getOrDefault(GodwallRoute.SHIELD)) {
-            GodwallRoute.SHIELD -> ShieldScreen(
+        when (runCatching { GodwallRoute.valueOf(current) }.getOrDefault(GodwallRoute.WARD)) {
+            GodwallRoute.WARD -> WardScreen(
                 padding = inner,
                 onOpenDns = { nav.push(GodwallRoute.DNS) },
                 onOpenApps = { nav.push(GodwallRoute.APPS) },
                 onOpenMesh = { nav.push(GodwallRoute.MESH) },
                 onOpenChain = { nav.push(GodwallRoute.CHAIN) },
-                onOpenPrivilege = { nav.push(GodwallRoute.PRIVILEGE) },
+                onOpenLog = { nav.push(GodwallRoute.LOG) },
+                onOpenEnforcement = { nav.push(GodwallRoute.ENFORCEMENT) },
             )
+            GodwallRoute.ENFORCEMENT -> EnforcementScreen(padding = inner)
             GodwallRoute.APPS -> AppsScreen(padding = inner)
             GodwallRoute.DNS -> DnsScreen(padding = inner, onOpenLog = { nav.push(GodwallRoute.LOG) })
             GodwallRoute.CHAIN -> ChainScreen(padding = inner)

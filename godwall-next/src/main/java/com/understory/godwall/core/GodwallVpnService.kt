@@ -10,12 +10,18 @@ import android.net.VpnService
 import android.os.ParcelFileDescriptor
 import com.understory.godwall.MainActivity
 import com.understory.godwall.R
+import com.understory.godwall.apps.DeniedApps
+import com.understory.godwall.apps.NetworkChainBackend
 import com.understory.godwall.chain.EndpointChain
 import com.understory.godwall.dns.BlocklistRepository
 import com.understory.godwall.dns.ConnectionAttributor
 import com.understory.godwall.dns.DnsEventLog
 import com.understory.godwall.dns.DnsSettings
 import com.understory.godwall.mesh.Mesh
+import com.understory.godwall.ward.KillSwitch
+import com.understory.godwall.ward.Lockdown
+import com.understory.godwall.ward.Pause
+import com.understory.godwall.ward.WardModeStore
 import com.understory.net.engine.DnsMessage
 import com.understory.net.engine.VpnPacketParser
 import com.understory.security.Diagnostics
@@ -74,6 +80,17 @@ class GodwallVpnService : VpnService() {
     @Volatile private var tearingDown = false
 
     /**
+     * The platform-firewall tier of the current WARD mode.
+     *
+     * One instance for the life of the service because it caches what it has actually applied —
+     * rebuilding it per pass would turn every re-apply into a storm of privileged shell calls.
+     */
+    private val chainBackend by lazy { NetworkChainBackend(applicationContext) }
+
+    /** True once the firewall tier has been applied, so teardown knows to release it. */
+    @Volatile private var firewallTierApplied = false
+
+    /**
      * Link the mesh data plane here, and here only.
      *
      * This call site is the whole reason the mesh works at all. The previous build's equivalent
@@ -93,6 +110,15 @@ class GodwallVpnService : VpnService() {
             teardown("stopped by user")
             stopSelf()
             return START_NOT_STICKY
+        }
+        // The WARD mode changed while we were up. The DNS tier is read per query so it needs
+        // nothing here; the firewall and tailnet tiers are applied once, so they are re-applied
+        // off the main thread rather than by tearing the tun down and asking for the slot again.
+        if (intent?.action == ACTION_APPLY_MODE) {
+            if (running.get()) {
+                thread(name = "godwall-tiers", isDaemon = true) { applyTiers() }
+            }
+            return START_STICKY
         }
         if (running.get()) return START_STICKY
 
@@ -139,14 +165,58 @@ class GodwallVpnService : VpnService() {
         EngineState.publish(EngineState.Phase.UP, "filtering DNS")
         Diagnostics.log(TAG, "tun established — DNS filter live")
 
+        // Android only tells a *running* VpnService whether the user turned on always-on and its
+        // "block connections without VPN" checkbox. There is no API to set them, so this is read
+        // and published for the kill-switch card to report rather than guess.
+        runCatching { KillSwitch.publish(isAlwaysOn(), isLockdownEnabled()) }
+
         worker = thread(name = "godwall-dns", isDaemon = true) {
             // Reading and parsing the blocklist is blocking I/O over a gzipped asset, so it
             // belongs here rather than in onStartCommand — which runs on the main thread and
             // would stall the UI at exactly the moment the user is watching the shield.
             runCatching { BlocklistRepository.reload(applicationContext) }
                 .onFailure { Diagnostics.error(TAG, "blocklist reload: ${it.message}") }
+            applyTiers()
             pump(pfd)
         }
+    }
+
+    /**
+     * Bring the non-DNS tiers of the current WARD mode into force.
+     *
+     * Blocking: the firewall tier is privileged shell calls and the tailnet tier starts a Go
+     * node, so this only ever runs on a worker thread.
+     *
+     * The DNS tier is deliberately absent from here — it is consulted per query in [handle], so
+     * switching modes changes filtering on the very next lookup with nothing to re-apply.
+     */
+    private fun applyTiers() {
+        val ctx = applicationContext
+        val mode = WardModeStore.current(ctx)
+
+        if (mode.enforcesFirewall) {
+            val result = runCatching { chainBackend.applyAll(DeniedApps.effective(ctx)) }
+                .getOrElse {
+                    Diagnostics.error(TAG, "firewall tier threw ${it.javaClass.simpleName}")
+                    null
+                }
+            firewallTierApplied = chainBackend.isAvailable() && result?.ok == true
+            Diagnostics.log(TAG, "firewall tier: ${result?.note ?: "not applied"}")
+        } else if (firewallTierApplied) {
+            releaseFirewallTier()
+        }
+
+        if (mode.runsTailnet && !Mesh.start(ctx)) {
+            // Not an error state for the service: the Mesh screen and the WARD health banner
+            // both already state which of the two reasons applies.
+            Diagnostics.warn(TAG, "tailnet tier requested but the node did not start")
+        }
+    }
+
+    private fun releaseFirewallTier() {
+        firewallTierApplied = false
+        runCatching { chainBackend.disarm() }
+            .onFailure { Diagnostics.warn(TAG, "releasing the firewall chain: ${it.message}") }
     }
 
     /**
@@ -202,11 +272,24 @@ class GodwallVpnService : VpnService() {
         val label = attributor?.labelFor(uid) ?: "unknown app"
         val pkg = attributor?.packageFor(uid)
 
-        // Two independent reasons to deny, recorded as one outcome.
-        val appBlackholed = pkg != null && pkg in AppPolicy.blackholed(ctx)
-        val listBlocked = BlocklistRepository.isFilterEnabled(ctx) &&
-            BlocklistRepository.current.isBlocked(domain)
-        val blocked = appBlackholed || listBlocked
+        // The WARD tier switches come first, then the two independent reasons to deny, recorded
+        // as one outcome. Order is the contract the UI states:
+        //   pause     — suspends every name rule, and must outrank lockdown or it would not pause;
+        //   lockdown  — denies every name in every mode, which is what makes it an emergency
+        //               control rather than a fifth kind of blocklist;
+        //   mode      — a mode without the DNS tier forwards the query unfiltered.
+        val paused = Pause.isPaused()
+        val blocked = when {
+            paused -> false
+            Lockdown.cached(ctx) -> true
+            !WardModeStore.cached(ctx).filtersDns -> false
+            else -> {
+                val appBlackholed = pkg != null && pkg in AppPolicy.blackholed(ctx)
+                val listBlocked = BlocklistRepository.isFilterEnabled(ctx) &&
+                    BlocklistRepository.current.isBlocked(domain)
+                appBlackholed || listBlocked
+            }
+        }
 
         DnsEventLog.record(domain = domain, appLabel = label, appUid = uid, blocked = blocked)
 
@@ -256,6 +339,19 @@ class GodwallVpnService : VpnService() {
 
     private fun teardown(why: String) {
         tearingDown = true
+        // The platform firewall chain outlives our process, so a mode that applied it must
+        // release it here — otherwise "disarmed" would leave apps denied with no UI saying so.
+        // Off the main thread because every one of those calls is a binder round trip.
+        if (firewallTierApplied) {
+            firewallTierApplied = false
+            thread(name = "godwall-tier-release", isDaemon = true) {
+                runCatching { chainBackend.disarm() }
+                    .onFailure { Diagnostics.warn(TAG, "releasing the firewall chain: ${it.message}") }
+            }
+        }
+        // A pause belongs to a run of the engine, not to the app. Leaving it set would mean a
+        // fresh arm came up silently not filtering.
+        Pause.resume()
         // The node runs inside this slot, so it goes down with it. Leaving Go holding a tun we
         // just closed would leave a half-live tunnel the UI could not describe.
         runCatching { Mesh.stop(applicationContext) }
@@ -330,10 +426,19 @@ class GodwallVpnService : VpnService() {
         /** Our own endpoint inside the tun. RFC 5737 documentation space — never routable. */
         private const val TUN_ADDR = "203.0.113.2"
 
-        /** The resolver address we advertise and capture. Same reserved block. */
-        private const val DNS_ADDR = "203.0.113.53"
+        /**
+         * The resolver address we advertise and capture. Same reserved block.
+         *
+         * Public because the leak check compares it against what the platform says the active
+         * network's resolvers are; a second copy of this literal in that file is exactly how the
+         * check would come to pass against the wrong address.
+         */
+        const val DNS_ADDR = "203.0.113.53"
 
         const val ACTION_STOP = "com.understory.godwall.ACTION_STOP"
+
+        /** Re-apply the WARD mode's tiers without disturbing the tun. */
+        const val ACTION_APPLY_MODE = "com.understory.godwall.ACTION_APPLY_MODE"
 
         fun start(ctx: Context) {
             ctx.startForegroundService(Intent(ctx, GodwallVpnService::class.java))
@@ -343,6 +448,22 @@ class GodwallVpnService : VpnService() {
             runCatching {
                 ctx.startService(
                     Intent(ctx, GodwallVpnService::class.java).apply { action = ACTION_STOP },
+                )
+            }
+        }
+
+        /**
+         * Tell a running engine that the WARD mode changed.
+         *
+         * Guarded on [EngineState.armed] deliberately: `startService` on a stopped service would
+         * *create* it, so an unguarded call would arm Godwall as a side effect of touching a
+         * chip — a control doing more than it says.
+         */
+        fun applyMode(ctx: Context) {
+            if (!EngineState.armed) return
+            runCatching {
+                ctx.startService(
+                    Intent(ctx, GodwallVpnService::class.java).apply { action = ACTION_APPLY_MODE },
                 )
             }
         }

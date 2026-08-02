@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Transport / proxy backends (WP-5) copy.
+
+  Section-scoped file: Android merges every res/values/*.xml, so this section owns its own strings
+  and never edits the shared strings.xml. Every id is prefixed `transport_` so it cannot collide
+  with a sibling package's section file.
+
+  House rule, applied hard: every string states the REACH of the control it labels. Godwall's
+  transport backends run as loopback proxies at uid 2000 and carry only the flows dialled into them
+  (through the egress chain) — they change nothing about how other apps reach the network — and each
+  reach sentence says so, because a control that overstates its boundary is the failure this campaign
+  exists to remove.
+-->
+<resources>
+
+    <!-- ── Section ─────────────────────────────────────────────────────────────────────── -->
+    <string name="transport_section_title">Transport</string>
+    <string name="transport_section_summary">Godwall\'s own proxy backends — sing-box and v2ray — run at uid 2000 out of the Linux subsystem as loopback proxies the egress chain dials into. They carry only the flows routed through Godwall\'s chain; they change nothing about how other apps reach the network.</string>
+
+    <!-- ── Backed by a supervised daemon ───────────────────────────────────────────────── -->
+    <string name="transport_cap_singbox_title">sing-box transport</string>
+    <string name="transport_cap_singbox_reach">Runs a local SOCKS5/HTTP proxy on 127.0.0.1:10808 that Godwall\'s egress chain dials into. The shipped default egresses directly; add your Shadowsocks, VMess, VLESS, Trojan, WireGuard or Hysteria2 server to the config to route through it. It carries only the flows dialled into that port and changes nothing about other apps\' networking.</string>
+
+    <string name="transport_cap_v2ray_title">v2ray transport</string>
+    <string name="transport_cap_v2ray_reach">Runs a local SOCKS5 proxy on 127.0.0.1:10809 that Godwall\'s egress chain dials into. The shipped default egresses directly; add your VMess, VLESS, Shadowsocks or Trojan server to the config to route through it. It carries only the TCP flows dialled into that port.</string>
+
+    <string name="transport_cap_shadowsocks_title">Shadowsocks</string>
+    <string name="transport_cap_shadowsocks_reach">Shadowsocks is one of the sing-box backend\'s outbound protocols, so it shares that backend\'s state. \"Running\" means the backend that speaks Shadowsocks is up on 127.0.0.1:10808 — the route through a Shadowsocks server is one you configure in the sing-box outbound, not a remote connection this loopback proxy verifies for you.</string>
+
+    <!-- ── Honestly gated: not in this build ───────────────────────────────────────────── -->
+    <string name="transport_cap_wireguard_title">WireGuard hop</string>
+    <string name="transport_cap_wireguard_reach">Would carry chain traffic through a userspace WireGuard tunnel. Not a first-class hop in this build — see the note below.</string>
+    <string name="transport_gate_wireguard">WireGuard as a first-class chain hop is not in this build. Godwall\'s WireGuard hop backend is firestack\'s packet-level tun2socks data plane (backend.WgKey), which is not wired into this build, and a standalone userspace wireguard-go needs that same data plane to steer flows into the tunnel. sing-box can carry a WireGuard outbound once its ELF is installed, but that is a route configured inside sing-box, not a standalone WireGuard hop. This control stays disabled rather than claim a WireGuard tunnel it cannot carry.</string>
+
+    <string name="transport_cap_proxychains_title">proxychains chaining</string>
+    <string name="transport_cap_proxychains_reach">Would force an external program\'s connections through a proxy chain. Superseded here — see the note below.</string>
+    <string name="transport_gate_proxychains">Chaining is native in Godwall: ChainDialer composes SOCKS5 and HTTP CONNECT hops in userspace, so a proxied connection does not need proxychains\' LD_PRELOAD shim — and Godwall deliberately exposes no user shell to run a program through one. proxychains-ng is not shipped and would be redundant. This control stays disabled.</string>
+
+    <!-- ── Forward proxy (InviZible "Use socks5 proxy" / NetGuard SOCKS5) ───────────────── -->
+    <string name="transport_forward_title">Forward proxy</string>
+    <string name="transport_forward_summary">Send the connections Godwall carries out through an upstream SOCKS5 or HTTP proxy.</string>
+    <string name="transport_forward_reach">Routes the TCP flows Godwall carries through its egress chain out via your upstream SOCKS5/HTTP proxy. SOCKS5 and HTTP CONNECT carry TCP only — UDP is not proxied. It changes nothing about traffic Godwall does not already carry.</string>
+    <string name="transport_forward_mode_socks5">SOCKS5</string>
+    <string name="transport_forward_mode_http">HTTP CONNECT</string>
+    <string name="transport_forward_server_hint">127.0.0.1</string>
+    <string name="transport_forward_port_hint">1080</string>
+    <string name="transport_forward_exclude_apps_title">Exclude applications</string>
+    <string name="transport_forward_tcp_only">Only TCP traffic is sent to the proxy. UDP is not proxied.</string>
+
+    <string name="transport_forward_enforce_disabled">The forward proxy is off. Every flow goes out directly.</string>
+    <string name="transport_forward_enforce_stored">Your forward-proxy selection is saved, and the upstream carries any flow you route through Godwall\'s egress chain. Forcing every app\'s traffic through it device-wide needs the full-traffic tun2socks data plane, which is not in this build, so a per-app rule here is stored — not yet enforced device-wide.</string>
+    <string name="transport_forward_enforce_active">The forward proxy is enforced: the selected apps\' and sites\' TCP flows are steered through the upstream, and everything else goes direct.</string>
+
+</resources>

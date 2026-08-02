@@ -73,7 +73,7 @@ Copy that shape. Never `try { } catch { }` a missing payload into a shrug.
 
 | Donor | Payload | What it actually is | Obtain | Capability without it |
 |---|---|---|---|---|
-| LSPosed | `liblspd.so` + `framework.jar` | The zygisk/riru native module and the injected framework dex. **This is the hook engine** | Build from `LSPosed/LSPosed` (NDK) | **GATED** — `ArtCore` is an honest stub; the Modules tab states hooks do not fire |
+| LSPosed / LSPlant | LSPlant `.so` (+ Dobby) | LSPlant is the ART method-hook engine (inline hook / trusted-dex / class-inheritable); Dobby is the inline-hook backend it calls | `genji: tools/donor-assets/fetch.sh lsplant` — cross-compiles from source, recipe verified (C++23-modules + lsparself blocker documented there) | **BUILT** — 4 ABIs, LSPlant symbols ELF-exported; `impl.LSPlantArtCore` bridges it and `ArtCore.resolve()` adopts it when built in, else the honest stub. Runtime hooking not device-tested. See genji `docs/donors/LSPLANT-CORE.md` |
 | NPatch / LSPatch | loader `.so` + `lspatch.dex` | The loader embedded into a target APK for rootless Xposed | `LSPosed/LSPatch` releases | **OPEN** — embedded-loader patching |
 | ReVanced | `.rvp` patch bundle + integrations APK | Released artifacts, **not source**. The patches are the product | `revanced/revanced-patches` releases | **OPEN** — Genji ships its own fingerprint/rewrite engine instead; bundle compatibility is separate |
 | apktool | per-ABI `aapt2` + framework `1.apk` | Needed to *rebuild* an APK rather than rewrite bytes in place | AOSP build-tools; framework from the device | **GATED** — the rewriter is in-place and same-size only, and says so |
