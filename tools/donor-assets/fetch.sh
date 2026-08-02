@@ -86,13 +86,54 @@ fetch_firestack() {
   go install golang.org/x/mobile/cmd/gomobile@latest
   export PATH="$PATH:$(go env GOPATH)/bin"
 
-  log "building firestack.aar"
-  ( cd "$src" && make android ) \
-    || die "firestack build failed — check its README for the current make target"
+  # The target is `intra`, NOT `android`. `make android` builds the Outline
+  # tun2socks variant; `make intra` builds build/intra/tun2socks.aar, which is
+  # what upstream's ./make-aar renames to firestack.aar and what RethinkDNS
+  # actually links.
+  #
+  # Four blockers, all hit and diagnosed in this sandbox. They are load-bearing —
+  # skip any one and the build fails with a message that points somewhere else:
+  #
+  # 1. gomobile needs golang.org/x/mobile in the module graph. Recent gomobile
+  #    ALSO requires an explicit tool directive, so `go get` alone is not enough:
+  #    without `go get -tool ...gobind` it dies with "missing golang.org/x/mobile
+  #    dependency" even though go.mod already requires x/mobile.
+  # 2. gobind must exist on PATH. gomobile reports "gobind was not found, please
+  #    run gomobile init" — but `gomobile init` does not install it here; it has
+  #    to be `go install`ed into the same GOBIN.
+  # 3. firestack's go.mod declares `go 1.26`, and the Makefile pins
+  #    GOTOOLCHAIN=local inside its build recipe. So the toolchain on PATH must
+  #    itself be >= 1.26 or the module graph will not load, and the symptom is
+  #    the misleading "not in the module dependency graph" from blocker 1.
+  # 4. THE SUBTLE ONE. firestack overlays a patch onto Go's own
+  #    runtime/write_err_android.go (for crash logging). Go refuses to apply an
+  #    overlay to any file under GOMODCACHE — and a toolchain fetched by
+  #    GOTOOLCHAIN=go1.26.0 lands in exactly there. So GOROOT must be a copy of
+  #    the toolchain OUTSIDE the module cache, or it fails with "Files beneath
+  #    GOMODCACHE must not be replaced".
+  need make
+  local gobin="$src/bin"
+  local goroot="${FIRESTACK_GOROOT:-/opt/go126}"
+  [ -x "$goroot/bin/go" ] || die "need a Go >= 1.26 GOROOT outside GOMODCACHE at $goroot (blockers 3+4; set FIRESTACK_GOROOT)"
+
+  log "adding the x/mobile tool directive (blocker 1)"
+  ( cd "$src" && GOFLAGS=-mod=mod PATH="$goroot/bin:$PATH" go get -tool golang.org/x/mobile/cmd/gobind )
+
+  log "installing gobind into $gobin (blocker 2)"
+  ( cd "$src" && GOFLAGS=-mod=mod GOBIN="$gobin" PATH="$goroot/bin:$PATH" go install golang.org/x/mobile/cmd/gobind )
+
+  log "gomobile bind — this compiles Go for four ABIs and takes several minutes"
+  ( cd "$src" && env \
+      GOROOT="$goroot" \
+      PATH="$goroot/bin:$gobin:$PATH" \
+      GOFLAGS=-mod=mod \
+      make intra ) \
+    || die "firestack build failed — read the log above; the real error is usually 20+ lines before the make failure, since depaware prints a wall of 'unused <pkg>' lines first"
 
   mkdir -p "$REPO_ROOT/godwall-next/libs"
-  find "$src" -name 'firestack*.aar' -exec cp {} "$REPO_ROOT/godwall-next/libs/firestack.aar" \; \
-    || die "no firestack aar produced"
+  local built="$src/build/intra/tun2socks.aar"
+  [ -f "$built" ] || die "make intra reported success but produced no $built"
+  cp "$built" "$REPO_ROOT/godwall-next/libs/firestack.aar"
 
   provenance "firestack.aar" \
     "github.com/celzero/firestack" \
