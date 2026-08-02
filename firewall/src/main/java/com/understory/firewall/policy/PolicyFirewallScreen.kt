@@ -60,6 +60,7 @@ fun PolicyFirewallScreen(
     onBack: () -> Unit,
     onOpenElevation: () -> Unit,
     onOpenControls: () -> Unit = {},
+    onOpenAppManager: () -> Unit = {},
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -156,6 +157,21 @@ fun PolicyFirewallScreen(
                 Text(
                     "Default policy (allow-all vs lockdown), block-when-screen-off, and " +
                         "saved profiles (Home / Untrusted Wi-Fi / Lockdown).",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            SuiteCard(onClick = onOpenAppManager) {
+                Text(
+                    "App Manager",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+                Text(
+                    "Enable/disable, force-stop, clear data, or uninstall any app through the " +
+                        "Shizuku/Yojimbo backend — the package-manager toolkit.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
