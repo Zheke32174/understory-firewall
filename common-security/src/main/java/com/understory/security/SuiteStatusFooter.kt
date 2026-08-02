@@ -1,5 +1,9 @@
 package com.understory.security
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -12,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -74,14 +79,40 @@ fun SuiteStatusFooter(
     val containerShape = if (themed) MaterialTheme.shapes.small else RoundedCornerShape(6.dp)
     val markShape = if (themed) MaterialTheme.shapes.extraSmall else RoundedCornerShape(3.dp)
 
-    // We snapshot on first composition and on every recomposition that's
-    // forced by parent state changes. A future enhancement will subscribe
-    // to PACKAGE_ADDED/REMOVED broadcasts to live-update; for the smoke
-    // test "did this wire correctly", a single read on screen-show is
-    // already the primary signal.
+    // We snapshot on first composition and then live-update: a runtime-
+    // registered receiver listens for PACKAGE_ADDED/REMOVED/REPLACED and bumps
+    // [refreshTick], which re-keys the snapshot effect. So installing or
+    // removing a suite peer while this screen is open is reflected without the
+    // user having to leave and come back. The receiver is scoped to the
+    // composition (DisposableEffect) and unregistered on dispose, so it never
+    // outlives the surface it feeds. PACKAGE_* are protected system broadcasts,
+    // so a context-registered receiver still receives them under
+    // RECEIVER_NOT_EXPORTED (no other app can spoof them at us).
     var snap by remember { mutableStateOf<SuiteCapabilityRegistry.Snapshot?>(null) }
-    LaunchedEffect(Unit) {
+    var refreshTick by remember { mutableStateOf(0) }
+    LaunchedEffect(refreshTick) {
         snap = runCatching { SuiteCapabilityRegistry.snapshot(ctx) }.getOrNull()
+    }
+    DisposableEffect(ctx) {
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addAction(Intent.ACTION_PACKAGE_REPLACED)
+            // PACKAGE_* broadcasts carry a package: data URI; without this
+            // scheme the filter matches nothing.
+            addDataScheme("package")
+        }
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                // A package changed — the peer set / capabilities may have too.
+                // Re-key the snapshot effect rather than reading here so the
+                // registry read stays on the composition's coroutine, off the
+                // broadcast dispatch thread.
+                refreshTick++
+            }
+        }
+        ctx.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        onDispose { runCatching { ctx.unregisterReceiver(receiver) } }
     }
 
     val s = snap ?: return  // first frame: render nothing rather than flash
