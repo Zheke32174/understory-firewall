@@ -54,8 +54,24 @@ android {
             isDebuggable = false
             isJniDebuggable = false
             isPseudoLocalesEnabled = false
-            isMinifyEnabled = false
-            isShrinkResources = false
+            // Opt-in shrinking for SIDELOAD DELIVERY (-PminifyDebug=true).
+            //
+            // Why this exists rather than "just ship the release variant": the
+            // suite pins its own signing cert, and SuitePins picks the expected
+            // pin by BuildConfig.DEBUG. A release-named APK therefore checks
+            // itself against RELEASE_CERT_SHA256, so signing one with the debug
+            // keystore makes the app correctly report itself as TAMPERED. The
+            // debug variant keeps BuildConfig.DEBUG=true and so keeps the debug
+            // pin — it stays installable while shrinking ~53 MB to ~12 MB.
+            val minifyDebug = (project.findProperty("minifyDebug") as String?) == "true"
+            isMinifyEnabled = minifyDebug
+            isShrinkResources = minifyDebug
+            if (minifyDebug) {
+                proguardFiles(
+                    getDefaultProguardFile("proguard-android-optimize.txt"),
+                    "proguard-rules.pro",
+                )
+            }
         }
         release {
             isDebuggable = false
