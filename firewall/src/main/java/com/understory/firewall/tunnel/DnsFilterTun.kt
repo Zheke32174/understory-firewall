@@ -221,8 +221,14 @@ class DnsFilterTun(
             val stamp = dnscryptStamp ?: return null
             val session = ensureDnscryptSession(service, stamp) ?: return null
             val packet = DnscryptClient.encryptQuery(session, query, rng)
-            val resp = exchangeUdp(service, packet) ?: return null
-            return DnscryptClient.decryptResponse(session, packet, resp)
+            // UDP first; fall back to TCP when UDP is blocked/lost or the response won't decrypt
+            // (e.g. truncated because it exceeded the UDP datagram). DNSCrypt-over-TCP frames the
+            // same encrypted packet with the 2-byte DNS-over-TCP length prefix.
+            exchangeUdp(service, packet)?.let { udp ->
+                DnscryptClient.decryptResponse(session, packet, udp)?.let { return it }
+            }
+            val tcp = exchangeTcp(service, packet) ?: return null
+            return DnscryptClient.decryptResponse(session, packet, tcp)
         }
 
         @Synchronized
@@ -263,6 +269,35 @@ class DnsFilterTun(
                 val pkt = DatagramPacket(rbuf, rbuf.size)
                 socket.receive(pkt)
                 rbuf.copyOf(pkt.length)
+            } catch (_: Throwable) {
+                null
+            } finally {
+                runCatching { socket.close() }
+            }
+        }
+
+        /**
+         * DNSCrypt over TCP: same encrypted packet, framed with the 2-byte DNS-over-TCP length
+         * prefix, over a [VpnService.protect]ed TCP socket to [resolverIp]:[dnscryptPort]. The
+         * UDP-blocked / oversized-response fallback.
+         */
+        private fun exchangeTcp(service: VpnService, payload: ByteArray): ByteArray? {
+            val socket = java.net.Socket()
+            return try {
+                if (!service.protect(socket)) return null
+                socket.connect(java.net.InetSocketAddress(resolverIp, dnscryptPort), DNS_TIMEOUT_MS)
+                socket.soTimeout = DNS_TIMEOUT_MS
+                val out = socket.getOutputStream()
+                out.write((payload.size ushr 8) and 0xff)
+                out.write(payload.size and 0xff)
+                out.write(payload)
+                out.flush()
+                val ins = socket.getInputStream()
+                val hi = ins.read(); val lo = ins.read()
+                if (hi < 0 || lo < 0) return null
+                val len = (hi shl 8) or lo
+                if (len <= 0 || len > MAX_DNS) return null
+                readFully(ins, len)
             } catch (_: Throwable) {
                 null
             } finally {
