@@ -9,10 +9,12 @@ import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
+import com.understory.firewall.tunnel.AnonRouting
 import com.understory.firewall.tunnel.BlocklistRepository
 import com.understory.firewall.tunnel.ConnectionAttributor
 import com.understory.firewall.tunnel.DnsEventLog
 import com.understory.firewall.tunnel.DnsFilterTun
+import com.understory.firewall.tunnel.DnscryptResolvers
 import com.understory.net.engine.DropStats
 import java.io.FileInputStream
 import java.net.InetAddress
@@ -267,16 +269,33 @@ class FirewallVpnService : VpnService() {
         tunFd = newTun
 
         val attributor = ConnectionAttributor(applicationContext)
-        // Upstream resolver: real verified DNS-over-TLS when a DoT hostname is configured, else
-        // plaintext UDP. The encrypted path is no longer a stub (see DnsFilterTun.UpstreamResolver).
+        // Upstream resolver, in preference order:
+        //   1. Anonymizing routing (Tor / I2P) if the user routes DNS through it — DNS-over-TCP
+        //      to a resolver via the proxy (only when the proxy is actually reachable).
+        //   2. Native DNSCrypt v2 (InviZible-style) if a DNSCrypt/DoH resolver is selected.
+        //   3. The base-app upstream: verified DoT/DoH when a hostname is set, else plaintext UDP.
         val dnsIp = FirewallSettings.getUpstreamDnsIp(this)
         val dotHost = FirewallSettings.getDotHostname(this)
         val mode = FirewallSettings.getUpstreamMode(this)
+        val baseUpstream = {
+            when {
+                dotHost.isBlank() -> DnsFilterTun.UpstreamResolver.plaintext(dnsIp)
+                mode == "doh" -> DnsFilterTun.UpstreamResolver.doh(dnsIp, dotHost, FirewallSettings.getDohPath(this))
+                mode == "plaintext" -> DnsFilterTun.UpstreamResolver.plaintext(dnsIp)
+                else -> DnsFilterTun.UpstreamResolver.dot(dnsIp, dotHost)
+            }
+        }
         val upstream = when {
-            dotHost.isBlank() -> DnsFilterTun.UpstreamResolver.plaintext(dnsIp)
-            mode == "doh" -> DnsFilterTun.UpstreamResolver.doh(dnsIp, dotHost, FirewallSettings.getDohPath(this))
-            mode == "plaintext" -> DnsFilterTun.UpstreamResolver.plaintext(dnsIp)
-            else -> DnsFilterTun.UpstreamResolver.dot(dnsIp, dotHost)
+            AnonRouting.isDnsRoutedThroughProxy(this) ->
+                AnonRouting.upstreamFor(this) ?: run {
+                    com.understory.security.Diagnostics.error(
+                        "firewall.FirewallVpnService",
+                        "anon routing enabled but proxy unreachable — falling back",
+                    )
+                    if (DnscryptResolvers.isEnabled(this)) dnscryptUpstream(baseUpstream) else baseUpstream()
+                }
+            DnscryptResolvers.isEnabled(this) -> dnscryptUpstream(baseUpstream)
+            else -> baseUpstream()
         }
         val answerStyle = BlocklistRepository.answerStyle(this)
 
@@ -296,6 +315,21 @@ class FirewallVpnService : VpnService() {
         runCatching { oldTun?.close() }
         runCatching { oldThread?.join(500L) }
         runCatching { oldFilterThread?.join(500L) }
+    }
+
+    /** Build the DNSCrypt upstream for the selected resolver, or [fallback] if none is usable. */
+    private fun dnscryptUpstream(
+        fallback: () -> DnsFilterTun.UpstreamResolver,
+    ): DnsFilterTun.UpstreamResolver {
+        val stamp = DnscryptResolvers.selectedStampParsed(this)
+        val u = stamp?.let { DnsFilterTun.UpstreamResolver.fromStamp(it) }
+        if (u == null) {
+            com.understory.security.Diagnostics.error(
+                "firewall.FirewallVpnService",
+                "DNSCrypt enabled but no usable resolver selected — falling back",
+            )
+        }
+        return u ?: fallback()
     }
 
     /** Tear down any prior tun and sit idle (foreground service alive, no
