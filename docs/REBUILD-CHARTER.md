@@ -57,9 +57,36 @@ smell. An app that replaces something does not coexist with it — at most it
 | 3 | Declares a dep on the Dhizuku app | `firewall/src/main/AndroidManifest.xml` `<queries> com.rosan.dhizuku` | Privilege comes from **Yojimbo**. |
 
 Violations 2–3 were called out by the user at the start of this campaign
-("so it's not dependent on shizuku. make it dependent on yojimbo") and are still
-present. The whole `TunnelPosture` / `TierOverview` "Tailscale coexistence"
-framing is downstream of violation 1 and is scrap along with it.
+("so it's not dependent on shizuku. make it dependent on yojimbo"). The whole
+`TunnelPosture` / `TierOverview` "Tailscale coexistence" framing is downstream of
+violation 1 and is scrap along with it.
+
+### Status: CLOSED 2026-08-03 — by retiring the module, not by patching it
+
+All three lived in `:firewall`, which `godwall-next` already replaces (same
+`applicationId`, stated in its `build.gradle.kts`). `:firewall` was still
+`include`d in `settings.gradle.kts`, so the root `assembleDebug` kept building an
+app that asks for what Godwall replaces, and emitted a second APK contending for
+the same `applicationId`. Nothing else referenced it — the `include` line was its
+only inbound edge.
+
+So it was removed from the build rather than patched: patching scrap to be less
+scrap is the trap this charter exists to name. The directory remains as salvage
+reference.
+
+**This is state 1 (verified), not state 2 (compiles, unproven)** — but verified
+*as a source-level invariant*, which is the only thing a guard can verify. The
+claim is exactly: no module in this build asks for Tailscale/Shizuku/Dhizuku.
+`godwall-next`'s runtime behaviour on device is a separate claim and is NOT
+asserted here.
+
+Enforced by `godwall-next/src/test/.../SuiteInvariantTest.kt`, which derives its
+scope from `settings.gradle.kts` (so a retired module leaves scope automatically,
+and no allowlist can rot) and strips comments before scanning (the correct
+modules *name* these packages to record why they are absent — that is the
+opposite of the violation). The guard was confirmed to fail when `:firewall` is
+put back, catching all three rows plus `VpnSlotProbe.kt`; a guard that cannot
+fail is a false all-clear.
 
 Yojimbo's own equivalent — `Elevation.canRunShell()` reducing to
 `isShizukuGranted()` — is being fixed separately.
