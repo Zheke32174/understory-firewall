@@ -86,10 +86,14 @@ class TamperGuard(private val ctx: Context) {
         o.put("signaturePinned", sig.pinned)
         o.put("signatureOk", sig.ok)
         o.put("signatureNote", sig.note)
-        if (sig.pinned && !sig.ok) findings.put(
-            "SIGNING CERTIFICATE MISMATCH. This APK is signed by ${sig.hash.take(16)}… but the " +
-                "build pins ${sig.expected.take(16)}…. A re-signed APK is somebody else's build " +
-                "of this app.")
+        // Only a certificate that matches NEITHER suite pin is a tamper finding.
+        // An APK signed by the suite's own committed debug keystore is a legitimate
+        // dev / sideload build, not "somebody else's build" — it gets an accurate
+        // note (see checkSignature) instead of a red finding.
+        if (sig.pinned && !sig.ok && !sig.knownSuiteKey) findings.put(
+            "SIGNING CERTIFICATE MISMATCH. This APK is signed by ${sig.hash.take(16)}…, which is " +
+                "not a known suite certificate (neither the debug nor the release pin). A re-signed " +
+                "APK is somebody else's build of this app.")
 
         // ---- 2. Debugger --------------------------------------------------------------
         val dbg = try { Debug.isDebuggerConnected() || Debug.waitingForDebugger() }
@@ -130,7 +134,11 @@ class TamperGuard(private val ctx: Context) {
 
     private data class SigResult(
         val ok: Boolean, val pinned: Boolean, val hash: String,
-        val expected: String, val note: String
+        val expected: String, val note: String,
+        // True when the signing cert matches a known suite pin (debug OR release),
+        // even if it isn't the one THIS variant pins. Distinguishes a legitimate
+        // suite-signed dev/sideload build from a genuinely foreign re-signer.
+        val knownSuiteKey: Boolean = false
     )
 
     private fun checkSignature(): SigResult {
@@ -169,12 +177,25 @@ class TamperGuard(private val ctx: Context) {
                 "compiled into this build, so the hash below is reported for comparison and " +
                 "nothing is being verified.")
         val ok = expected.equals(hash, ignoreCase = true)
+        val matchesDebug = SuiteCertPins.DEBUG.equals(hash, ignoreCase = true)
+        val matchesRelease = SuiteCertPins.RELEASE.equals(hash, ignoreCase = true)
         return SigResult(
             ok = ok, pinned = true, hash = hash, expected = expected,
-            note = if (ok)
-                "Signed by the pinned suite certificate for this variant."
-            else
-                "This APK is NOT signed by the certificate this build pins.")
+            knownSuiteKey = matchesDebug || matchesRelease,
+            note = when {
+                ok ->
+                    "Signed by the pinned suite certificate for this variant."
+                matchesDebug ->
+                    "Signed by the suite DEBUG keystore — the committed dev key. This is expected " +
+                        "for development and sideloaded builds; release artifacts should be signed " +
+                        "with the offline release key (-PreleaseKeystore). Not a tampering finding."
+                matchesRelease ->
+                    "Signed by the suite RELEASE key, though this build pins the debug key — a " +
+                        "release-signed artifact of a debug variant. Not a tampering finding."
+                else ->
+                    "This APK is NOT signed by any known suite certificate — it was re-signed by a " +
+                        "different keystore."
+            })
     }
 
     // ------------------------------------------------------------------ heuristics
