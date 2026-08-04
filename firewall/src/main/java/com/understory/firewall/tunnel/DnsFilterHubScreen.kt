@@ -76,6 +76,7 @@ fun DnsFilterHubScreen(
     onBack: () -> Unit,
     onOpenVisibility: () -> Unit,
     onOpenCapture: () -> Unit = {},
+    onOpenDefaults: () -> Unit = {},
 ) {
     val ctx = LocalContext.current
 
@@ -294,6 +295,20 @@ fun DnsFilterHubScreen(
                 UpstreamCard()
                 DnscryptCard()
                 AnonRoutingCard()
+            }
+            SuiteCard {
+                Text("Settings & defaults", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+                Text(
+                    "Every setting has a base-app default and is changeable. Review all defaults or " +
+                        "restore them here.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(UnderstoryTheme.spacing.sm))
+                SecureOutlinedButton(onClick = onOpenDefaults, modifier = Modifier.fillMaxWidth()) {
+                    Text("Open settings & defaults")
+                }
             }
             Spacer(Modifier.height(UnderstoryTheme.spacing.lg))
         }

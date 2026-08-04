@@ -172,6 +172,8 @@ enum class FirewallRoute {
     TierOverview, DnsFilterHub, Visibility, RootTier,
     // Packet capture (PCAPdroid-style):
     PacketCapture,
+    // Settings & defaults catalog + restore:
+    Defaults,
 }
 
 /** Helper to start/stop the Standalone engine service. */
@@ -345,11 +347,16 @@ private fun FirewallRoot(
                 onBack = backToMain,
                 onOpenVisibility = { setRoute(FirewallRoute.Visibility) },
                 onOpenCapture = { setRoute(FirewallRoute.PacketCapture) },
+                onOpenDefaults = { setRoute(FirewallRoute.Defaults) },
             )
         }
         FirewallRoute.PacketCapture -> {
             androidx.activity.compose.BackHandler { backToMain() }
             PacketCaptureScreen(onBack = backToMain)
+        }
+        FirewallRoute.Defaults -> {
+            androidx.activity.compose.BackHandler { backToMain() }
+            DefaultsScreen(onBack = backToMain)
         }
         FirewallRoute.Visibility -> {
             androidx.activity.compose.BackHandler { backToMain() }

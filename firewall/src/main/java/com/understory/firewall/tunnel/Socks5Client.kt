@@ -64,7 +64,7 @@ object Socks5Client {
 
             // CONNECT request.
             val req = ArrayList<Byte>()
-            req.add(VER.toByte()); req.add(CMD_CONNECT.toByte()); req.add(0)
+            req.add(VER.toByte()); req.add(CMD_CONNECT.toByte()); req.add(0.toByte())
             val ip = parseIpv4(targetHost)
             if (ip != null) {
                 req.add(ATYP_IPV4.toByte()); ip.forEach { req.add(it) }
@@ -108,7 +108,7 @@ object Socks5Client {
         val ub = u.toByteArray(Charsets.US_ASCII)
         val pb = p.toByteArray(Charsets.US_ASCII)
         val msg = ArrayList<Byte>()
-        msg.add(0x01) // sub-negotiation version
+        msg.add(0x01.toByte()) // sub-negotiation version
         msg.add(ub.size.toByte()); ub.forEach { msg.add(it) }
         msg.add(pb.size.toByte()); pb.forEach { msg.add(it) }
         out.write(msg.toByteArray()); out.flush()
