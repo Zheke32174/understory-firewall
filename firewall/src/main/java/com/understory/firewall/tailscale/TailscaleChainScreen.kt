@@ -23,6 +23,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.understory.firewall.BoundaryText
@@ -56,6 +58,7 @@ fun TailscaleChainScreen(onBack: () -> Unit) {
     var advertiseExit by remember { mutableStateOf(TailscaleSettings.advertiseExit(ctx)) }
     var hostname by remember { mutableStateOf(TailscaleSettings.hostname(ctx)) }
     var tsSaved by remember { mutableStateOf<String?>(null) }
+    var verify by remember { mutableStateOf<TailscaleController.Verification?>(TailscaleController.verify(ctx)) }
 
     var chainEnabled by remember { mutableStateOf(EndpointChain.isEnabled(ctx)) }
     var hops by remember { mutableStateOf(EndpointChain.hops(ctx)) }
@@ -139,6 +142,35 @@ fun TailscaleChainScreen(onBack: () -> Unit) {
                     Text(it, style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+
+                // --- Login + verification + admin console ---
+                Spacer(Modifier.height(UnderstoryTheme.spacing.md))
+                Text("Login & verification", style = MaterialTheme.typography.labelLarge)
+                Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+                verify?.let {
+                    Text(it.summary, style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+                }
+                fun open(url: String) = runCatching {
+                    ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(UnderstoryTheme.spacing.sm)) {
+                    SecureButton(onClick = {
+                        // Prefer the installed Tailscale app for login; else the web login URL.
+                        val appIntent = if (TailscaleController.isTailscaleAppInstalled(ctx))
+                            ctx.packageManager.getLaunchIntentForPackage(TailscaleController.TAILSCALE_PKG) else null
+                        if (appIntent != null) {
+                            runCatching { ctx.startActivity(appIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                        } else {
+                            open(TailscaleController.loginUrl(ctx))
+                        }
+                        verify = TailscaleController.verify(ctx)
+                    }) { Text("Log in / verify") }
+                    SecureOutlinedButton(onClick = { open(TailscaleController.adminUrl(ctx)) }) {
+                        Text("Admin console")
+                    }
+                }
             }
 
             // --- Egress chain ---
@@ -203,6 +235,7 @@ private enum class AddKind(val label: String, val needsDialog: Boolean) {
     HTTP("HTTP…", true),
     CONTAINER("Container…", true),
     TOR("Tor", false),
+    I2P("I2P", false),
     DIRECT("Direct", false);
 
     fun build(a: String, b: Int, c: String, d: String): ProxyHop {
@@ -213,6 +246,7 @@ private enum class AddKind(val label: String, val needsDialog: Boolean) {
             HTTP -> ProxyHop.HttpConnect(id, a, b, c, d)
             CONTAINER -> ProxyHop.Container(id, a, c)
             TOR -> ProxyHop.Tor(id)
+            I2P -> ProxyHop.I2p(id)
             DIRECT -> ProxyHop.Direct(id)
         }
     }

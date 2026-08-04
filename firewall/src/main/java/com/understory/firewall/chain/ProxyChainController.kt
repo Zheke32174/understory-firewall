@@ -41,7 +41,12 @@ object ProxyChainController {
                 "userspace client not yet wired (no external dependency needed)"
             ProxyHop.Backend.WIREGUARD -> "needs a WireGuard transport"
             ProxyHop.Backend.SHADOWSOCKS -> "needs a Shadowsocks transport"
-            ProxyHop.Backend.TOR -> "needs a Tor transport"
+            ProxyHop.Backend.TOR ->
+                "full-traffic Tor chaining pending; DNS can already route through Tor (Orbot SOCKS) " +
+                    "on the DNS-filter tunnel"
+            ProxyHop.Backend.I2P ->
+                "full-traffic I2P chaining pending; DNS can already route through I2P (router SOCKS) " +
+                    "on the DNS-filter tunnel"
             ProxyHop.Backend.CONTAINER ->
                 "needs a container server (privileged shell / stratum) reachable from Godwall"
             ProxyHop.Backend.DIRECT -> "ready"

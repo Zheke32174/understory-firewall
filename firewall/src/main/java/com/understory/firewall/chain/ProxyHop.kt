@@ -43,8 +43,10 @@ sealed interface ProxyHop {
         WIREGUARD,
         /** Shadowsocks client. */
         SHADOWSOCKS,
-        /** Tor SOCKS (via an embedded or external tor). */
+        /** Tor SOCKS (via Orbot or an external tor). */
         TOR,
+        /** I2P SOCKS/HTTP (via the I2P router app or i2pd). */
+        I2P,
         /**
          * A hop served INSIDE a container server (an nspawn/stratum/proot container
          * on-device, or one exposed by a sibling app). The relay process runs in the
@@ -141,6 +143,13 @@ sealed interface ProxyHop {
         override fun toJson() = hopBase(id, "tor")
     }
 
+    /** I2P egress via the I2P router / i2pd SOCKS proxy (default 127.0.0.1:4447). */
+    data class I2p(override val id: String) : ProxyHop {
+        override fun label() = "I2P"
+        override fun backend() = Backend.I2P
+        override fun toJson() = hopBase(id, "i2p")
+    }
+
     /**
      * A relay running inside a container server [container] (e.g. a stratum name),
      * forwarding to [innerTarget] ("host:port" the in-container relay listens on, or
@@ -174,6 +183,7 @@ sealed interface ProxyHop {
                 "wireguard" -> Wireguard(id, o.optString("name"), o.optString("endpoint"), o.optString("publicKey"))
                 "shadowsocks" -> Shadowsocks(id, o.optString("host"), o.optInt("port"), o.optString("method"), o.optString("password"))
                 "tor" -> Tor(id)
+                "i2p" -> I2p(id)
                 "container" -> Container(id, o.optString("container"), o.optString("innerTarget"))
                 "direct" -> Direct(id)
                 else -> null

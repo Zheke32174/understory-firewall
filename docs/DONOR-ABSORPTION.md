@@ -26,8 +26,31 @@ resolver stack; Fyrypt manages an external `dnscrypt-proxy`. Godwall does it
 | DNS-over-TLS (RFC 7858) | all | **Done** — `UpstreamResolver.dot()` | Verified in-tunnel: socket `protect()`ed before handshake, SNI + HTTPS endpoint-id, **fail-closed** on a bad cert (never downgrades to plaintext). |
 | DNS-over-HTTPS (RFC 8484) | all | **Done** — `UpstreamResolver.doh()` | Rides :443 so a `:853` block can't force plaintext. Minimal HTTP/1.1 POST of `application/dns-message`, Content-Length + chunked parsing, 64 KiB bound. Same verified-TLS setup as DoT. |
 | Curated resolver presets | RethinkDNS | **Done** — `DOT_PRESETS` / `DOH_PRESETS` | Cloudflare / Quad9 / Google / AdGuard / Mullvad, each pairing IP with its verification hostname so they always match. |
-| DNSCrypt | InviZible / Fyrypt | *Deferred* | DoT+DoH already give verified, encrypted, censorship-resistant DNS. DNSCrypt would add the third protocol but no new security property we lack. |
+| DNSCrypt v2 | InviZible / Fyrypt | **Done** — native `DnscryptClient` + `UpstreamResolver.dnscrypt()` | Pure-JVM DNSCrypt: Ed25519 cert verification, X25519 key agreement, XSalsa20/XChaCha20-Poly1305 secretbox, over `protect()`ed UDP. NO bundled `dnscrypt-proxy`. Gated behind a runtime `CryptoSelfTest` (known-answer vectors); `SecretBox.open` fails closed, so a crypto fault yields no answer, never a wrong one. |
+| Resolver lists (`sdns://` stamps) | InviZible / dnscrypt-proxy | **Done** — `DnsStamp` + bundled `dnscrypt/*.md.gz` | The canonical public-resolvers/relays/ODoH lists bundled as a real snapshot (~900 resolvers, ~350 relays) and refreshable from the canonical HTTPS source; parser validated against all 1,415 real stamps. |
+| Anonymized DNSCrypt (relay) | InviZible / dnscrypt-proxy | **Done** — `DnscryptClient.wrapAnonymized()` + relay picker | Routes the encrypted query through a relay so the resolver sees the relay's IP, not yours (spec ANONYMIZED-DNSCRYPT). Wrap verified byte-for-byte against the spec's worked example; UDP + TCP. Client↔resolver protocol proven by an end-to-end round-trip test for both cipher suites. |
+| DNSCrypt UDP→TCP fallback | dnscrypt-proxy | **Done** — `UpstreamResolver.exchangeTcp` | Falls back to DNSCrypt-over-TCP when UDP is blocked/lost or the response won't decrypt. |
 | System Private DNS (DoT) | — | **Done** (pre-existing) — `PrivateDnsApplier` | Slot-free, composes with Tailscale. Complements the in-tunnel path. |
+
+## Anonymized DNS — Tor + I2P (InviZible Pro's other two engines)
+
+InviZible bundles DNSCrypt **plus Tor plus Purple I2P**. Godwall is rootless and
+single-slot, so it doesn't embed those daemons; it routes the filter tunnel's DNS
+through the SOCKS proxy those apps already expose.
+
+| Capability | Godwall | Variant note |
+|---|---|---|
+| DNS over Tor | **Done** — `AnonRouting` + `Socks5Client` + `UpstreamResolver.socksDns()` | DNS-over-TCP through Orbot's SOCKS (127.0.0.1:9050). Only used when the proxy actually answers a SOCKS5 greeting; else falls back to the base upstream instead of black-holing DNS. |
+| DNS over I2P | **Done** — same path, I2P router SOCKS (127.0.0.1:4447) | Plus a custom SOCKS endpoint option. Orbot / I2P app presence is detected and surfaced. |
+| Tor / I2P as an egress hop | *Seam* — `ProxyHop.Tor` / `ProxyHop.I2p` in the chain | Full-traffic chaining is a declared backend; DNS routing above is the working slice today. |
+
+## Packet capture (PCAPdroid)
+
+| Capability | Godwall | Variant note |
+|---|---|---|
+| Capture to a `.pcap` file | **Done** — `PcapWriter` + `PcapController` | Standard libpcap (LINKTYPE_RAW), openable in Wireshark / tcpdump / PCAPdroid. Captures the raw IP packets the tun sees: every app's DNS in filter mode, restricted-app packets in drop mode. Auto-stops at 64 MiB. |
+| Export / share a capture | **Done** — `PacketCaptureScreen` + FileProvider | Per-share read grant only; app-private `files/pcap/` is the sole exposed path. |
+| Whole-device capture | *Boundary* | PCAPdroid routes ALL traffic through a userspace TCP/IP stack; Godwall's tun claims only the DNS route (filter mode) or the restricted apps (drop mode). The UI states this. |
 
 ## DNS content filtering (InviZible · RethinkDNS)
 
@@ -87,14 +110,17 @@ says so; every action reports Success / Unsupported / Failed truthfully.
 
 ## Coverage summary
 
-**Absorbed (native, superior or on-par):** encrypted DNS (DoT + DoH),
-DNS content filtering + per-app attribution, per-app firewall + universal
-rules + lockdown + profiles, new-app watch **with auto-block**, and the full
-rootless package-manager toolkit (enable/disable/force-stop/clear/uninstall
-plus the appops/component scalpels).
+**Absorbed (native, superior or on-par):** encrypted DNS (DoT + DoH +
+**native DNSCrypt v2** with the bundled resolver/relay lists), **DNS over Tor /
+I2P** via the anon-routing SOCKS path, DNS content filtering + per-app
+attribution, per-app firewall + universal rules + lockdown + profiles, new-app
+watch **with auto-block**, the full rootless package-manager toolkit
+(enable/disable/force-stop/clear/uninstall plus the appops/component scalpels),
+and **PCAP packet capture** with export.
 
-**Deferred (understood, not yet built):** DNSCrypt (no new property over
-DoT/DoH), per-PID and per-app IP/port rules (root iptables tier), and a live
+**Deferred (understood, not yet built):** full-traffic Tor/I2P/WireGuard/
+Shadowsocks egress chaining (declared backends; DNS routing is the working
+slice), per-PID and per-app IP/port rules (root iptables tier), and a live
 per-connection IP:port monitor (Fyrypt). None block the "largely finished"
 milestone — each is an additive tier, not a hole in the core.
 
