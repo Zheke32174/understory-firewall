@@ -1,0 +1,40 @@
+name: publish-release
+
+# Publish the already-built debug APK from the claude/apk branch as a GitHub
+# Release (tag: debug-latest) so it can be downloaded and sideloaded from a
+# phone. No rebuild — reads the artifact the collect-apk job committed.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['claude/**']
+    paths: ['.github/workflows/publish-release.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the apk branch
+        uses: actions/checkout@v4
+        with:
+          ref: claude/apk
+      - name: Reassemble + publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd apkout
+          for base in $(ls *.apk.part00 2>/dev/null | sed 's/\.part00$//'); do
+            cat "$base".part* > "$base"; rm -f "$base".part*
+          done
+          ls -la
+          gh release delete debug-latest --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
+          gh release create debug-latest ./*.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --target claude/apk \
+            --title "Debug APK — latest" \
+            --notes "Debug-signed build from claude/finish-these-vwikhs. Sideload to install (enable Install unknown apps). SHA256 in the assets list."
+          echo "RELEASE_URL=https://github.com/$GITHUB_REPOSITORY/releases/tag/debug-latest"
