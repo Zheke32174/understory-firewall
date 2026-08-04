@@ -1,0 +1,161 @@
+# Codespace Factory — vendor manifest.
+# Syntax (see factory-setup.sh):
+#   owner/repo          clone     |  owner/*   all public repos of user/org
+#   gist:<id>           gist      |  doc <url> download into _docs/
+# Lines starting with # and blank lines are ignored. Everything is cloned
+# shallow into $FACTORY_VENDOR_DIR (default /workspaces/vendor); failures are
+# non-fatal and logged to $FACTORY_VENDOR_DIR/.factory-report.txt.
+#
+# NOTE: liveness was NOT verifiable from the authoring session (egress proxy).
+# Check .factory-report.txt in the first printed codespace and prune.
+
+# ── proxmox-on-a-laptop references ──────────────────────────────────────
+retiarylime/proxmox-laptop-wifi
+neerajjez/proxmox-on-laptop-with-wifi-setup
+
+# ── devcontainer reference ──────────────────────────────────────────────
+BorisWilhelms/devcontainer
+
+# ── tools / projects (batch 1) ──────────────────────────────────────────
+wie-project/kakehashi
+yc-software/qm
+microsoft/skill-recorder
+0xwilliamortiz/humanizer-cli
+0xwilliamortiz/ratchet
+sqliteai/waste
+DannyMac180/sol-advisor
+openai/ten-proofs
+Aaryanverma/graybox
+hardrave/NIGHTRUN
+syncular/syncular
+U-C4N/U-Pool
+aws/context-ontology-accelerator
+uczltw6/trace-file-lineage
+ArchAstro/scopey
+juxhinr/bindwidth
+JustVugg/colibri
+andrewyng/openworker
+openai/codex-security
+kvcache-ai/AgentENV
+slvDev/esp32-ai
+vercel-labs/scriptc
+mikehasa/agentacct
+edaywalid/undo
+VictorTaelin/OptMem
+ogulcancelik/herdr-browser
+letstri/druk
+oblien/openship
+cloudflare/agentic-inbox
+anthony-chaudhary/fak
+phil9922/backup-maker
+superloglabs/superlog
+
+# ── memory and context ──────────────────────────────────────────────────
+gist:2067ab416f7bbe447c1977edaaa681e2
+Pratiyush/llm-wiki
+doc https://arxiv.org/pdf/2505.22101v1
+MemTensor/MemOS
+JotaSXBR/obsidian-infinite-brain
+Dywanah-Ali/Infinite-Brain-OS
+dnsmalla/InfiniteBrain
+starmynd-org/infinite-brain-os
+GoogleCloudPlatform/knowledge-catalog
+
+# ── factory (attractor family) ──────────────────────────────────────────
+fabro-sh/fabro
+danshapiro/kilroy
+smartcomputer-ai/lightspeed
+samueljklee/attractor
+TheFellow/fkyeah
+coreydaley/attractor
+jaytaylor/attractor-php
+anishkny/attractor
+jhugman/attractor-pi-dev
+bborn/attractor-ruby
+bencivjan/attractor-scala
+point-labs-dev/arc
+jmccarthy/attractor-c
+johnnyhchen/soulcaster
+aliciapaz/attractor-rb
+az9713/attractor-software-factory
+strongdm/attractor
+
+# ── ssh ─────────────────────────────────────────────────────────────────
+masahide/OmniSSHAgent
+webfactory/ssh-agent
+softwarebuilding-io/agent-guide
+ccpopy/antissh
+ZlatanOmerovic/ssh-agent
+
+# ── a2a (agent-to-agent) ────────────────────────────────────────────────
+livekit/agents
+subeshb1/ai-agents-deep-dive
+ScienceOne-AI/Agent-Interaction-Protocol
+a2aproject/*
+NirDiamant/GenAI_Agents
+ag-ui-protocol/ag-ui
+kimtth/agent-to-agent-ms
+
+# ── super swarm spread ──────────────────────────────────────────────────
+linuxdevel/firecracker-farm
+doc https://linuxdevel.github.io/firecracker-farm/
+
+# ── llmd ────────────────────────────────────────────────────────────────
+llm-d/llm-d
+
+# ── codex ↔ claude ──────────────────────────────────────────────────────
+Njengah/claude-code-cheat-sheet
+wshobson/agents
+Florious95/team-agent
+milez770/hey-codex
+AlessioZazzarini/claude-codex-collab
+BloopAI/vibe-kanban
+xhluca/agent-talk
+ruvnet/ruflo
+Alishahryar1/free-claude-code
+slopus/happy
+OpenMOSS/claude-codex-handoff
+fujibee/agmsg
+Egonex-AI/Understand-Anything
+newmesh75/cross-session-talk
+YishenTu/claudian
+johannesjo/parallel-code
+abhishekgahlot2/codex-claude-bridge
+FlorianBruniaux/claude-code-ultimate-guide
+thedotmack/claude-mem
+siteboon/claudecodeui
+openai/codex-plugin-cc
+
+# ── kingbootoshi — everything ("install all"; covers codex-orchestrator) ─
+kingbootoshi/*
+
+# ── agent frameworks (batch 2) ──────────────────────────────────────────
+the-open-agent/openagent
+eylonmiz/react-agent
+kagent-dev/kagent
+microsoft/rd-agent
+hkuds/autoagent
+trypromptly/LLMStack
+agentuniverse-ai/agentuniverse
+HeyNina101/real-world-llm-agents
+agentgateway/agentgateway
+eidolon-ai/eidolon
+mintplex-labs/anything-llm
+voltagent/voltagent
+OpenBMB/XAgent
+heshengtao/comfyui_LLM_party
+langchain-ai/social-media-agent
+oddChris-dev/llm-agent-lab
+livekit/agents-js
+agenta-ai/agenta
+agiresearch/AIOS
+msitarzewski/agency-agents
+Khalid2093/ai-agent-server
+openbmb/repoagent
+
+# ── OS research ─────────────────────────────────────────────────────────
+redox-os/redox
+doc https://www.redox-os.org/
+mntmn/interim
+TheEnbyperor/plan_rust
+doc https://github.com/orgs/community/discussions/34822

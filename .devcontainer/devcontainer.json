@@ -1,0 +1,12 @@
+{
+  "name": "Codespace Factory (redeployable)",
+  "image": "mcr.microsoft.com/devcontainers/universal",
+  "onCreateCommand": "bash .devcontainer/factory-setup.sh",
+  "postAttachCommand": "bash .devcontainer/factory-setup.sh >/tmp/factory-attach.log 2>&1 || true",
+  "remoteUser": "codespace",
+  "customizations": {
+    "vscode": {
+      "extensions": []
+    }
+  }
+}
