@@ -64,6 +64,7 @@ object FirewallDefaults {
         Default("firewall_dnscrypt", "Require no-logs", "on", "Privacy-first filter."),
         Default("firewall_dnscrypt", "Require DNSSEC", "on", "Validated answers only."),
         Default("firewall_dnscrypt", "Require unfiltered", "off", "Many good resolvers block malware."),
+        Default("firewall_dnscrypt", "Anonymizing relay", "none", "Optional Anonymized-DNSCrypt relay; direct by default."),
         // Anonymized routing
         Default("firewall_anon", "Route DNS through proxy", "off", "Tor/I2P DNS routing is opt-in."),
         Default("firewall_anon", "Proxy mode", "Tor", "Orbot SOCKS 127.0.0.1:9050."),

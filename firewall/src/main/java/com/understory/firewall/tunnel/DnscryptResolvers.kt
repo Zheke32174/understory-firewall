@@ -35,6 +35,7 @@ object DnscryptResolvers {
 
     private const val K_ENABLED = "dnscrypt_enabled"
     private const val K_SELECTED = "dnscrypt_selected_stamp"
+    private const val K_RELAY = "dnscrypt_selected_relay"
     private const val K_REQ_NOLOG = "dnscrypt_require_nolog"
     private const val K_REQ_DNSSEC = "dnscrypt_require_dnssec"
     private const val K_REQ_NOFILTER = "dnscrypt_require_nofilter"
@@ -123,6 +124,18 @@ object DnscryptResolvers {
 
     /** The parsed stamp for the active resolver, ready for the upstream. */
     fun selectedStampParsed(ctx: Context): DnsStamp? = selectedResolver(ctx)?.stamp
+
+    // ---- Anonymized DNSCrypt relay (optional) ----
+
+    /** Selected relay stamp string; blank = no relay (direct DNSCrypt). Default: none. */
+    fun selectedRelay(ctx: Context): String = prefs(ctx).getString(K_RELAY, "").orEmpty()
+    fun setSelectedRelay(ctx: Context, stamp: String) =
+        prefs(ctx).edit().putString(K_RELAY, stamp.trim()).apply()
+
+    /** The parsed relay stamp for anonymized DNSCrypt, or null when none is selected. */
+    fun selectedRelayParsed(ctx: Context): DnsStamp? =
+        selectedRelay(ctx).takeIf { it.isNotBlank() }?.let { DnsStamp.parse(it) }
+            ?.takeIf { it.proto == DnsStamp.Proto.DNSCRYPT_RELAY }
 
     private val PREFERRED_NAMES = listOf("cloudflare", "quad9", "adguard", "mullvad", "cs-", "dnscry.pt")
 

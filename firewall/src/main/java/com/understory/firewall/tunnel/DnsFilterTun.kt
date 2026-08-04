@@ -145,6 +145,8 @@ class DnsFilterTun(
         private val dnscryptStamp: DnsStamp? = null,
         /** UDP/TCP port for the DNSCrypt exchange (from the stamp). */
         private val dnscryptPort: Int = 443,
+        /** Optional Anonymized-DNSCrypt relay stamp; when set, queries route through it. */
+        private val dnscryptRelay: DnsStamp? = null,
         /** SOCKS5 proxy for [Mode.SOCKS_DNS] (Tor/I2P/custom). */
         private val socksHost: String = "",
         private val socksPort: Int = 0,
@@ -158,8 +160,9 @@ class DnsFilterTun(
         fun describe(): String = when (mode) {
             Mode.DOT -> "DNS-over-TLS → $tlsHostname (${resolverIp.hostAddress}:853), verified"
             Mode.DOH -> "DNS-over-HTTPS → https://$tlsHostname$dohPath (${resolverIp.hostAddress}:443), verified"
-            Mode.DNSCRYPT -> "DNSCrypt → ${dnscryptStamp?.providerName} (${resolverIp.hostAddress}:$dnscryptPort), " +
-                "cert-verified, ${CryptoSelfTest.result().summary()}"
+            Mode.DNSCRYPT -> "DNSCrypt → ${dnscryptStamp?.providerName} (${resolverIp.hostAddress}:$dnscryptPort)" +
+                (if (usingRelay) " via relay ${relayAddr?.hostAddress}:$relayPort" else "") +
+                ", cert-verified, ${CryptoSelfTest.result().summary()}"
             Mode.SOCKS_DNS -> "$socksLabel → DNS-over-TCP to ${resolverIp.hostAddress}:53 via SOCKS5 $socksHost:$socksPort"
             Mode.PLAINTEXT -> "plaintext UDP ${resolverIp.hostAddress}:53"
         }
@@ -208,6 +211,18 @@ class DnsFilterTun(
         private val rng = SecureRandom()
         @Volatile private var dnscryptSession: DnscryptClient.Session? = null
         @Volatile private var dnscryptSessionAtMs: Long = 0L
+
+        // Anonymized DNSCrypt: when a relay is configured, the exchange targets the RELAY and the
+        // payload (cert query or encrypted query) is wrapped with the relay routing header naming
+        // the real resolver. The relay forwards to the resolver, which never sees the client IP.
+        private val relayAddr: InetAddress? =
+            dnscryptRelay?.let { runCatching { InetAddress.getByName(it.addressIp()) }.getOrNull() }
+        private val relayPort: Int = dnscryptRelay?.addressPort(443) ?: 0
+        private val usingRelay: Boolean get() = relayAddr != null
+        private fun destIp(): InetAddress = if (usingRelay) relayAddr!! else resolverIp
+        private fun destPort(): Int = if (usingRelay) relayPort else dnscryptPort
+        private fun framePayload(payload: ByteArray): ByteArray =
+            if (usingRelay) DnscryptClient.wrapAnonymized(payload, resolverIp.address, dnscryptPort) else payload
 
         /**
          * REAL native DNSCrypt v2 (the InviZible Pro / dnscrypt-proxy transport, done in-process):
@@ -264,7 +279,8 @@ class DnsFilterTun(
             return try {
                 if (!service.protect(socket)) return null
                 socket.soTimeout = DNS_TIMEOUT_MS
-                socket.send(DatagramPacket(payload, payload.size, resolverIp, dnscryptPort))
+                val framed = framePayload(payload)
+                socket.send(DatagramPacket(framed, framed.size, destIp(), destPort()))
                 val rbuf = ByteArray(4096)
                 val pkt = DatagramPacket(rbuf, rbuf.size)
                 socket.receive(pkt)
@@ -285,12 +301,13 @@ class DnsFilterTun(
             val socket = java.net.Socket()
             return try {
                 if (!service.protect(socket)) return null
-                socket.connect(java.net.InetSocketAddress(resolverIp, dnscryptPort), DNS_TIMEOUT_MS)
+                socket.connect(java.net.InetSocketAddress(destIp(), destPort()), DNS_TIMEOUT_MS)
                 socket.soTimeout = DNS_TIMEOUT_MS
+                val framed = framePayload(payload)
                 val out = socket.getOutputStream()
-                out.write((payload.size ushr 8) and 0xff)
-                out.write(payload.size and 0xff)
-                out.write(payload)
+                out.write((framed.size ushr 8) and 0xff)
+                out.write(framed.size and 0xff)
+                out.write(framed)
                 out.flush()
                 val ins = socket.getInputStream()
                 val hi = ins.read(); val lo = ins.read()
@@ -520,11 +537,12 @@ class DnsFilterTun(
              * client verifies the certificate against. This is the transport InviZible Pro provides
              * via a bundled dnscrypt-proxy; here it is in-process (see [DnscryptClient]).
              */
-            fun dnscrypt(stamp: DnsStamp): UpstreamResolver {
+            fun dnscrypt(stamp: DnsStamp, relay: DnsStamp? = null): UpstreamResolver {
                 val ip = stamp.addressIp().ifBlank { DEFAULT_IP }
                 return UpstreamResolver(
                     addrOf(ip), Mode.DNSCRYPT, tlsHostname = null, dohPath = "",
                     dnscryptStamp = stamp, dnscryptPort = stamp.addressPort(443),
+                    dnscryptRelay = relay?.takeIf { it.proto == DnsStamp.Proto.DNSCRYPT_RELAY },
                 )
             }
 
@@ -534,8 +552,8 @@ class DnsFilterTun(
              * hostname authenticates the peer). Returns null for a stamp type we don't carry
              * traffic over (relay/ODoH/plain) so the caller can fall back honestly.
              */
-            fun fromStamp(stamp: DnsStamp): UpstreamResolver? = when (stamp.proto) {
-                DnsStamp.Proto.DNSCRYPT -> dnscrypt(stamp)
+            fun fromStamp(stamp: DnsStamp, relay: DnsStamp? = null): UpstreamResolver? = when (stamp.proto) {
+                DnsStamp.Proto.DNSCRYPT -> dnscrypt(stamp, relay)
                 DnsStamp.Proto.DOH ->
                     doh(stamp.addressIp().ifBlank { stamp.hostname }, stamp.hostname, stamp.path.ifBlank { "/dns-query" })
                 DnsStamp.Proto.DOT ->

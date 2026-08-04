@@ -569,6 +569,9 @@ private fun DnscryptCard() {
     var resolvers by remember { mutableStateOf<List<DnscryptResolvers.Resolver>>(emptyList()) }
     // Parsed off the main thread by reload() (the list is ~900 stamps); null until it loads.
     var selected by remember { mutableStateOf<DnscryptResolvers.Resolver?>(null) }
+    var relays by remember { mutableStateOf<List<DnscryptResolvers.Resolver>>(emptyList()) }
+    var relayName by remember { mutableStateOf(DnscryptResolvers.selectedRelay(ctx)) }
+    var relayQuery by remember { mutableStateOf("") }
     var status by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     val selfTest = remember { CryptoSelfTest.result() }
@@ -577,6 +580,7 @@ private fun DnscryptCard() {
         scope.launch {
             val list = withContext(Dispatchers.IO) { DnscryptResolvers.load(ctx) }
             resolvers = list
+            relays = withContext(Dispatchers.IO) { DnscryptResolvers.relays(ctx) }
             selected = withContext(Dispatchers.IO) { DnscryptResolvers.selectedResolver(ctx) }
         }
     }
@@ -674,8 +678,40 @@ private fun DnscryptCard() {
                     }
                 }) { Text("Use bundled") }
             }
+            // Anonymized DNSCrypt relay (optional).
+            Spacer(Modifier.height(UnderstoryTheme.spacing.sm))
+            Text("Anonymize via relay (optional)", style = MaterialTheme.typography.labelLarge)
+            Text(
+                if (relayName.isBlank()) "Direct — the resolver sees your IP."
+                else "Routing through a relay — the resolver sees the relay's IP, not yours.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = relayQuery, onValueChange = { relayQuery = it }, singleLine = true,
+                label = { Text("Search ${relays.size} relays") }, modifier = Modifier.fillMaxWidth(),
+            )
+            val relayMatches = remember(relayQuery, relays) {
+                (if (relayQuery.isBlank()) relays else relays.filter { it.name.contains(relayQuery, true) }).take(16)
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(UnderstoryTheme.spacing.xs)) {
+                FilterChip(
+                    selected = relayName.isBlank(),
+                    onClick = { DnscryptResolvers.setSelectedRelay(ctx, ""); relayName = "" },
+                    label = { Text("None") },
+                )
+                relayMatches.forEach { r ->
+                    FilterChip(
+                        selected = relayName == r.stamp.raw,
+                        onClick = { DnscryptResolvers.setSelectedRelay(ctx, r.stamp.raw); relayName = r.stamp.raw
+                            status = "Relay set: ${r.name}. Re-arm to apply." },
+                        label = { Text(r.name) },
+                    )
+                }
+            }
             BoundaryText(
-                "The resolver LIST isn't minisign-verified (dnscrypt-proxy verifies it); a tampered " +
+                "For real anonymity the relay and resolver should be run by DIFFERENT operators. " +
+                    "The resolver LIST isn't minisign-verified (dnscrypt-proxy verifies it); a tampered " +
                     "list could only swap WHICH resolver you reach, not forge one — the per-query " +
                     "certificate check catches a substituted resolver.",
             )

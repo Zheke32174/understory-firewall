@@ -327,7 +327,8 @@ class FirewallVpnService : VpnService() {
         fallback: () -> DnsFilterTun.UpstreamResolver,
     ): DnsFilterTun.UpstreamResolver {
         val stamp = DnscryptResolvers.selectedStampParsed(this)
-        val u = stamp?.let { DnsFilterTun.UpstreamResolver.fromStamp(it) }
+        val relay = DnscryptResolvers.selectedRelayParsed(this)
+        val u = stamp?.let { DnsFilterTun.UpstreamResolver.fromStamp(it, relay) }
         if (u == null) {
             com.understory.security.Diagnostics.error(
                 "firewall.FirewallVpnService",

@@ -160,6 +160,27 @@ object DnscryptClient {
         return padded.copyOfRange(0, i)
     }
 
+    /** Anonymized DNSCrypt magic prefix: 0xff×8 then 0x00 0x00. */
+    private val ANON_MAGIC = byteArrayOf(-1, -1, -1, -1, -1, -1, -1, -1, 0, 0)
+
+    /**
+     * Wrap a DNSCrypt client packet for Anonymized DNSCrypt (spec ANONYMIZED-DNSCRYPT §2):
+     * `<anon-magic> <server-ip:16> <server-port:2> <dnscrypt-query>`, sent to a RELAY instead of
+     * the resolver. The relay forwards the inner packet to the server unmodified, so the server
+     * never sees the client's IP. [serverAddr] is the resolver's raw address (4 or 16 bytes; IPv4
+     * is mapped to `::ffff:<v4>`). The response comes back as an ordinary DNSCrypt response, so
+     * [decryptResponse] handles it unchanged.
+     */
+    fun wrapAnonymized(dnscryptQuery: ByteArray, serverAddr: ByteArray, serverPort: Int): ByteArray {
+        val v6 = when (serverAddr.size) {
+            16 -> serverAddr
+            4 -> byteArrayOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1) + serverAddr // ::ffff:<v4>
+            else -> throw IllegalArgumentException("server address must be 4 or 16 bytes")
+        }
+        val port = byteArrayOf((serverPort ushr 8).toByte(), serverPort.toByte())
+        return ANON_MAGIC + v6 + port + dnscryptQuery
+    }
+
     private const val TYPE_TXT = 16
 
     private fun u16(b: ByteArray, o: Int) = ((b[o].toInt() and 0xFF) shl 8) or (b[o + 1].toInt() and 0xFF)

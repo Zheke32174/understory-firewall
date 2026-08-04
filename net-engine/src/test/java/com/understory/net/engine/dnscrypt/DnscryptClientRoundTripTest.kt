@@ -31,6 +31,20 @@ class DnscryptClientRoundTripTest {
     @Test fun es1_xsalsa20_roundtrip() = roundTrip(1)
     @Test fun es2_xchacha20_roundtrip() = roundTrip(2)
 
+    /** The Anonymized-DNSCrypt wrap must match the spec's worked example byte-for-byte. */
+    @Test fun anon_wrap_matches_spec_example() {
+        val query = byteArrayOf(0xDE.toByte(), 0xAD.toByte(), 0xBE.toByte(), 0xEF.toByte())
+        val serverIp = byteArrayOf(192.toByte(), 0, 2, 1) // 192.0.2.1
+        val wrapped = DnscryptClient.wrapAnonymized(query, serverIp, 443)
+        // spec: anon-magic(10) ++ ::ffff:c0000201 (16) ++ 0x01bb (2) ++ query
+        val expectedPrefix = byteArrayOf(
+            -1, -1, -1, -1, -1, -1, -1, -1, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1, 0xC0.toByte(), 0x00, 0x02, 0x01,
+            0x01, 0xBB.toByte(),
+        )
+        assertArrayEquals(expectedPrefix + query, wrapped)
+    }
+
     private fun roundTrip(esVersion: Int) {
         val rng = SecureRandom()
         val edKp = KeyPairGenerator.getInstance("Ed25519")
