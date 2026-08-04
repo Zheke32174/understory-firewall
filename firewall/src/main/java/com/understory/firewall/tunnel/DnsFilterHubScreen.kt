@@ -46,6 +46,7 @@ import com.understory.firewall.VpnSlotProbe
 import com.understory.firewall.startEngine
 import com.understory.firewall.stopEngine
 import com.understory.net.engine.DnsMessage
+import com.understory.net.engine.crypto.CryptoSelfTest
 import com.understory.security.Diagnostics
 import com.understory.security.SecureButton
 import com.understory.security.SecureOutlinedButton
@@ -285,6 +286,8 @@ fun DnsFilterHubScreen(
 
                 BlocklistCard()
                 UpstreamCard()
+                DnscryptCard()
+                AnonRoutingCard()
             }
             Spacer(Modifier.height(UnderstoryTheme.spacing.lg))
         }
@@ -528,6 +531,210 @@ private fun UpstreamCard() {
             Spacer(Modifier.height(UnderstoryTheme.spacing.sm))
             Text(it, style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DnscryptCard() {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var enabled by remember { mutableStateOf(DnscryptResolvers.isEnabled(ctx)) }
+    var reqNoLog by remember { mutableStateOf(DnscryptResolvers.requireNoLog(ctx)) }
+    var reqDnssec by remember { mutableStateOf(DnscryptResolvers.requireDnssec(ctx)) }
+    var reqNoFilter by remember { mutableStateOf(DnscryptResolvers.requireNoFilter(ctx)) }
+    var query by remember { mutableStateOf("") }
+    var resolvers by remember { mutableStateOf<List<DnscryptResolvers.Resolver>>(emptyList()) }
+    var selected by remember { mutableStateOf(DnscryptResolvers.selectedResolver(ctx)) }
+    var status by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    val selfTest = remember { CryptoSelfTest.result() }
+
+    fun reload() {
+        scope.launch {
+            val list = withContext(Dispatchers.IO) { DnscryptResolvers.load(ctx) }
+            resolvers = list
+            selected = withContext(Dispatchers.IO) { DnscryptResolvers.selectedResolver(ctx) }
+        }
+    }
+    LaunchedEffect(reqNoLog, reqDnssec, reqNoFilter) { reload() }
+
+    SuiteCard {
+        Text("DNSCrypt (InviZible-style)", style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+        Text(
+            "Encrypts your DNS with native DNSCrypt v2 — the resolver's certificate is verified " +
+                "(Ed25519) and each query is encrypted to an ephemeral key, done in-process with no " +
+                "bundled daemon. When on, this REPLACES the plaintext/DoT/DoH upstream above.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+        Text(
+            selfTest.summary(),
+            style = MaterialTheme.typography.bodySmall,
+            color = if (selfTest.anyReady) UnderstoryTheme.semantic.success else UnderstoryTheme.semantic.warning,
+        )
+        Spacer(Modifier.height(UnderstoryTheme.spacing.sm))
+        SwitchRow(
+            label = "Use DNSCrypt as the upstream",
+            checked = enabled,
+            onCheckedChange = {
+                enabled = it && selfTest.anyReady
+                DnscryptResolvers.setEnabled(ctx, enabled)
+                if (it && !selfTest.anyReady) status = "This device's DNSCrypt crypto self-test failed — cannot enable."
+                if (enabled) reload()
+            },
+        )
+        if (enabled) {
+            Spacer(Modifier.height(UnderstoryTheme.spacing.sm))
+            Text("Selected: ${selected?.name ?: "(choosing a default…)"}",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            selected?.stamp?.let {
+                Text(
+                    "${it.proto} · ${if (it.noLogs) "no-log" else "logs"} · " +
+                        "${if (it.dnssec) "DNSSEC" else "no DNSSEC"} · ${if (it.noFilter) "unfiltered" else "filtered"}",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+            Text("Requirements", style = MaterialTheme.typography.labelLarge)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(UnderstoryTheme.spacing.xs)) {
+                FilterChip(selected = reqNoLog, onClick = {
+                    reqNoLog = !reqNoLog; DnscryptResolvers.setRequireNoLog(ctx, reqNoLog)
+                }, label = { Text("No logs") })
+                FilterChip(selected = reqDnssec, onClick = {
+                    reqDnssec = !reqDnssec; DnscryptResolvers.setRequireDnssec(ctx, reqDnssec)
+                }, label = { Text("DNSSEC") })
+                FilterChip(selected = reqNoFilter, onClick = {
+                    reqNoFilter = !reqNoFilter; DnscryptResolvers.setRequireNoFilter(ctx, reqNoFilter)
+                }, label = { Text("Unfiltered") })
+            }
+            Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+            OutlinedTextField(
+                value = query, onValueChange = { query = it }, singleLine = true,
+                label = { Text("Search ${resolvers.size} resolvers") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+            val matches = remember(query, resolvers) {
+                (if (query.isBlank()) resolvers else resolvers.filter { it.name.contains(query, true) }).take(24)
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(UnderstoryTheme.spacing.xs)) {
+                matches.forEach { r ->
+                    FilterChip(
+                        selected = selected?.stamp?.raw == r.stamp.raw,
+                        onClick = {
+                            DnscryptResolvers.setSelectedStamp(ctx, r.stamp.raw)
+                            selected = r
+                            status = "Selected ${r.name}. Re-arm the tunnel to apply."
+                        },
+                        label = { Text(r.name) },
+                    )
+                }
+            }
+            Spacer(Modifier.height(UnderstoryTheme.spacing.sm))
+            Row(horizontalArrangement = Arrangement.spacedBy(UnderstoryTheme.spacing.sm)) {
+                SecureOutlinedButton(onClick = {
+                    if (busy) return@SecureOutlinedButton
+                    busy = true; status = "Refreshing list…"
+                    scope.launch {
+                        val r = withContext(Dispatchers.IO) { DnscryptResolvers.refresh(ctx) }
+                        reload(); status = r; busy = false
+                    }
+                }) { Text("Refresh list") }
+                SecureOutlinedButton(onClick = {
+                    scope.launch {
+                        val r = withContext(Dispatchers.IO) { DnscryptResolvers.clearRefreshed(ctx) }
+                        reload(); status = r
+                    }
+                }) { Text("Use bundled") }
+            }
+            BoundaryText(
+                "The resolver LIST isn't minisign-verified (dnscrypt-proxy verifies it); a tampered " +
+                    "list could only swap WHICH resolver you reach, not forge one — the per-query " +
+                    "certificate check catches a substituted resolver.",
+            )
+        }
+        status?.let {
+            Spacer(Modifier.height(UnderstoryTheme.spacing.sm))
+            Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AnonRoutingCard() {
+    val ctx = LocalContext.current
+    var enabled by remember { mutableStateOf(AnonRouting.isDnsRoutedThroughProxy(ctx)) }
+    var mode by remember { mutableStateOf(AnonRouting.mode(ctx)) }
+    var target by remember { mutableStateOf(AnonRouting.targetResolver(ctx)) }
+    var customHost by remember { mutableStateOf(AnonRouting.customHost(ctx)) }
+    var customPort by remember { mutableStateOf(AnonRouting.customPort(ctx).toString()) }
+    var saved by remember { mutableStateOf<String?>(null) }
+    val orbot = remember { AnonRouting.isOrbotInstalled(ctx) }
+    val i2p = remember { AnonRouting.isI2pInstalled(ctx) }
+
+    SuiteCard {
+        Text("Anonymize DNS (Tor / I2P)", style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+        Text(
+            "Route the tunnel's DNS over Tor (Orbot) or I2P as DNS-over-TCP through their SOCKS proxy. " +
+                "No daemon is bundled — you run Orbot / the I2P router in proxy mode. If the proxy " +
+                "isn't answering, DNS falls back to the normal upstream instead of failing.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+        Text(
+            "Detected: Orbot ${if (orbot) "✓" else "—"} · I2P ${if (i2p) "✓" else "—"}",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(UnderstoryTheme.spacing.sm))
+        SwitchRow(
+            label = "Route DNS through the proxy",
+            checked = enabled,
+            onCheckedChange = { enabled = it; AnonRouting.setDnsRoutedThroughProxy(ctx, it) },
+        )
+        if (enabled) {
+            Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(UnderstoryTheme.spacing.xs)) {
+                listOf(
+                    AnonRouting.MODE_TOR to "Tor (9050)",
+                    AnonRouting.MODE_I2P to "I2P (4447)",
+                    AnonRouting.MODE_CUSTOM to "Custom",
+                ).forEach { (key, label) ->
+                    FilterChip(selected = mode == key, onClick = { mode = key; AnonRouting.setMode(ctx, key) },
+                        label = { Text(label) })
+                }
+            }
+            if (mode == AnonRouting.MODE_CUSTOM) {
+                Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+                OutlinedTextField(value = customHost, onValueChange = { customHost = it }, singleLine = true,
+                    label = { Text("SOCKS5 host") }, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+                OutlinedTextField(value = customPort, onValueChange = { customPort = it.filter { c -> c.isDigit() } },
+                    singleLine = true, label = { Text("SOCKS5 port") }, modifier = Modifier.fillMaxWidth())
+            }
+            Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+            OutlinedTextField(value = target, onValueChange = { target = it }, singleLine = true,
+                label = { Text("Resolver IP reached via the proxy (DNS-over-TCP)") },
+                modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(UnderstoryTheme.spacing.sm))
+            SecureButton(onClick = {
+                AnonRouting.setTargetResolver(ctx, target)
+                AnonRouting.setCustomHost(ctx, customHost)
+                AnonRouting.setCustomPort(ctx, customPort.toIntOrNull() ?: 1080)
+                saved = "Saved. Re-arm the tunnel to apply."
+            }) { Text("Save routing") }
+        }
+        saved?.let {
+            Spacer(Modifier.height(UnderstoryTheme.spacing.sm))
+            Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
