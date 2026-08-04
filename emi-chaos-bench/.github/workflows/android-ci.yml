@@ -1,0 +1,66 @@
+# Android CI for EMI Chaos Bench.
+#
+# NOTE ON LOCATION. GitHub Actions only runs workflow files found at the REPOSITORY ROOT
+# (`.github/workflows/`). This app is currently vendored inside understory-firewall at
+# `emi-chaos-bench/`, so this file does NOT run there — it becomes active the moment this
+# directory is the root of its own repository, which is exactly what the standalone-repo
+# packaging (own settings.gradle.kts, own wrapper, own docs) is for. See README "Standalone".
+name: android-ci
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+
+# Cancel superseded runs on the same ref — CI feedback should track the latest push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Make the wrapper executable
+        run: chmod +x ./gradlew
+
+      # Unit tests first: the pure logic (AuditFusion, CaseReport, TrackerWatch, the invariant
+      # reflection/source scans) runs on a plain JVM and is the fastest signal that something
+      # broke. org.json's real impl is on the test classpath so JSONObject actually works.
+      - name: Unit tests
+        run: ./gradlew --no-daemon --stacktrace testDebugUnitTest
+
+      - name: Lint
+        run: ./gradlew --no-daemon --stacktrace lintDebug
+
+      - name: Assemble debug APK
+        run: ./gradlew --no-daemon --stacktrace assembleDebug
+
+      - name: Upload debug APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emi-chaos-bench-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
+
+      - name: Upload test + lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            app/build/reports/tests/**
+            app/build/reports/lint-results-*.*
+          if-no-files-found: ignore

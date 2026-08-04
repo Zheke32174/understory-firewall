@@ -202,6 +202,11 @@ class MainActivity : ComponentActivity() {
         // finding, because detection and recording happen on the far side of this boundary.
         webView.addJavascriptInterface(
             ScanBridge(this, MaskerService.ensureScanEngine(this)), "EMIScan")
+        // Fused security posture + the forensic case report. Read-only view onto the service-owned
+        // audit engine: the page can read the graded posture and pull a report, but fusion and the
+        // append-only chain-of-custody recording happen on the far side of this boundary.
+        webView.addJavascriptInterface(
+            AuditBridge(MaskerService.ensureAuditEngine(this)), "EMIAudit")
         webView.addJavascriptInterface(bridge, "EMIBridge")
         webView.addJavascriptInterface(shizuku, "EMIShizuku")
         webView.addJavascriptInterface(tamperGuard, "EMITamper")

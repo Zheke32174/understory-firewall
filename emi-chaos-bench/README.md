@@ -30,6 +30,48 @@ BLE/Wi-Fi field tools (accessory pairing, sensor telemetry, profiles,
 geofencing, anomaly detection) and porting those *interaction and detection*
 ideas — never any transmit capability — onto an audio masker.
 
+## 3.9 — Audit
+
+**One honest answer to "how exposed am I right now, and what is the single worst thing."**
+Until now every detector reported on its own panel — cellular here, Wi-Fi there, injection
+detection somewhere else, the evidence vault's own integrity elsewhere again. In a moment that
+matters, reading six panels and doing the arithmetic in your head is exactly the wrong ergonomics.
+The new **Audit** tab folds every existing detector into one graded posture: a 0–100 score, a
+`clear / watch / elevated / critical` grade, and the findings sorted worst-first.
+
+It invents no new detector and touches no radio. `AuditFusion` is a pure function — the JSON the
+subsystems already produce goes in, one graded posture comes out — which is why its judgement is
+unit-tested against fabricated inputs on a plain JVM, not just eyeballed on a device. The
+service-owned `AuditEngine` runs it *last* on the background sweep, so a change in your exposure is
+logged to the encrypted vault even with the app in your pocket.
+
+**A check that could not run is never an all-clear.** Coverage gaps are counted and shown
+separately from clean passes, because "nothing following" from a scanner that never started is the
+most dangerous sentence this app could print — the same lesson `EscalationGuard` and `BleWatcher`
+already learned. Every folded-in signal is still a heuristic: a high grade is a strong reason to
+look closer, never proof, and the wording keeps saying so.
+
+**A forensic case report, with its own proof of integrity.** The Audit tab exports one
+self-contained document — the graded posture plus the encrypted vault's own hash-chain
+verification embedded *verbatim* — as an HTML report to hand to a person or a JSON bundle for
+machines. It does not re-implement an integrity check; there is exactly one integrity checker in
+this app (`SecureLog.verify()`) and the report carries its output directly. Reports are
+location-free and identity-free by construction: positions live only in the tower log on the Data
+tab and are never merged in.
+
+**Exporting evidence is now itself logged — chain of custody.** Saving a case report or a raw
+vault export appends a custody line to the append-only vault: what left the device, when, how
+large, and how many records were attested. The store can answer later whether a copy was ever
+taken off the device, without trusting that to memory.
+
+**Packaging toward its own repository.** This edition commits the Gradle wrapper, adds Android CI
+(unit tests + lint + debug APK), and ships `SECURITY.md` / `CONTRIBUTING.md` / `CHANGELOG.md`, so
+the app is a self-contained project rather than only a subdirectory. See **Standalone** below.
+
+The masking/disruption core is untouched — the audit layer only *reports* whether masking is
+active. Nothing here transmits; the line in [`ETHICS.md`](ETHICS.md) holds.
+
+
 ## 3.8 — Persist
 
 **Scan stutter restored as its own function — I had removed something that was wanted.**
@@ -686,6 +728,33 @@ mesh-node/                          reference companion agents (OpenWRT, Rayhunt
 `minSdk 26`, `targetSdk 34`, Kotlin, AndroidX. One optional third-party
 dependency pair: `dev.rikka.shizuku:api` / `:provider` (Shizuku client
 plumbing — inert unless the user has separately set up Shizuku).
+
+Run the tests (pure JVM, no device) and lint:
+
+```bash
+./gradlew testDebugUnitTest lintDebug
+```
+
+## Standalone
+
+This directory is a **complete, self-contained Gradle project**: its own
+`settings.gradle.kts` (`rootProject.name = "EMIChaosBench"`, one `:app` module),
+its own root `build.gradle.kts`, its own committed wrapper (`./gradlew`, pinned to
+Gradle 8.9), and its own CI (`.github/workflows/android-ci.yml`, which runs when
+this directory is a repository root). It depends on nothing in the parent
+repository it is currently vendored inside, so it can be lifted out into its own
+repo without code changes.
+
+To extract it while preserving history:
+
+```bash
+# from a fresh clone of the parent repo
+git filter-repo --subdirectory-filter emi-chaos-bench
+# then push to a new empty repository and the CI in .github/workflows/ goes live
+```
+
+(Without `git filter-repo`, a plain copy of this directory into a new repo also
+works — you just lose the per-file history.)
 
 ## Try the app without building
 

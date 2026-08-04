@@ -159,6 +159,26 @@ class MaskerService : Service() {
                 return g
             }
         }
+
+        /**
+         * Posture-fusion engine, service-owned like every detector it reads. It runs LAST on the
+         * background timer, after the cell/net/escalation sweep has refreshed each subsystem's
+         * cached JSON, so the fused grade reflects the same tick rather than the previous one. A
+         * posture change is then logged to the vault with the app backgrounded — which is exactly
+         * when a change matters and no UI is polling.
+         */
+        @Volatile var auditEngine: AuditEngine? = null
+            private set
+
+        fun ensureAuditEngine(ctx: Context): AuditEngine {
+            auditEngine?.let { return it }
+            synchronized(this) {
+                auditEngine?.let { return it }
+                val a = AuditEngine(ctx.applicationContext, SecureLog(ctx.applicationContext))
+                auditEngine = a
+                return a
+            }
+        }
     }
 
     /** Slow cadence — these conditions are sticky, so polling hard would only cost battery. */
@@ -321,6 +341,9 @@ class MaskerService : Service() {
                         // which is exactly when no UI is polling.
                         try { ensureCellSecurity(this@MaskerService).scan() } catch (_: Throwable) {}
                         try { ensureNetGuard(this@MaskerService).scan() } catch (_: Throwable) {}
+                        // Fuse LAST, so the graded posture reflects the sweep that just ran and a
+                        // grade transition is logged to the vault while backgrounded.
+                        try { ensureAuditEngine(this@MaskerService).run() } catch (_: Throwable) {}
                     }
                 }, 8_000L, 5 * 60_000L)
             }
