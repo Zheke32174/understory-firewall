@@ -567,7 +567,8 @@ private fun DnscryptCard() {
     var reqNoFilter by remember { mutableStateOf(DnscryptResolvers.requireNoFilter(ctx)) }
     var query by remember { mutableStateOf("") }
     var resolvers by remember { mutableStateOf<List<DnscryptResolvers.Resolver>>(emptyList()) }
-    var selected by remember { mutableStateOf(DnscryptResolvers.selectedResolver(ctx)) }
+    // Parsed off the main thread by reload() (the list is ~900 stamps); null until it loads.
+    var selected by remember { mutableStateOf<DnscryptResolvers.Resolver?>(null) }
     var status by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     val selfTest = remember { CryptoSelfTest.result() }
