@@ -51,10 +51,12 @@ class ShellView(
     private var security: SecurityScreen? = null
     private var logs: LogsScreen? = null
     private var data: DataScreen? = null
+    private var audit: AuditScreen? = null
     private var current = ""
 
     private val DESTS = listOf(
         "Masker" to true,      // true = still the WebView, and legitimately so
+        "Audit" to false,
         "Security" to false,
         "Logs" to false,
         "Data" to false
@@ -72,9 +74,9 @@ class ShellView(
         // destinations behind a gesture nobody thinks to make on something that looks like a
         // tab bar; it read as a broken layout, and it was one.
         //
-        // Four destinations is a fixed, small set, so each simply takes a quarter of the width
-        // and the LABEL shrinks to fit rather than the bar overflowing. Nothing can be pushed
-        // off screen by a long label or a large font, because there is no off screen to be
+        // The destinations are a fixed, small set, so each simply takes an equal share of the
+        // width and the LABEL shrinks to fit rather than the bar overflowing. Nothing can be
+        // pushed off screen by a long label or a large font, because there is no off screen to be
         // pushed to.
         val strip = Nx.row(ctx).apply {
             setBackgroundColor(Nx.PANEL)
@@ -92,7 +94,7 @@ class ShellView(
                 maxLines = 1
                 setOnClickListener { show(name) }
             }
-            /* ONE SIZE FOR ALL FOUR TABS.
+            /* ONE SIZE FOR ALL TABS.
              *
              * These were autosized INDIVIDUALLY, and autosize is per-view: each button picks
              * the largest size that fits ITS OWN label in ITS OWN box. "SECURITY" is eight
@@ -100,13 +102,14 @@ class ShellView(
              * rendered with mismatched type — which reads as a broken screen, and was reported
              * as one.
              *
-             * A fixed size is correct here because the constraint is known: four labels of at
-             * most eight characters across a quarter of the width each. 9.5sp with tight
-             * padding fits every one of them on a narrow phone, so nothing needs to shrink and
-             * nothing can disagree. maxLines=1 keeps a large system font from wrapping instead
-             * of overflowing.
+             * A fixed size is correct here because the constraint is known: the labels are at
+             * most eight characters ("SECURITY") across an equal share of the width each. Adding
+             * the AUDIT destination narrowed each tab from a quarter to a fifth, so the fixed
+             * size drops to 9sp to keep the longest label fitting a narrow phone without shrink;
+             * one size keeps every tab visually identical, and maxLines=1 keeps a large system
+             * font from wrapping instead of overflowing.
              */
-            b.textSize = 9.5f
+            b.textSize = 9f
             tabs.add(b)
             strip.addView(b, LinearLayout.LayoutParams(0, -2, 1f)
                 .apply { if (i > 0) leftMargin = Nx.dp(ctx, 4) })
@@ -132,6 +135,7 @@ class ShellView(
                     when (current) {
                         "Security" -> security?.refresh(force = false)
                         "Data" -> data?.refresh()
+                        "Audit" -> audit?.refresh()
                         // Logs deliberately absent: its refresh decrypts records.
                     }
                 }
@@ -162,6 +166,11 @@ class ShellView(
         }
         content.removeAllViews()
         when (name) {
+            "Audit" -> {
+                val a = audit ?: AuditScreen(context).also { audit = it }
+                content.addView(a, FrameLayout.LayoutParams(-1, -1))
+                a.refresh()
+            }
             "Security" -> {
                 val s = security ?: SecurityScreen(context).also { security = it }
                 content.addView(s, FrameLayout.LayoutParams(-1, -1))

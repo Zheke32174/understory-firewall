@@ -76,6 +76,41 @@ class InvariantsTest {
     }
 
     /**
+     * THE AUDIT BRIDGE IS READ-ONLY OVER FINDINGS, exactly like every other page-facing bridge.
+     *
+     * The audit engine fuses and RECORDS posture; the page-facing view onto it must never gain a
+     * way to raise, edit, suppress or delete a finding. The one write it is allowed —
+     * noteExport, which APPENDS a chain-of-custody line — is an append to the append-only vault,
+     * the same and only write the vault has ever supported. What must never appear here is a
+     * destructive verb.
+     */
+    @Test
+    fun `AuditBridge exposes no destructive method to the WebView`() {
+        val banned = listOf("delete", "clear", "wipe", "erase", "purge", "reset", "truncate", "drop")
+        val offenders = AuditBridge::class.java.methods
+            .map { it.name }
+            .filter { name -> banned.any { name.lowercase().contains(it) } }
+        assertTrue(
+            "AuditBridge is reachable from the WebView compartment and must be read + append-only " +
+            "— found: $offenders",
+            offenders.isEmpty()
+        )
+    }
+
+    /** Pin the exact page-facing audit surface so widening it is a deliberate act in a diff. */
+    @Test
+    fun `AuditBridge exposes exactly the intended methods to the page`() {
+        val declared = AuditBridge::class.java.declaredMethods
+            .filter { java.lang.reflect.Modifier.isPublic(it.modifiers) }
+            .map { it.name }.toSortedSet()
+        assertEquals(
+            "the page-facing audit API changed — this set is deliberate, widen it only on purpose",
+            sortedSetOf("cached", "noteExport", "reportHtml", "reportJson", "run"),
+            declared
+        )
+    }
+
+    /**
      * THE OVERLAY DETECTOR NEVER READS SCREEN CONTENT.
      *
      * This is the entire basis on which an accessibility service was added to a
