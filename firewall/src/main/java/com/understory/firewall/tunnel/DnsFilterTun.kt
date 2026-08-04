@@ -75,6 +75,9 @@ class DnsFilterTun(
             if (n < 0) break
             if (n < 28) continue
 
+            // Packet capture (PCAPdroid-style): the raw DNS query packet as it enters the tun.
+            PcapController.record(buf, 0, n)
+
             val parsed = VpnPacketParser.parseIpv4Udp(buf, n) ?: continue
             // Only DNS to our advertised fake resolver enters here (the tun
             // routes just that IP), but double-check dst IP + port so a stray
@@ -110,6 +113,8 @@ class DnsFilterTun(
             if (responsePayload == null) continue
 
             val outPacket = VpnPacketParser.buildIpv4UdpResponse(parsed, responsePayload)
+            // Capture the response packet (sinkholed or forwarded) too.
+            PcapController.record(outPacket, 0, outPacket.size)
             try {
                 output.write(outPacket)
             } catch (_: Throwable) {

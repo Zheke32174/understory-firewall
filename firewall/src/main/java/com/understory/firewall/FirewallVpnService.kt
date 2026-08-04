@@ -15,6 +15,7 @@ import com.understory.firewall.tunnel.ConnectionAttributor
 import com.understory.firewall.tunnel.DnsEventLog
 import com.understory.firewall.tunnel.DnsFilterTun
 import com.understory.firewall.tunnel.DnscryptResolvers
+import com.understory.firewall.tunnel.PcapController
 import com.understory.net.engine.DropStats
 import java.io.FileInputStream
 import java.net.InetAddress
@@ -197,6 +198,7 @@ class FirewallVpnService : VpnService() {
         val oldThread = readerThread
         tunFd = newTun
 
+        if (PcapController.isCaptureEnabled(this)) PcapController.start(applicationContext)
         readerThread = Thread({
             val input = FileInputStream(newTun.fileDescriptor)
             val buf = ByteArray(MTU)
@@ -204,6 +206,8 @@ class FirewallVpnService : VpnService() {
                 try {
                     val n = input.read(buf)
                     if (n < 0) break
+                    // Capture the dropped packet before dropping (PCAPdroid-style).
+                    if (n > 0) PcapController.record(buf, 0, n)
                     DropStats.record()
                 } catch (_: Throwable) {
                     break
@@ -308,6 +312,7 @@ class FirewallVpnService : VpnService() {
             blocklistProvider = { BlocklistRepository.current },
             answerStyle = answerStyle,
         )
+        if (PcapController.isCaptureEnabled(this)) PcapController.start(applicationContext)
         dnsFilter = filter
         dnsFilterThread = Thread(filter, "firewall-dns-filter").also { it.start() }
 
@@ -348,6 +353,7 @@ class FirewallVpnService : VpnService() {
 
     private fun stopEngine() {
         running.set(false)
+        runCatching { PcapController.stop() }
         runCatching { dnsFilter?.stop() }
         dnsFilter = null
         runCatching { dnsFilterThread?.interrupt() }

@@ -334,6 +334,21 @@
             android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
         <!--
+          PCAP export. Grants a one-shot read URI to a share target (Wireshark,
+          a file manager, email) for a capture file the user chose to share.
+          Not exported; access is only via per-share FLAG_GRANT_READ_URI_PERMISSION.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.pcapprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/pcap_paths" />
+        </provider>
+
+        <!--
           Posture Watch receiver (design-v2/firewall.md §5.4 background). Handles:
             - the app-private POSTURE_WATCH_CHECK alarm (a scheduled re-check), and
             - BOOT_COMPLETED / MY_PACKAGE_REPLACED, to re-arm the alarm after a

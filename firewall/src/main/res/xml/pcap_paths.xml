@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FileProvider path map for PCAP export. Only the app-private files/pcap/
+  directory is exposed, and only through a per-share grant — no other app
+  storage is reachable via this provider.
+-->
+<paths>
+    <files-path name="pcap" path="pcap/" />
+</paths>

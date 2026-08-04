@@ -75,6 +75,7 @@ fun DnsFilterHubScreen(
     activity: ComponentActivity,
     onBack: () -> Unit,
     onOpenVisibility: () -> Unit,
+    onOpenCapture: () -> Unit = {},
 ) {
     val ctx = LocalContext.current
 
@@ -281,6 +282,11 @@ fun DnsFilterHubScreen(
                             onClick = onOpenVisibility,
                             modifier = Modifier.fillMaxWidth(),
                         ) { Text("Open connection log") }
+                        Spacer(Modifier.height(UnderstoryTheme.spacing.xs))
+                        SecureOutlinedButton(
+                            onClick = onOpenCapture,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Packet capture (PCAP)") }
                     }
                 }
 
